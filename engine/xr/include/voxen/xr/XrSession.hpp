@@ -1,7 +1,11 @@
 #pragma once
 
+#include <array>
+
 #include <openxr/openxr.h>
 #include <vulkan/vulkan.h>
+
+namespace voxen::render { class XrSwapchainRenderer; }
 
 namespace voxen::xr {
 
@@ -27,7 +31,7 @@ public:
 
     // Runs the OpenXR frame lifecycle. Rendering layers are intentionally empty
     // until swapchains and the first stereo renderer are added.
-    void frame();
+    void frame(voxen::render::XrSwapchainRenderer& renderer);
 
     [[nodiscard]] ::XrSession handle() const noexcept { return session_; }
     [[nodiscard]] XrSpace localSpace() const noexcept { return localSpace_; }
