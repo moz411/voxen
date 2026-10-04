@@ -2,6 +2,8 @@
 
 #include <openxr/openxr_platform.h>
 
+#include <android/log.h>
+
 #include <algorithm>
 #include <array>
 #include <stdexcept>
@@ -127,6 +129,7 @@ void XrSwapchainRenderer::createSwapchains(
         uint32_t imageCount = 0;
         checkXr(xrEnumerateSwapchainImages(target.handle, 0, &imageCount, nullptr), "xrEnumerateSwapchainImages(count)");
         target.images.assign(imageCount, {XR_TYPE_SWAPCHAIN_IMAGE_VULKAN2_KHR});
+        target.layouts.assign(imageCount, VK_IMAGE_LAYOUT_UNDEFINED);
         checkXr(
             xrEnumerateSwapchainImages(
                 target.handle,
@@ -137,7 +140,7 @@ void XrSwapchainRenderer::createSwapchains(
     }
 }
 
-void XrSwapchainRenderer::clearImage(VkImage image, int32_t, int32_t, uint32_t eyeIndex) {
+void XrSwapchainRenderer::clearImage(VkImage image, VkImageLayout& layout, uint32_t eyeIndex) {
     checkVk(vkResetFences(device_, 1, &fence_), "vkResetFences");
     checkVk(vkResetCommandBuffer(commandBuffer_, 0), "vkResetCommandBuffer");
 
@@ -146,9 +149,9 @@ void XrSwapchainRenderer::clearImage(VkImage image, int32_t, int32_t, uint32_t e
     checkVk(vkBeginCommandBuffer(commandBuffer_, &begin), "vkBeginCommandBuffer");
 
     VkImageMemoryBarrier toTransfer{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-    toTransfer.srcAccessMask = 0;
+    toTransfer.srcAccessMask = layout == VK_IMAGE_LAYOUT_UNDEFINED ? 0 : VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
     toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    toTransfer.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    toTransfer.oldLayout = layout;
     toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -159,7 +162,7 @@ void XrSwapchainRenderer::clearImage(VkImage image, int32_t, int32_t, uint32_t e
 
     vkCmdPipelineBarrier(
         commandBuffer_,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        layout == VK_IMAGE_LAYOUT_UNDEFINED ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
         VK_PIPELINE_STAGE_TRANSFER_BIT,
         0, 0, nullptr, 0, nullptr, 1, &toTransfer);
 
@@ -199,11 +202,15 @@ void XrSwapchainRenderer::clearImage(VkImage image, int32_t, int32_t, uint32_t e
     submit.pCommandBuffers = &commandBuffer_;
     checkVk(vkQueueSubmit(queue_, 1, &submit, fence_), "vkQueueSubmit");
     checkVk(vkWaitForFences(device_, 1, &fence_, VK_TRUE, UINT64_MAX), "vkWaitForFences");
+    layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 }
 
 void XrSwapchainRenderer::render(
     const std::array<XrView, 2>& views,
     std::array<XrCompositionLayerProjectionView, 2>& projectionViews) {
+    if (!firstFrameLogged_) {
+        __android_log_print(ANDROID_LOG_INFO, "Voxen", "Rendering first stereo projection frame");
+    }
     for (uint32_t eye = 0; eye < eyes_.size(); ++eye) {
         auto& swapchain = eyes_[eye];
 
@@ -215,7 +222,7 @@ void XrSwapchainRenderer::render(
         waitInfo.timeout = XR_INFINITE_DURATION;
         checkXr(xrWaitSwapchainImage(swapchain.handle, &waitInfo), "xrWaitSwapchainImage");
 
-        clearImage(swapchain.images.at(imageIndex).image, swapchain.width, swapchain.height, eye);
+        clearImage(swapchain.images.at(imageIndex).image, swapchain.layouts.at(imageIndex), eye);
 
         XrSwapchainImageReleaseInfo releaseInfo{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
         checkXr(xrReleaseSwapchainImage(swapchain.handle, &releaseInfo), "xrReleaseSwapchainImage");
@@ -228,6 +235,11 @@ void XrSwapchainRenderer::render(
         projection.subImage.imageRect.offset = {0, 0};
         projection.subImage.imageRect.extent = {swapchain.width, swapchain.height};
         projection.subImage.imageArrayIndex = 0;
+    }
+
+    if (!firstFrameLogged_) {
+        __android_log_print(ANDROID_LOG_INFO, "Voxen", "First stereo projection frame rendered");
+        firstFrameLogged_ = true;
     }
 }
 
@@ -242,6 +254,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
             eye.handle = XR_NULL_HANDLE;
         }
         eye.images.clear();
+        eye.layouts.clear();
     }
 
     if (fence_ != VK_NULL_HANDLE) {
