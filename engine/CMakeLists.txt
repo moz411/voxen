@@ -1,6 +1,7 @@
 add_library(voxen_engine STATIC
     core/src/Engine.cpp
     xr/src/XrContext.cpp
+    xr/src/XrSession.cpp
     render/src/VulkanContext.cpp
 )
 
