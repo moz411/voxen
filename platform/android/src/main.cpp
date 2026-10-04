@@ -55,9 +55,9 @@ void android_main(android_app* app) {
             int events = 0;
             android_poll_source* source = nullptr;
 
-            // Never block while an XR session is running: xrWaitFrame is then
-            // the frame pacer. Before READY, block until Android has work.
-            const int timeoutMs = session.running() ? 0 : -1;
+            // xrWaitFrame paces active XR frames. Before READY, wake periodically so
+            // OpenXR events cannot be starved by the Android looper.
+            const int timeoutMs = session.running() ? 0 : 10;
             const int pollResult = ALooper_pollOnce(
                 timeoutMs,
                 nullptr,
