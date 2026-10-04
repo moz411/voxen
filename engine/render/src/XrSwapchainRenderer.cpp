@@ -247,7 +247,7 @@ void XrSwapchainRenderer::createPipeline() {
     VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
     vp.viewportCount=1; vp.scissorCount=1;
     VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-    rs.polygonMode=VK_POLYGON_MODE_FILL; rs.cullMode=VK_CULL_MODE_BACK_BIT;
+    rs.polygonMode=VK_POLYGON_MODE_FILL; rs.cullMode=VK_CULL_MODE_NONE;
     rs.frontFace=VK_FRONT_FACE_COUNTER_CLOCKWISE; rs.lineWidth=1.0F;
     VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
     ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
@@ -304,7 +304,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         layout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
-    VkClearValue clear{}; clear.color={{0.08F,0.12F,0.22F,1.0F}};
+    VkClearValue clear{}; clear.color.float32[0]=0.08F; clear.color.float32[1]=0.12F; clear.color.float32[2]=0.22F; clear.color.float32[3]=1.0F;
     VkRenderPassBeginInfo rbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rbi.renderPass=renderPass_; rbi.framebuffer=eye.framebuffers.at(imageIndex);
     rbi.renderArea.extent={static_cast<uint32_t>(eye.width),static_cast<uint32_t>(eye.height)};
