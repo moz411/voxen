@@ -1,5 +1,6 @@
 #include <voxen/xr/XrSession.hpp>
 
+#include <jni.h>
 #include <openxr/openxr_platform.h>
 
 #include <stdexcept>
