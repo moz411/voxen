@@ -29,7 +29,7 @@ public:
     // until swapchains and the first stereo renderer are added.
     void frame();
 
-    [[nodiscard]] XrSession handle() const noexcept { return session_; }
+    [[nodiscard]] ::XrSession handle() const noexcept { return session_; }
     [[nodiscard]] XrSpace localSpace() const noexcept { return localSpace_; }
     [[nodiscard]] XrSessionState state() const noexcept { return state_; }
     [[nodiscard]] bool running() const noexcept { return running_; }
@@ -38,7 +38,7 @@ private:
     void handleSessionStateChanged(const XrEventDataSessionStateChanged& event);
 
     XrInstance instance_ = XR_NULL_HANDLE;
-    XrSession session_ = XR_NULL_HANDLE;
+    ::XrSession session_ = XR_NULL_HANDLE;
     XrSpace localSpace_ = XR_NULL_HANDLE;
     XrSessionState state_ = XR_SESSION_STATE_UNKNOWN;
     bool running_ = false;
