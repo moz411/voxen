@@ -1,6 +1,7 @@
 #include <voxen/xr/XrSession.hpp>
 #include <voxen/render/XrSwapchainRenderer.hpp>
 
+#include <android/log.h>
 #include <jni.h>
 #include <openxr/openxr_platform.h>
 
@@ -82,11 +83,18 @@ bool XrSession::pollEvents() {
 void XrSession::handleSessionStateChanged(const XrEventDataSessionStateChanged& event) {
     state_ = event.state;
 
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        "Voxen",
+        "OpenXR session state -> %d",
+        static_cast<int>(state_));
+
     if (state_ == XR_SESSION_STATE_READY && !running_) {
         XrSessionBeginInfo beginInfo{XR_TYPE_SESSION_BEGIN_INFO};
         beginInfo.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
         checkXr(xrBeginSession(session_, &beginInfo), "xrBeginSession");
         running_ = true;
+        __android_log_print(ANDROID_LOG_INFO, "Voxen", "OpenXR session begun");
     } else if (state_ == XR_SESSION_STATE_STOPPING && running_) {
         checkXr(xrEndSession(session_), "xrEndSession");
         running_ = false;
