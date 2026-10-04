@@ -13,7 +13,7 @@ if(ANDROID)
         add_custom_command(
             OUTPUT "${HEADER}"
             COMMAND "${VOXEN_GLSLC}" "${CMAKE_CURRENT_SOURCE_DIR}/render/shaders/${SOURCE}" -o "${SPV}"
-            COMMAND "${CMAKE_COMMAND}" -DINPUT="${SPV}" -DOUTPUT="${HEADER}" -DSYMBOL=${NAME}
+            COMMAND "${CMAKE_COMMAND}" -DINPUT=${SPV} -DOUTPUT=${HEADER} -DSYMBOL=${NAME}
                     -P "${CMAKE_SOURCE_DIR}/cmake/EmbedBinary.cmake"
             DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/render/shaders/${SOURCE}" "${CMAKE_SOURCE_DIR}/cmake/EmbedBinary.cmake"
             VERBATIM
