@@ -4,8 +4,10 @@
 #include <cstdint>
 #include <vector>
 
-#include <openxr/openxr.h>
+#include <jni.h>
 #include <vulkan/vulkan.h>
+#include <openxr/openxr.h>
+#include <openxr/openxr_platform.h>
 
 namespace voxen::render {
 
