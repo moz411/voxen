@@ -40,11 +40,15 @@ private:
         int32_t height = 0;
         std::vector<XrSwapchainImageVulkan2KHR> images;
         std::vector<VkImageLayout> layouts;
+        std::vector<VkImageView> views;
+        std::vector<VkFramebuffer> framebuffers;
     };
 
     void createCommandResources();
     void createSwapchains(XrInstance instance, XrSystemId systemId, ::XrSession session);
-    void clearImage(VkImage image, VkImageLayout& layout, uint32_t eyeIndex);
+    void createPipeline();
+    void createFramebuffers();
+    void renderImage(EyeSwapchain& eye, uint32_t imageIndex, const XrView& view);
 
     ::XrSession session_ = XR_NULL_HANDLE;
     VkDevice device_ = VK_NULL_HANDLE;
@@ -54,6 +58,9 @@ private:
     VkCommandBuffer commandBuffer_ = VK_NULL_HANDLE;
     VkFence fence_ = VK_NULL_HANDLE;
     VkFormat colorFormat_ = VK_FORMAT_UNDEFINED;
+    VkRenderPass renderPass_ = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
+    VkPipeline pipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
     bool firstFrameLogged_ = false;
 };
