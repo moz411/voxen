@@ -39,11 +39,12 @@ private:
         int32_t width = 0;
         int32_t height = 0;
         std::vector<XrSwapchainImageVulkan2KHR> images;
+        std::vector<VkImageLayout> layouts;
     };
 
     void createCommandResources();
     void createSwapchains(XrInstance instance, XrSystemId systemId, ::XrSession session);
-    void clearImage(VkImage image, int32_t width, int32_t height, uint32_t eyeIndex);
+    void clearImage(VkImage image, VkImageLayout& layout, uint32_t eyeIndex);
 
     ::XrSession session_ = XR_NULL_HANDLE;
     VkDevice device_ = VK_NULL_HANDLE;
@@ -54,6 +55,7 @@ private:
     VkFence fence_ = VK_NULL_HANDLE;
     VkFormat colorFormat_ = VK_FORMAT_UNDEFINED;
     std::array<EyeSwapchain, 2> eyes_{};
+    bool firstFrameLogged_ = false;
 };
 
 } // namespace voxen::render
