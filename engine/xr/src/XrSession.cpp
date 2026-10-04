@@ -143,6 +143,11 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
             "xrLocateViews");
 
         if (viewCount == views.size()) {
+            static bool firstLocatedViewsLogged = false;
+            if (!firstLocatedViewsLogged) {
+                __android_log_print(ANDROID_LOG_INFO, "Voxen", "Located stereo views; submitting projection layer");
+                firstLocatedViewsLogged = true;
+            }
             renderer.render(views, projectionViews);
             layer.space = localSpace_;
             layer.viewCount = static_cast<uint32_t>(projectionViews.size());
