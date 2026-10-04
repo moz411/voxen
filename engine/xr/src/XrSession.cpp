@@ -1,4 +1,5 @@
 #include <voxen/xr/XrSession.hpp>
+#include <voxen/render/XrSwapchainRenderer.hpp>
 
 #include <jni.h>
 #include <openxr/openxr_platform.h>
@@ -92,7 +93,7 @@ void XrSession::handleSessionStateChanged(const XrEventDataSessionStateChanged& 
     }
 }
 
-void XrSession::frame() {
+void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
     if (!running_) {
         return;
     }
@@ -104,11 +105,49 @@ void XrSession::frame() {
     XrFrameBeginInfo beginInfo{XR_TYPE_FRAME_BEGIN_INFO};
     checkXr(xrBeginFrame(session_, &beginInfo), "xrBeginFrame");
 
+    XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+    std::array<XrCompositionLayerProjectionView, 2> projectionViews{};
+    const XrCompositionLayerBaseHeader* layers[] = {
+        reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer),
+    };
+    uint32_t layerCount = 0;
+
+    if (frameState.shouldRender == XR_TRUE) {
+        std::array<XrView, 2> views = {
+            XrView{XR_TYPE_VIEW},
+            XrView{XR_TYPE_VIEW},
+        };
+        XrViewState viewState{XR_TYPE_VIEW_STATE};
+        XrViewLocateInfo locateInfo{XR_TYPE_VIEW_LOCATE_INFO};
+        locateInfo.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+        locateInfo.displayTime = frameState.predictedDisplayTime;
+        locateInfo.space = localSpace_;
+
+        uint32_t viewCount = 0;
+        checkXr(
+            xrLocateViews(
+                session_,
+                &locateInfo,
+                &viewState,
+                static_cast<uint32_t>(views.size()),
+                &viewCount,
+                views.data()),
+            "xrLocateViews");
+
+        if (viewCount == views.size()) {
+            renderer.render(views, projectionViews);
+            layer.space = localSpace_;
+            layer.viewCount = static_cast<uint32_t>(projectionViews.size());
+            layer.views = projectionViews.data();
+            layerCount = 1;
+        }
+    }
+
     XrFrameEndInfo endInfo{XR_TYPE_FRAME_END_INFO};
     endInfo.displayTime = frameState.predictedDisplayTime;
     endInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-    endInfo.layerCount = 0;
-    endInfo.layers = nullptr;
+    endInfo.layerCount = layerCount;
+    endInfo.layers = layerCount != 0 ? layers : nullptr;
     checkXr(xrEndFrame(session_, &endInfo), "xrEndFrame");
 }
 
