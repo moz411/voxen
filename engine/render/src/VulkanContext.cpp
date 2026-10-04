@@ -1,5 +1,7 @@
 #include <voxen/render/VulkanContext.hpp>
 
+#include <jni.h>
+#include <vulkan/vulkan.h>
 #include <openxr/openxr_platform.h>
 
 #include <stdexcept>
