@@ -4,6 +4,7 @@
 #include <exception>
 
 #include <voxen/core/Engine.hpp>
+#include <voxen/render/VulkanContext.hpp>
 #include <voxen/xr/XrContext.hpp>
 
 namespace {
@@ -17,15 +18,17 @@ void logError(const char* message) {
 void android_main(android_app* app) {
     voxen::core::Engine engine;
     voxen::xr::XrContext xr;
+    voxen::render::VulkanContext vulkan;
 
     try {
         engine.initialize();
         xr.initialize(app->activity->vm, app->activity->clazz);
+        vulkan.initialize(xr.instance(), xr.systemId());
 
         __android_log_print(
             ANDROID_LOG_INFO,
             kTag,
-            "OpenXR initialized: instance=%p system=%llu",
+            "OpenXR + Vulkan initialized: instance=%p system=%llu",
             reinterpret_cast<void*>(xr.instance()),
             static_cast<unsigned long long>(xr.systemId()));
 
@@ -57,6 +60,7 @@ void android_main(android_app* app) {
         ANativeActivity_finish(app->activity);
     }
 
+    vulkan.shutdown();
     xr.shutdown();
     engine.shutdown();
 }
