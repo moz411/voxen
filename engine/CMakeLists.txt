@@ -3,6 +3,7 @@ add_library(voxen_engine STATIC
     xr/src/XrContext.cpp
     xr/src/XrSession.cpp
     render/src/VulkanContext.cpp
+    render/src/XrSwapchainRenderer.cpp
 )
 
 target_include_directories(voxen_engine
