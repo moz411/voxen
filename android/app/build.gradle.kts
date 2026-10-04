@@ -20,10 +20,18 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
 
+    buildFeatures {
+        prefab = true
+    }
+
     externalNativeBuild {
         cmake {
             path = file("../../CMakeLists.txt")
             version = "3.22.1"
         }
     }
+}
+
+dependencies {
+    implementation("org.khronos.openxr:openxr_loader_for_android:1.1.63")
 }
