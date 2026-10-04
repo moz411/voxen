@@ -6,3 +6,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(engine)
+
+if(ANDROID)
+    add_library(voxen SHARED
+        platform/android/src/main.cpp
+        ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
+    )
+
+    target_include_directories(voxen PRIVATE
+        ${ANDROID_NDK}/sources/android/native_app_glue
+    )
+
+    target_link_libraries(voxen PRIVATE
+        voxen_engine
+        android
+        log
+        vulkan
+    )
+endif()
