@@ -5,6 +5,7 @@
 
 #include <voxen/core/Engine.hpp>
 #include <voxen/render/VulkanContext.hpp>
+#include <voxen/render/XrSwapchainRenderer.hpp>
 #include <voxen/xr/XrContext.hpp>
 #include <voxen/xr/XrSession.hpp>
 
@@ -21,6 +22,7 @@ void android_main(android_app* app) {
     voxen::xr::XrContext xr;
     voxen::render::VulkanContext vulkan;
     voxen::xr::XrSession session;
+    voxen::render::XrSwapchainRenderer renderer;
 
     try {
         engine.initialize();
@@ -32,6 +34,13 @@ void android_main(android_app* app) {
             vulkan.instance(),
             vulkan.physicalDevice(),
             vulkan.device(),
+            vulkan.graphicsQueueFamily());
+        renderer.initialize(
+            xr.instance(),
+            xr.systemId(),
+            session.handle(),
+            vulkan.device(),
+            vulkan.graphicsQueue(),
             vulkan.graphicsQueueFamily());
 
         __android_log_print(
@@ -65,7 +74,7 @@ void android_main(android_app* app) {
 
             running = session.pollEvents();
             if (session.running()) {
-                session.frame();
+                session.frame(renderer);
             }
         }
     } catch (const std::exception& error) {
@@ -76,6 +85,7 @@ void android_main(android_app* app) {
         ANativeActivity_finish(app->activity);
     }
 
+    renderer.shutdown();
     session.shutdown();
     vulkan.shutdown();
     xr.shutdown();
