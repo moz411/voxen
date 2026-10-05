@@ -6,6 +6,17 @@ if(ANDROID)
     if(NOT EXISTS "${VOXEN_GLSLC}")
         set(VOXEN_GLSLC "${ANDROID_NDK}/shader-tools/linux-x86_64/glslc")
     endif()
+else()
+    find_program(VOXEN_GLSLC NAMES glslc HINTS
+        "$ENV{VULKAN_SDK}/Bin"
+        "$ENV{VULKAN_SDK}/bin"
+    )
+    if(NOT VOXEN_GLSLC)
+        message(FATAL_ERROR "glslc not found. Install the Vulkan SDK or put glslc on PATH.")
+    endif()
+endif()
+
+if(ANDROID OR WIN32)
 
     function(voxen_embed_shader NAME SOURCE)
         set(SPV "${VOXEN_GENERATED_DIR}/${NAME}.spv")
@@ -42,11 +53,12 @@ target_include_directories(voxen_engine
         ${VOXEN_GENERATED_DIR}
 )
 
-target_compile_definitions(voxen_engine
-    PUBLIC
-        XR_USE_PLATFORM_ANDROID
-        XR_USE_GRAPHICS_API_VULKAN
-)
+target_compile_definitions(voxen_engine PUBLIC XR_USE_GRAPHICS_API_VULKAN)
+if(ANDROID)
+    target_compile_definitions(voxen_engine PUBLIC XR_USE_PLATFORM_ANDROID)
+elseif(WIN32)
+    target_compile_definitions(voxen_engine PUBLIC XR_USE_PLATFORM_WIN32)
+endif()
 
 target_link_libraries(voxen_engine PUBLIC OpenXR::openxr_loader)
 
