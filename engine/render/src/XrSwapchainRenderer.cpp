@@ -2,7 +2,11 @@
 
 #include <openxr/openxr_platform.h>
 
+#ifdef __ANDROID__
 #include <android/log.h>
+#else
+#include <cstdio>
+#endif
 
 #include "cubeVert.spv.hpp"
 #include "cubeFrag.spv.hpp"
@@ -339,7 +343,11 @@ void XrSwapchainRenderer::render(
     const std::array<XrView, 2>& views,
     std::array<XrCompositionLayerProjectionView, 2>& projectionViews) {
     if (!firstFrameLogged_) {
+#ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO, "Voxen", "Rendering first stereo projection frame");
+#else
+        std::printf("[Voxen] Rendering first stereo projection frame\n");
+#endif
     }
     for (uint32_t eye = 0; eye < eyes_.size(); ++eye) {
         auto& swapchain = eyes_[eye];
@@ -368,7 +376,11 @@ void XrSwapchainRenderer::render(
     }
 
     if (!firstFrameLogged_) {
+#ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO, "Voxen", "First stereo projection frame rendered");
+#else
+        std::printf("[Voxen] First stereo projection frame rendered\n");
+#endif
         firstFrameLogged_ = true;
     }
 }
