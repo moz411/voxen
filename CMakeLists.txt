@@ -7,6 +7,26 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(ANDROID)
     find_package(OpenXR REQUIRED CONFIG)
+elseif(WIN32)
+    find_package(Vulkan REQUIRED)
+
+    find_path(OPENXR_INCLUDE_DIR openxr/openxr.h HINTS
+        "$ENV{VULKAN_SDK}/Include"
+        "$ENV{VULKAN_SDK}/include"
+    )
+    find_library(OPENXR_LOADER_LIBRARY NAMES openxr_loader HINTS
+        "$ENV{VULKAN_SDK}/Lib"
+        "$ENV{VULKAN_SDK}/lib"
+    )
+    if(NOT OPENXR_INCLUDE_DIR OR NOT OPENXR_LOADER_LIBRARY)
+        message(FATAL_ERROR "OpenXR headers/loader not found. Install an OpenXR SDK (the Vulkan SDK commonly provides them).")
+    endif()
+
+    add_library(OpenXR::openxr_loader UNKNOWN IMPORTED)
+    set_target_properties(OpenXR::openxr_loader PROPERTIES
+        IMPORTED_LOCATION "${OPENXR_LOADER_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${OPENXR_INCLUDE_DIR}"
+    )
 endif()
 
 add_subdirectory(engine)
@@ -27,5 +47,15 @@ if(ANDROID)
         android
         log
         vulkan
+    )
+endif()
+
+
+if(WIN32)
+    add_executable(voxen_windows platform/windows/src/main.cpp)
+    target_link_libraries(voxen_windows PRIVATE
+        voxen_engine
+        OpenXR::openxr_loader
+        Vulkan::Vulkan
     )
 endif()
