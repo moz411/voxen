@@ -1,8 +1,12 @@
 #include <voxen/xr/XrSession.hpp>
 #include <voxen/render/XrSwapchainRenderer.hpp>
 
+#ifdef __ANDROID__
 #include <android/log.h>
 #include <jni.h>
+#else
+#include <cstdio>
+#endif
 #include <openxr/openxr_platform.h>
 
 #include <stdexcept>
@@ -83,18 +87,22 @@ bool XrSession::pollEvents() {
 void XrSession::handleSessionStateChanged(const XrEventDataSessionStateChanged& event) {
     state_ = event.state;
 
-    __android_log_print(
-        ANDROID_LOG_INFO,
-        "Voxen",
-        "OpenXR session state -> %d",
-        static_cast<int>(state_));
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO, "Voxen", "OpenXR session state -> %d", static_cast<int>(state_));
+#else
+    std::printf("[Voxen] OpenXR session state -> %d\n", static_cast<int>(state_));
+#endif
 
     if (state_ == XR_SESSION_STATE_READY && !running_) {
         XrSessionBeginInfo beginInfo{XR_TYPE_SESSION_BEGIN_INFO};
         beginInfo.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
         checkXr(xrBeginSession(session_, &beginInfo), "xrBeginSession");
         running_ = true;
+#ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO, "Voxen", "OpenXR session begun");
+#else
+        std::printf("[Voxen] OpenXR session begun\n");
+#endif
     } else if (state_ == XR_SESSION_STATE_STOPPING && running_) {
         checkXr(xrEndSession(session_), "xrEndSession");
         running_ = false;
@@ -145,7 +153,11 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
         if (viewCount == views.size()) {
             static bool firstLocatedViewsLogged = false;
             if (!firstLocatedViewsLogged) {
+#ifdef __ANDROID__
                 __android_log_print(ANDROID_LOG_INFO, "Voxen", "Located stereo views; submitting projection layer");
+#else
+                std::printf("[Voxen] Located stereo views; submitting projection layer\n");
+#endif
                 firstLocatedViewsLogged = true;
             }
             renderer.render(views, projectionViews);
