@@ -175,15 +175,24 @@ Mat4 projection(const XrFovf& fov, float nearZ, float farZ) {
 }
 
 Mat4 viewMatrix(const XrPosef& pose) {
-    const float x = pose.orientation.x, y = pose.orientation.y;
-    const float z = pose.orientation.z, w = pose.orientation.w;
+    // xrLocateViews returns the eye pose in reference-space coordinates.
+    // The view matrix is the inverse rigid transform: R(conjugate(q)) * T(-p).
+    const float x = -pose.orientation.x;
+    const float y = -pose.orientation.y;
+    const float z = -pose.orientation.z;
+    const float w = pose.orientation.w;
+
     Mat4 rot{};
-    rot.m[0]=1-2*y*y-2*z*z; rot.m[1]=2*x*y-2*z*w; rot.m[2]=2*x*z+2*y*w;
-    rot.m[4]=2*x*y+2*z*w; rot.m[5]=1-2*x*x-2*z*z; rot.m[6]=2*y*z-2*x*w;
-    rot.m[8]=2*x*z-2*y*w; rot.m[9]=2*y*z+2*x*w; rot.m[10]=1-2*x*x-2*y*y;
-    rot.m[15]=1;
-    Mat4 t{}; t.m[0]=t.m[5]=t.m[10]=t.m[15]=1;
-    t.m[12]=-pose.position.x; t.m[13]=-pose.position.y; t.m[14]=-pose.position.z;
+    rot.m[0]=1-2*y*y-2*z*z; rot.m[1]=2*x*y+2*z*w; rot.m[2]=2*x*z-2*y*w;
+    rot.m[4]=2*x*y-2*z*w; rot.m[5]=1-2*x*x-2*z*z; rot.m[6]=2*y*z+2*x*w;
+    rot.m[8]=2*x*z+2*y*w; rot.m[9]=2*y*z-2*x*w; rot.m[10]=1-2*x*x-2*y*y;
+    rot.m[15]=1.0F;
+
+    Mat4 t{};
+    t.m[0]=t.m[5]=t.m[10]=t.m[15]=1.0F;
+    t.m[12]=-pose.position.x;
+    t.m[13]=-pose.position.y;
+    t.m[14]=-pose.position.z;
     return multiply(rot, t);
 }
 
