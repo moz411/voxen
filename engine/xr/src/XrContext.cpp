@@ -1,6 +1,8 @@
 #include <voxen/xr/XrContext.hpp>
 
+#ifdef __ANDROID__
 #include <jni.h>
+#endif
 #include <vulkan/vulkan.h>
 #include <openxr/openxr_platform.h>
 
@@ -25,6 +27,7 @@ XrContext::~XrContext() {
     shutdown();
 }
 
+#ifdef __ANDROID__
 void XrContext::initialize(JavaVM* vm, jobject activity) {
     if (initialized()) {
         throw std::logic_error("OpenXR context is already initialized");
@@ -66,6 +69,23 @@ void XrContext::initializeLoader(JavaVM* vm, jobject activity) {
         initializeLoader(reinterpret_cast<const XrLoaderInitInfoBaseHeaderKHR*>(&initInfo)),
         "xrInitializeLoaderKHR");
 }
+
+#else
+void XrContext::initialize() {
+    if (initialized()) {
+        throw std::logic_error("OpenXR context is already initialized");
+    }
+
+    createInstance();
+    try {
+        requireExtension(XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);
+        selectSystem();
+    } catch (...) {
+        shutdown();
+        throw;
+    }
+}
+#endif
 
 void XrContext::createInstance() {
     requireExtension(XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);
