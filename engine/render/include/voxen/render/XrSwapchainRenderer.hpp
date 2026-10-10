@@ -8,6 +8,7 @@
 #include <vulkan/vulkan.h>
 #include <openxr/openxr.h>
 #include <voxen/scene/Scene.hpp>
+#include <voxen/voxel/VoxelWorld.hpp>
 #ifdef _WIN32
 #include <windows.h>
 #include <unknwn.h>
@@ -39,7 +40,8 @@ public:
     void updateControllerInteraction(const std::array<XrPosef, 2>& poses,
                                      const std::array<bool, 2>& tracked,
                                      const std::array<bool, 2>& pressed,
-                                     const std::array<XrVector2f, 2>& thumbsticks);
+                                     const std::array<XrVector2f, 2>& thumbsticks,
+                                     bool paintMode);
 
     // Acquires, clears and releases both eye images, then fills projection views.
     void render(
@@ -84,6 +86,9 @@ private:
     VkPipeline laserPipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
     voxen::scene::Scene scene_{};
+    voxen::voxel::VoxelWorld voxelWorld_{};
+    std::array<std::array<float, 3>, 2> lastBrushTips_{};
+    std::array<bool, 2> strokeActive_{};
     std::array<int, 2> heldArtwork_{{-1, -1}};
     std::array<int, 2> hoveredArtwork_{{-1, -1}};
     std::array<XrPosef, 2> controllerPoses_{};
