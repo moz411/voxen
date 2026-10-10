@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <vector>
 
@@ -69,6 +70,7 @@ private:
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
     bool firstFrameLogged_ = false;
+    std::chrono::steady_clock::time_point animationStart_ = std::chrono::steady_clock::now();
 };
 
 } // namespace voxen::render
