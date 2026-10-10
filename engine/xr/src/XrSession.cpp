@@ -117,7 +117,7 @@ void XrSession::initializeActions() {
 #ifdef __ANDROID__
     __android_log_print(ANDROID_LOG_INFO, "Voxen", "Touch controller actions attached");
 #else
-    std::printf("[Voxen] Touch controller actions attached\\n");
+    std::printf("[Voxen] Touch controller actions attached\n");
 #endif
 }
 
@@ -139,7 +139,7 @@ void XrSession::syncActions() {
 #ifdef __ANDROID__
             __android_log_print(ANDROID_LOG_INFO, "Voxen", "%s trigger selected", hand == 0 ? "Left" : "Right");
 #else
-            std::printf("[Voxen] %s trigger selected\\n", hand == 0 ? "Left" : "Right");
+            std::printf("[Voxen] %s trigger selected\n", hand == 0 ? "Left" : "Right");
 #endif
         }
         selectionPressed_[hand] = pressed;
