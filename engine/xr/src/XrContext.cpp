@@ -4,6 +4,10 @@
 #include <jni.h>
 #endif
 #include <vulkan/vulkan.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <unknwn.h>
+#endif
 #include <openxr/openxr_platform.h>
 
 #include <algorithm>
