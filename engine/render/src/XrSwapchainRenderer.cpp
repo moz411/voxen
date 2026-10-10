@@ -16,6 +16,7 @@
 #include "proceduralFrag.spv.hpp"
 #include "organicaVert.spv.hpp"
 #include "fractalFrag.spv.hpp"
+#include "fractalVert.spv.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -299,7 +300,7 @@ void XrSwapchainRenderer::createPipeline() {
     };
     buildPipeline(cubeVert, cubeVertSize, proceduralFrag, proceduralFragSize, pipeline_);
     buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
-    buildPipeline(cubeVert, cubeVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
 }
 
 void XrSwapchainRenderer::createFramebuffers() {
@@ -359,7 +360,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         {-1.05F, 0.0F, 0.34F, 0.0F, pipeline_, 36},
         {-0.35F, 0.0F, 0.31F, 0.0F, organicaPipeline_, 48 * 24 * 6},
         { 0.35F, 0.0F, 0.31F, 1.0F, organicaPipeline_, 48 * 24 * 6},
-        { 1.05F, 0.0F, 0.45F, 0.0F, fractalPipeline_, 36},
+        { 1.05F, 0.0F, 0.45F, 0.0F, fractalPipeline_, 6},
     }};
     for (const auto& art : scene) {
         vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, art.pipeline);
