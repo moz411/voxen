@@ -12,36 +12,40 @@ if (-not $env:ANDROID_HOME -and -not $env:ANDROID_SDK_ROOT) {
 }
 $task = if ($Release) { "assembleRelease" } else { "assembleDebug" }
 $wrapper = Join-Path $android "gradle\wrapper\gradle-wrapper.jar"
-# Bootstrap the official wrapper JAR, which is not committed to the repository.
-# Gradle's distribution service publishes this small JAR and its SHA256 digest.
-if (-not (Test-Path $wrapper)) {
+
+# When the repository has no gradle-wrapper.jar, use a verified official
+# Gradle distribution. Keep it in the user's Gradle cache for later builds.
+$gradleExe = $null
+if (Test-Path $wrapper) {
+    $gradleExe = Join-Path $android "gradlew.bat"
+} elseif (Get-Command gradle -ErrorAction SilentlyContinue) {
+    $gradleExe = (Get-Command gradle).Source
+} else {
     $properties = Get-Content (Join-Path $android "gradle\wrapper\gradle-wrapper.properties") -Raw
     $match = [regex]::Match($properties, 'gradle-([0-9][0-9A-Za-z.\-]*)-(?:bin|all)\.zip')
     if (-not $match.Success) { throw "Cannot determine Gradle version from gradle-wrapper.properties" }
     $version = $match.Groups[1].Value
-    $url = "https://services.gradle.org/distributions/gradle-$version-wrapper.jar"
-    $tmp = "$wrapper.download"
-    Write-Host "Downloading Gradle $version wrapper JAR..."
-    try {
-        Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing
-        $expected = (Invoke-RestMethod -Uri "$url.sha256").ToString().Trim().Split(" ")[0].ToLowerInvariant()
-        $actual = (Get-FileHash -Path $tmp -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($actual -ne $expected) { throw "Gradle wrapper SHA256 mismatch" }
-        Move-Item -Force $tmp $wrapper
-    } finally {
-        if (Test-Path $tmp) { Remove-Item -Force $tmp }
+    $cache = Join-Path $env:USERPROFILE ".gradle\voxen-dist"
+    $gradleExe = Join-Path $cache "gradle-$version\bin\gradle.bat"
+    if (-not (Test-Path $gradleExe)) {
+        New-Item -ItemType Directory -Force -Path $cache | Out-Null
+        $uri = "https://services.gradle.org/distributions/gradle-$version-bin.zip"
+        $archive = Join-Path $cache "gradle-$version-bin.zip"
+        Write-Host "Downloading verified Gradle $version distribution..."
+        try {
+            Invoke-WebRequest -Uri $uri -OutFile $archive -UseBasicParsing
+            $sha = ((Invoke-WebRequest -Uri "$uri.sha256" -UseBasicParsing).Content).Trim().Split(" ")[0].ToLowerInvariant()
+            $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($sha -ne $actual) { throw "Gradle distribution SHA256 mismatch" }
+            Expand-Archive -Path $archive -DestinationPath $cache -Force
+        } finally {
+            if (Test-Path $archive) { Remove-Item -Force $archive }
+        }
     }
 }
 Push-Location $android
 try {
-    if (Test-Path $wrapper) {
-        & ".\gradlew.bat" --no-daemon $task
-    } elseif (Get-Command gradle -ErrorAction SilentlyContinue) {
-        Write-Host "Gradle wrapper JAR absent; using Gradle from PATH."
-        & gradle --no-daemon $task
-    } else {
-        throw "Gradle wrapper JAR is absent. Open android/ in Android Studio and use Build > Build APK(s), or install Gradle on PATH, then rerun."
-    }
+    & $gradleExe --no-daemon $task
     if ($LASTEXITCODE -ne 0) { throw "Gradle build failed with code $LASTEXITCODE" }
     $flavor = if ($Release) { "release" } else { "debug" }
     Write-Host "APK output: $android\app\build\outputs\apk\$flavor"
