@@ -79,7 +79,7 @@ void XrSession::initializePassthrough() {
     XrPassthroughLayerCreateInfoFB layerInfo{XR_TYPE_PASSTHROUGH_LAYER_CREATE_INFO_FB};
     layerInfo.passthrough = passthrough_;
     layerInfo.purpose = XR_PASSTHROUGH_LAYER_PURPOSE_RECONSTRUCTION_FB;
-    layerInfo.flags = XR_PASSTHROUGH_LAYER_RUNNING_AT_CREATION_BIT_FB;
+    layerInfo.flags = XR_PASSTHROUGH_IS_RUNNING_AT_CREATION_BIT_FB;
     checkXr(createLayer_(session_, &layerInfo, &passthroughLayer_), "xrCreatePassthroughLayerFB");
 
     // The compositor performs native edge highlighting; no camera frame readback.
