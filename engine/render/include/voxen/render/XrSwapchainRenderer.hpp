@@ -35,6 +35,10 @@ public:
         VkQueue queue,
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
+    void updateControllerInteraction(const std::array<XrPosef, 2>& poses,
+                                     const std::array<bool, 2>& tracked,
+                                     const std::array<bool, 2>& pressed,
+                                     const std::array<XrVector2f, 2>& thumbsticks);
 
     // Acquires, clears and releases both eye images, then fills projection views.
     void render(
@@ -76,7 +80,21 @@ private:
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipeline organicaPipeline_ = VK_NULL_HANDLE;
     VkPipeline fractalPipeline_ = VK_NULL_HANDLE;
+    VkPipeline laserPipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
+    std::array<std::array<float, 3>, 4> artworkPositions_{{
+        {{-1.05F, 0.0F, -1.5F}}, {{-0.35F, 0.0F, -1.5F}},
+        {{0.35F, 0.0F, -1.5F}}, {{1.05F, 0.0F, -1.5F}}
+    }};
+    std::array<int, 2> heldArtwork_{{-1, -1}};
+    std::array<int, 2> hoveredArtwork_{{-1, -1}};
+    std::array<XrPosef, 2> controllerPoses_{};
+    std::array<bool, 2> controllerTracked_{};
+    std::array<bool, 2> previousPress_{};
+    std::array<std::array<float, 3>, 2> grabOffsets_{};
+    std::array<float, 2> grabDistances_{};
+    std::array<std::array<float, 3>, 2> stickOffsets_{};
+    std::chrono::steady_clock::time_point lastInteractionUpdate_{};
     bool firstFrameLogged_ = false;
     std::chrono::steady_clock::time_point animationStart_ = std::chrono::steady_clock::now();
 };
