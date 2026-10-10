@@ -52,9 +52,11 @@ private:
     XrActionSet actionSet_ = XR_NULL_HANDLE;
     XrAction selectAction_ = XR_NULL_HANDLE;
     XrAction aimAction_ = XR_NULL_HANDLE;
+    XrAction thumbstickAction_ = XR_NULL_HANDLE;
     std::array<XrSpace, 2> aimSpaces_{XR_NULL_HANDLE, XR_NULL_HANDLE};
     std::array<XrPath, 2> handPaths_{};
     std::array<bool, 2> selectionPressed_{};
+    std::array<XrVector2f, 2> thumbstickValues_{};
     XrSessionState state_ = XR_SESSION_STATE_UNKNOWN;
     bool running_ = false;
     bool enablePassthrough_ = false;
