@@ -79,12 +79,16 @@ private:
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipeline organicaPipeline_ = VK_NULL_HANDLE;
     VkPipeline fractalPipeline_ = VK_NULL_HANDLE;
+    VkPipeline laserPipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
     std::array<std::array<float, 3>, 4> artworkPositions_{{
         {{-1.05F, 0.0F, -1.5F}}, {{-0.35F, 0.0F, -1.5F}},
         {{0.35F, 0.0F, -1.5F}}, {{1.05F, 0.0F, -1.5F}}
     }};
     std::array<int, 2> heldArtwork_{{-1, -1}};
+    std::array<int, 2> hoveredArtwork_{{-1, -1}};
+    std::array<XrPosef, 2> controllerPoses_{};
+    std::array<bool, 2> controllerTracked_{};
     std::array<bool, 2> previousPress_{};
     std::array<std::array<float, 3>, 2> grabOffsets_{};
     bool firstFrameLogged_ = false;
