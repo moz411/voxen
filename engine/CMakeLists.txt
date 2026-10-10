@@ -37,6 +37,7 @@ if(ANDROID OR WIN32)
     voxen_embed_shader(proceduralFrag procedural.frag)
     voxen_embed_shader(organicaVert organica.vert)
     voxen_embed_shader(fractalFrag fractal.frag)
+    voxen_embed_shader(fractalVert fractal.vert)
 endif()
 
 add_library(voxen_engine STATIC
