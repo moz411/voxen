@@ -91,6 +91,7 @@ private:
     std::array<bool, 2> controllerTracked_{};
     std::array<bool, 2> previousPress_{};
     std::array<std::array<float, 3>, 2> grabOffsets_{};
+    std::array<float, 2> grabDistances_{};
     bool firstFrameLogged_ = false;
     std::chrono::steady_clock::time_point animationStart_ = std::chrono::steady_clock::now();
 };
