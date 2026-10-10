@@ -434,7 +434,36 @@ void XrSwapchainRenderer::updateControllerInteraction(
     const std::array<XrPosef, 2>& poses,
     const std::array<bool, 2>& tracked,
     const std::array<bool, 2>& pressed,
-    const std::array<XrVector2f, 2>& thumbsticks) {
+    const std::array<XrVector2f, 2>& thumbsticks,
+    bool paintMode) {
+    if (paintMode) {
+        // The brush tip sits 12cm in front of the controller's aim origin.
+        // Controller pose and eye poses are located in the same OpenXR LOCAL space.
+        for (std::size_t hand = 0; hand < 2; ++hand) {
+            if (!tracked[hand] || !pressed[hand]) {
+                strokeActive_[hand] = false;
+                continue;
+            }
+            const auto& p = poses[hand];
+            const auto& q = p.orientation;
+            const float dx = -2.0F*(q.x*q.z + q.w*q.y);
+            const float dy = -2.0F*(q.y*q.z - q.w*q.x);
+            const float dz = -(1.0F - 2.0F*(q.x*q.x + q.y*q.y));
+            const std::array<float, 3> tip{p.position.x + dx*0.12F,
+                                           p.position.y + dy*0.12F,
+                                           p.position.z + dz*0.12F};
+            voxelWorld_.stroke(strokeActive_[hand] ? lastBrushTips_[hand] : tip, tip);
+            lastBrushTips_[hand] = tip;
+            strokeActive_[hand] = true;
+        }
+        heldArtwork_ = {{-1, -1}};
+        hoveredArtwork_ = {{-1, -1}};
+        previousPress_ = pressed;
+        controllerTracked_ = tracked;
+        controllerPoses_ = poses;
+        return;
+    }
+    strokeActive_ = {};
     const auto now = std::chrono::steady_clock::now();
     const float dt = lastInteractionUpdate_.time_since_epoch().count() == 0
         ? 0.0F : (std::clamp)(std::chrono::duration<float>(now - lastInteractionUpdate_).count(), 0.0F, 0.05F);
@@ -602,6 +631,21 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0, sizeof(constants), &constants);
         vkCmdDraw(commandBuffer_, vertices, 1, 0, 0);
+    }
+    // First prototype: one procedural cube draw per occupied cell.
+    // Rendering is deliberately capped to keep Quest GPU work bounded;
+    // the next milestone replaces this with instancing.
+    vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
+    for (const auto& cell : voxelWorld_.cells()) {
+        const float x = (static_cast<float>(cell.x) + 0.5F)*voxen::voxel::VoxelWorld::cellSize;
+        const float y = (static_cast<float>(cell.y) + 0.5F)*voxen::voxel::VoxelWorld::cellSize;
+        const float z = (static_cast<float>(cell.z) + 0.5F)*voxen::voxel::VoxelWorld::cellSize;
+        const Mat4 mvp = multiply(projView, modelMatrix(x,y,voxen::voxel::VoxelWorld::cellSize,z));
+        ProceduralPushConstants constants{mvp, {seconds, 1.0F, 1.0F, 0.0F}};
+        vkCmdPushConstants(commandBuffer_, pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            0, sizeof(constants), &constants);
+        vkCmdDraw(commandBuffer_, 36, 1, 0, 0);
     }
     // Draw the visible controller rays last; depth testing hides them behind artwork.
     vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, laserPipeline_);
