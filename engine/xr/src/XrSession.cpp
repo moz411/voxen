@@ -92,21 +92,36 @@ void XrSession::initializeActions() {
     actionInfo.subactionPaths = handPaths_.data();
     checkXr(xrCreateAction(actionSet_, &actionInfo, &selectAction_), "xrCreateAction(select)");
 
+    XrActionCreateInfo aimInfo{XR_TYPE_ACTION_CREATE_INFO};
+    aimInfo.actionType = XR_ACTION_TYPE_POSE_INPUT;
+    std::strncpy(aimInfo.actionName, "aim_pose", XR_MAX_ACTION_NAME_SIZE - 1);
+    std::strncpy(aimInfo.localizedActionName, "Controller Aim", XR_MAX_LOCALIZED_ACTION_NAME_SIZE - 1);
+    aimInfo.countSubactionPaths = static_cast<uint32_t>(handPaths_.size());
+    aimInfo.subactionPaths = handPaths_.data();
+    checkXr(xrCreateAction(actionSet_, &aimInfo, &aimAction_), "xrCreateAction(aim)");
+
     XrPath profile = XR_NULL_PATH;
     XrPath leftTrigger = XR_NULL_PATH;
     XrPath rightTrigger = XR_NULL_PATH;
+    XrPath leftAim = XR_NULL_PATH;
+    XrPath rightAim = XR_NULL_PATH;
     checkXr(xrStringToPath(instance_, "/interaction_profiles/oculus/touch_controller", &profile), "xrStringToPath(touch)");
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/trigger/value", &leftTrigger), "xrStringToPath(left trigger)");
     checkXr(xrStringToPath(instance_, "/user/hand/right/input/trigger/value", &rightTrigger), "xrStringToPath(right trigger)");
+
+    checkXr(xrStringToPath(instance_, "/user/hand/left/input/aim/pose", &leftAim), "xrStringToPath(left aim)");
+    checkXr(xrStringToPath(instance_, "/user/hand/right/input/aim/pose", &rightAim), "xrStringToPath(right aim)");
 
     // Boolean actions may bind to floating trigger inputs using OpenXR's threshold mapping.
     const XrActionSuggestedBinding bindings[] = {
         {selectAction_, leftTrigger},
         {selectAction_, rightTrigger},
+        {aimAction_, leftAim},
+        {aimAction_, rightAim},
     };
     XrInteractionProfileSuggestedBinding suggested{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
     suggested.interactionProfile = profile;
-    suggested.countSuggestedBindings = 2;
+    suggested.countSuggestedBindings = 4;
     suggested.suggestedBindings = bindings;
     checkXr(xrSuggestInteractionProfileBindings(instance_, &suggested), "xrSuggestInteractionProfileBindings");
 
@@ -114,6 +129,13 @@ void XrSession::initializeActions() {
     attach.countActionSets = 1;
     attach.actionSets = &actionSet_;
     checkXr(xrAttachSessionActionSets(session_, &attach), "xrAttachSessionActionSets");
+    for (std::size_t hand = 0; hand < handPaths_.size(); ++hand) {
+        XrActionSpaceCreateInfo space{XR_TYPE_ACTION_SPACE_CREATE_INFO};
+        space.action = aimAction_;
+        space.subactionPath = handPaths_[hand];
+        space.poseInActionSpace.orientation.w = 1.0F;
+        checkXr(xrCreateActionSpace(session_, &space, &aimSpaces_[hand]), "xrCreateActionSpace(aim)");
+    }
 #ifdef __ANDROID__
     __android_log_print(ANDROID_LOG_INFO, "Voxen", "Touch controller actions attached");
 #else
@@ -257,6 +279,18 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
     checkXr(xrWaitFrame(session_, &waitInfo, &frameState), "xrWaitFrame");
 
     syncActions();
+    std::array<XrPosef, 2> aimPoses{};
+    std::array<bool, 2> aimTracked{};
+    for (std::size_t hand = 0; hand < aimSpaces_.size(); ++hand) {
+        XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
+        checkXr(xrLocateSpace(aimSpaces_[hand], localSpace_, frameState.predictedDisplayTime, &location), "xrLocateSpace(aim)");
+        constexpr XrSpaceLocationFlags required = XR_SPACE_LOCATION_POSITION_VALID_BIT | XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
+        if ((location.locationFlags & required) == required) {
+            aimTracked[hand] = true;
+            aimPoses[hand] = location.pose;
+        }
+    }
+    renderer.updateControllerInteraction(aimPoses, aimTracked, selectionPressed_);
 
     XrFrameBeginInfo beginInfo{XR_TYPE_FRAME_BEGIN_INFO};
     checkXr(xrBeginFrame(session_, &beginInfo), "xrBeginFrame");
@@ -331,10 +365,15 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
 
 void XrSession::shutdown() noexcept {
     destroyPassthrough();
+    for (auto& space : aimSpaces_) {
+        if (space != XR_NULL_HANDLE) xrDestroySpace(space);
+        space = XR_NULL_HANDLE;
+    }
     if (actionSet_ != XR_NULL_HANDLE) {
         xrDestroyActionSet(actionSet_);
         actionSet_ = XR_NULL_HANDLE;
         selectAction_ = XR_NULL_HANDLE;
+        aimAction_ = XR_NULL_HANDLE;
     }
     selectionPressed_ = {};
     if (localSpace_ != XR_NULL_HANDLE) {
