@@ -13,7 +13,7 @@
 #endif
 
 #include "cubeVert.spv.hpp"
-#include "cubeFrag.spv.hpp"
+#include "proceduralFrag.spv.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -158,6 +158,12 @@ namespace {
 
 struct Mat4 { float m[16]; };
 
+struct ProceduralPushConstants {
+    Mat4 mvp;
+    float parameters[4]; // elapsed time, speed, spatial scale, reserved
+};
+static_assert(sizeof(ProceduralPushConstants) == 80);
+
 Mat4 multiply(const Mat4& a, const Mat4& b) {
     Mat4 r{};
     for (int col = 0; col < 4; ++col)
@@ -245,14 +251,14 @@ void XrSwapchainRenderer::createPipeline() {
     checkVk(vkCreateRenderPass(device_, &rp, nullptr, &renderPass_), "vkCreateRenderPass");
 
     VkPushConstantRange push{};
-    push.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    push.size = sizeof(Mat4);
+    push.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    push.size = sizeof(ProceduralPushConstants);
     VkPipelineLayoutCreateInfo pli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     pli.pushConstantRangeCount = 1; pli.pPushConstantRanges = &push;
     checkVk(vkCreatePipelineLayout(device_, &pli, nullptr, &pipelineLayout_), "vkCreatePipelineLayout");
 
     VkShaderModule vs = makeShader(device_, cubeVert, cubeVertSize);
-    VkShaderModule fs = makeShader(device_, cubeFrag, cubeFragSize);
+    VkShaderModule fs = makeShader(device_, proceduralFrag, proceduralFragSize);
     VkPipelineShaderStageCreateInfo stages[2]{};
     stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
     stages[0].stage=VK_SHADER_STAGE_VERTEX_BIT; stages[0].module=vs; stages[0].pName="main";
@@ -335,7 +341,12 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_);
 
     const Mat4 mvp=multiply(projection(xrView.fov,0.05F,100.0F),multiply(viewMatrix(xrView.pose),modelMatrix()));
-    vkCmdPushConstants(commandBuffer_,pipelineLayout_,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(mvp),&mvp);
+    const float seconds = std::chrono::duration<float>(
+        std::chrono::steady_clock::now() - animationStart_).count();
+    ProceduralPushConstants constants{mvp, {seconds, 1.0F, 1.0F, 0.0F}};
+    vkCmdPushConstants(commandBuffer_, pipelineLayout_,
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+        0, sizeof(constants), &constants);
     vkCmdDraw(commandBuffer_,36,1,0,0);
     vkCmdEndRenderPass(commandBuffer_);
     checkVk(vkEndCommandBuffer(commandBuffer_), "vkEndCommandBuffer");
