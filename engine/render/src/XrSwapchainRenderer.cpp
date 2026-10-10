@@ -430,7 +430,19 @@ void XrSwapchainRenderer::createFramebuffers() {
 void XrSwapchainRenderer::updateControllerInteraction(
     const std::array<XrPosef, 2>& poses,
     const std::array<bool, 2>& tracked,
-    const std::array<bool, 2>& pressed) {
+    const std::array<bool, 2>& pressed,
+    const std::array<XrVector2f, 2>& thumbsticks) {
+    const auto now = std::chrono::steady_clock::now();
+    const float dt = lastInteractionUpdate_.time_since_epoch().count() == 0
+        ? 0.0F : (std::clamp)(std::chrono::duration<float>(now - lastInteractionUpdate_).count(), 0.0F, 0.05F);
+    lastInteractionUpdate_ = now;
+    constexpr float stickSpeed = 0.75F;
+    constexpr float deadzone = 0.15F;
+    auto applyDeadzone = [](float value) {
+        const float magnitude = std::fabs(value);
+        return magnitude <= deadzone ? 0.0F
+            : std::copysign((magnitude - deadzone) / (1.0F - deadzone), value);
+    };
     constexpr float scales[4] = {0.34F, 0.31F, 0.31F, 0.45F};
     controllerPoses_ = poses;
     controllerTracked_ = tracked;
@@ -486,6 +498,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
                 grabOffsets_[hand][0] = c[0] - (origin[0] + dx*grabDistances_[hand]);
                 grabOffsets_[hand][1] = c[1] - (origin[1] + dy*grabDistances_[hand]);
                 grabOffsets_[hand][2] = c[2] - (origin[2] + dz*grabDistances_[hand]);
+                stickOffsets_[hand] = {};
 #ifdef __ANDROID__
                 __android_log_print(ANDROID_LOG_INFO, "Voxen", "Grabbed artwork %d with hand %d", nearest, static_cast<int>(hand));
 #else
@@ -494,10 +507,22 @@ void XrSwapchainRenderer::updateControllerInteraction(
             }
         }
         if (heldArtwork_[hand] >= 0) {
+            // Y: dolly along the controller's aiming ray. X: move laterally
+            // in the horizontal world plane, relative to controller yaw.
+            const float sx = applyDeadzone(thumbsticks[hand].x);
+            const float sy = applyDeadzone(thumbsticks[hand].y);
+            grabDistances_[hand] = (std::clamp)(
+                grabDistances_[hand] + sy * stickSpeed * dt, 0.25F, 5.0F);
+            const float horizontalLength = std::sqrt(dx*dx + dz*dz);
+            const float rightX = horizontalLength > 0.001F ? -dz/horizontalLength : 1.0F;
+            const float rightZ = horizontalLength > 0.001F ? dx/horizontalLength : 0.0F;
+            stickOffsets_[hand][0] += rightX * sx * stickSpeed * dt;
+            stickOffsets_[hand][2] += rightZ * sx * stickSpeed * dt;
             auto& c = artworkPositions_[heldArtwork_[hand]];
             const float dir[3] = {dx, dy, dz};
             for (int k = 0; k < 3; ++k) {
-                c[k] = origin[k] + dir[k]*grabDistances_[hand] + grabOffsets_[hand][k];
+                c[k] = origin[k] + dir[k]*grabDistances_[hand] +
+                       grabOffsets_[hand][k] + stickOffsets_[hand][k];
             }
         }
         previousPress_[hand] = true;
