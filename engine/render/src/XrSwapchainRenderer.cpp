@@ -14,6 +14,9 @@
 
 #include "cubeVert.spv.hpp"
 #include "proceduralFrag.spv.hpp"
+#include "organicaVert.spv.hpp"
+#include "fractalFrag.spv.hpp"
+#include "fractalVert.spv.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -48,11 +51,23 @@ void XrSwapchainRenderer::initialize(
     XrSystemId systemId,
     ::XrSession session,
     VkDevice device,
+    VkPhysicalDevice physicalDevice,
     VkQueue queue,
     uint32_t queueFamilyIndex) {
     session_ = session;
     device_ = device;
+    physicalDevice_ = physicalDevice;
     queue_ = queue;
+
+    for (VkFormat candidate : {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT}) {
+        VkFormatProperties properties{};
+        vkGetPhysicalDeviceFormatProperties(physicalDevice_, candidate, &properties);
+        if (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+            depthFormat_ = candidate;
+            break;
+        }
+    }
+    if (depthFormat_ == VK_FORMAT_UNDEFINED) throw std::runtime_error("No Vulkan depth attachment format supported");
     queueFamilyIndex_ = queueFamilyIndex;
 
     createCommandResources();
@@ -211,9 +226,11 @@ Mat4 viewMatrix(const XrPosef& pose) {
     return multiply(rot, t);
 }
 
-Mat4 modelMatrix() {
+Mat4 modelMatrix(float x = 0.0F, float y = 0.0F, float scale = 0.25F) {
     Mat4 m{};
-    m.m[0]=m.m[5]=m.m[10]=0.25F;
+    m.m[0]=m.m[5]=m.m[10]=scale;
+    m.m[12]=x;
+    m.m[13]=y;
     m.m[15]=1.0F;
     m.m[14]=-1.5F;
     return m;
@@ -239,14 +256,27 @@ void XrSwapchainRenderer::createPipeline() {
     color.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     color.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+    VkAttachmentDescription depth{};
+    depth.format = depthFormat_;
+    depth.samples = VK_SAMPLE_COUNT_1_BIT;
+    depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depth.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
     VkAttachmentReference ref{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    VkAttachmentReference depthRef{1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &ref;
+    subpass.pDepthStencilAttachment = &depthRef;
 
     VkRenderPassCreateInfo rp{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
-    rp.attachmentCount = 1; rp.pAttachments = &color;
+    const VkAttachmentDescription attachments[] = {color, depth};
+    rp.attachmentCount = 2; rp.pAttachments = attachments;
     rp.subpassCount = 1; rp.pSubpasses = &subpass;
     checkVk(vkCreateRenderPass(device_, &rp, nullptr, &renderPass_), "vkCreateRenderPass");
 
@@ -257,52 +287,113 @@ void XrSwapchainRenderer::createPipeline() {
     pli.pushConstantRangeCount = 1; pli.pPushConstantRanges = &push;
     checkVk(vkCreatePipelineLayout(device_, &pli, nullptr, &pipelineLayout_), "vkCreatePipelineLayout");
 
-    VkShaderModule vs = makeShader(device_, cubeVert, cubeVertSize);
-    VkShaderModule fs = makeShader(device_, proceduralFrag, proceduralFragSize);
-    VkPipelineShaderStageCreateInfo stages[2]{};
-    stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-    stages[0].stage=VK_SHADER_STAGE_VERTEX_BIT; stages[0].module=vs; stages[0].pName="main";
-    stages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-    stages[1].stage=VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module=fs; stages[1].pName="main";
-
-    VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-    VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
-    vp.viewportCount=1; vp.scissorCount=1;
-    VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-    rs.polygonMode=VK_POLYGON_MODE_FILL; rs.cullMode=VK_CULL_MODE_NONE;
-    rs.frontFace=VK_FRONT_FACE_COUNTER_CLOCKWISE; rs.lineWidth=1.0F;
-    VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
-    ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
-    VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-    VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
-    cb.attachmentCount=1; cb.pAttachments=&blend;
-    VkDynamicState dyns[]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dyn{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-    dyn.dynamicStateCount=2; dyn.pDynamicStates=dyns;
-
-    VkGraphicsPipelineCreateInfo pi{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
-    pi.stageCount=2; pi.pStages=stages; pi.pVertexInputState=&vi; pi.pInputAssemblyState=&ia;
-    pi.pViewportState=&vp; pi.pRasterizationState=&rs; pi.pMultisampleState=&ms;
-    pi.pColorBlendState=&cb; pi.pDynamicState=&dyn; pi.layout=pipelineLayout_; pi.renderPass=renderPass_;
-    checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &pipeline_), "vkCreateGraphicsPipelines");
-    vkDestroyShaderModule(device_, fs, nullptr);
-    vkDestroyShaderModule(device_, vs, nullptr);
+    // All three pipelines share a render pass and one 80-byte push constant layout.
+    auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
+                             const std::uint8_t* fb, std::size_t fsz,
+                             VkPipeline& out) {
+        VkShaderModule vs = makeShader(device_, vb, vsz);
+        VkShaderModule fs = makeShader(device_, fb, fsz);
+        VkPipelineShaderStageCreateInfo stages[2]{};
+        stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        stages[0].stage=VK_SHADER_STAGE_VERTEX_BIT; stages[0].module=vs; stages[0].pName="main";
+        stages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        stages[1].stage=VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module=fs; stages[1].pName="main";
+        VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+        VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+        ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+        vp.viewportCount=1; vp.scissorCount=1;
+        VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+        rs.polygonMode=VK_POLYGON_MODE_FILL; rs.cullMode=VK_CULL_MODE_NONE;
+        rs.frontFace=VK_FRONT_FACE_COUNTER_CLOCKWISE; rs.lineWidth=1.0F;
+        VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+        ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
+        VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+        ds.depthTestEnable = VK_TRUE;
+        ds.depthWriteEnable = VK_TRUE;
+        ds.depthCompareOp = VK_COMPARE_OP_LESS;
+        VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
+        VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+        cb.attachmentCount=1; cb.pAttachments=&blend;
+        VkDynamicState dyns[]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR};
+        VkPipelineDynamicStateCreateInfo dyn{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+        dyn.dynamicStateCount=2; dyn.pDynamicStates=dyns;
+    
+        VkGraphicsPipelineCreateInfo pi{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+        pi.stageCount=2; pi.pStages=stages; pi.pVertexInputState=&vi; pi.pInputAssemblyState=&ia;
+        pi.pViewportState=&vp; pi.pRasterizationState=&rs; pi.pMultisampleState=&ms;
+        pi.pColorBlendState=&cb; pi.pDepthStencilState=&ds; pi.pDynamicState=&dyn; pi.layout=pipelineLayout_; pi.renderPass=renderPass_;
+        checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &out), "vkCreateGraphicsPipelines");
+        vkDestroyShaderModule(device_, fs, nullptr);
+        vkDestroyShaderModule(device_, vs, nullptr);
+    };
+    buildPipeline(cubeVert, cubeVertSize, proceduralFrag, proceduralFragSize, pipeline_);
+    buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
 }
 
 void XrSwapchainRenderer::createFramebuffers() {
+    VkPhysicalDeviceMemoryProperties memoryProperties{};
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &memoryProperties);
     for (auto& eye : eyes_) {
+        VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = depthFormat_;
+        imageInfo.extent = {static_cast<uint32_t>(eye.width), static_cast<uint32_t>(eye.height), 1};
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        checkVk(vkCreateImage(device_, &imageInfo, nullptr, &eye.depthImage), "vkCreateImage(depth)");
+
+        VkMemoryRequirements requirements{};
+        vkGetImageMemoryRequirements(device_, eye.depthImage, &requirements);
+        uint32_t memoryType = UINT32_MAX;
+        for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
+            if ((requirements.memoryTypeBits & (1u << i)) &&
+                (memoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+                memoryType = i;
+                break;
+            }
+        }
+        if (memoryType == UINT32_MAX) throw std::runtime_error("No device-local memory type for depth image");
+        VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        allocation.allocationSize = requirements.size;
+        allocation.memoryTypeIndex = memoryType;
+        checkVk(vkAllocateMemory(device_, &allocation, nullptr, &eye.depthMemory), "vkAllocateMemory(depth)");
+        checkVk(vkBindImageMemory(device_, eye.depthImage, eye.depthMemory, 0), "vkBindImageMemory(depth)");
+
+        VkImageViewCreateInfo depthViewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+        depthViewInfo.image = eye.depthImage;
+        depthViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        depthViewInfo.format = depthFormat_;
+        depthViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        depthViewInfo.subresourceRange.levelCount = 1;
+        depthViewInfo.subresourceRange.layerCount = 1;
+        checkVk(vkCreateImageView(device_, &depthViewInfo, nullptr, &eye.depthView), "vkCreateImageView(depth)");
+
         eye.views.resize(eye.images.size());
         eye.framebuffers.resize(eye.images.size());
-        for (std::size_t i=0; i<eye.images.size(); ++i) {
+        for (std::size_t i = 0; i < eye.images.size(); ++i) {
             VkImageViewCreateInfo iv{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-            iv.image=eye.images[i].image; iv.viewType=VK_IMAGE_VIEW_TYPE_2D; iv.format=colorFormat_;
-            iv.subresourceRange.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT; iv.subresourceRange.levelCount=1; iv.subresourceRange.layerCount=1;
-            checkVk(vkCreateImageView(device_, &iv, nullptr, &eye.views[i]), "vkCreateImageView");
+            iv.image = eye.images[i].image;
+            iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            iv.format = colorFormat_;
+            iv.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            iv.subresourceRange.levelCount = 1;
+            iv.subresourceRange.layerCount = 1;
+            checkVk(vkCreateImageView(device_, &iv, nullptr, &eye.views[i]), "vkCreateImageView(color)");
+
+            const VkImageView attachments[] = {eye.views[i], eye.depthView};
             VkFramebufferCreateInfo fb{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-            fb.renderPass=renderPass_; fb.attachmentCount=1; fb.pAttachments=&eye.views[i];
-            fb.width=eye.width; fb.height=eye.height; fb.layers=1;
+            fb.renderPass = renderPass_;
+            fb.attachmentCount = 2;
+            fb.pAttachments = attachments;
+            fb.width = static_cast<uint32_t>(eye.width);
+            fb.height = static_cast<uint32_t>(eye.height);
+            fb.layers = 1;
             checkVk(vkCreateFramebuffer(device_, &fb, nullptr, &eye.framebuffers[i]), "vkCreateFramebuffer");
         }
     }
@@ -332,7 +423,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     VkRenderPassBeginInfo rbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rbi.renderPass=renderPass_; rbi.framebuffer=eye.framebuffers.at(imageIndex);
     rbi.renderArea.extent={static_cast<uint32_t>(eye.width),static_cast<uint32_t>(eye.height)};
-    rbi.clearValueCount=1; rbi.pClearValues=&clear;
+    VkClearValue clears[2]{};
+    clears[0] = clear;
+    clears[1].depthStencil = {1.0F, 0};
+    rbi.clearValueCount=2; rbi.pClearValues=clears;
     vkCmdBeginRenderPass(commandBuffer_, &rbi, VK_SUBPASS_CONTENTS_INLINE);
 
     VkViewport viewport{0,0,static_cast<float>(eye.width),static_cast<float>(eye.height),0,1};
@@ -340,14 +434,25 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     vkCmdSetViewport(commandBuffer_,0,1,&viewport); vkCmdSetScissor(commandBuffer_,0,1,&scissor);
     vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_);
 
-    const Mat4 mvp=multiply(projection(xrView.fov,0.05F,100.0F),multiply(viewMatrix(xrView.pose),modelMatrix()));
     const float seconds = std::chrono::duration<float>(
         std::chrono::steady_clock::now() - animationStart_).count();
-    ProceduralPushConstants constants{mvp, {seconds, 1.0F, 1.0F, 0.0F}};
-    vkCmdPushConstants(commandBuffer_, pipelineLayout_,
-        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-        0, sizeof(constants), &constants);
-    vkCmdDraw(commandBuffer_,36,1,0,0);
+    const Mat4 projView = multiply(projection(xrView.fov, 0.05F, 100.0F), viewMatrix(xrView.pose));
+    struct Artwork { float x; float y; float scale; float shape; VkPipeline pipeline; uint32_t vertices; };
+    const std::array<Artwork, 4> scene{{
+        {-1.05F, 0.0F, 0.34F, 0.0F, pipeline_, 36},
+        {-0.35F, 0.0F, 0.31F, 0.0F, organicaPipeline_, 48 * 24 * 6},
+        { 0.35F, 0.0F, 0.31F, 1.0F, organicaPipeline_, 48 * 24 * 6},
+        { 1.05F, 0.0F, 0.45F, 0.0F, fractalPipeline_, 6},
+    }};
+    for (const auto& art : scene) {
+        vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, art.pipeline);
+        const Mat4 mvp = multiply(projView, modelMatrix(art.x, art.y, art.scale));
+        ProceduralPushConstants constants{mvp, {seconds, 1.0F, 1.0F, art.shape}};
+        vkCmdPushConstants(commandBuffer_, pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            0, sizeof(constants), &constants);
+        vkCmdDraw(commandBuffer_, art.vertices, 1, 0, 0);
+    }
     vkCmdEndRenderPass(commandBuffer_);
     checkVk(vkEndCommandBuffer(commandBuffer_), "vkEndCommandBuffer");
     VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO}; submit.commandBufferCount=1; submit.pCommandBuffers=&commandBuffer_;
@@ -410,6 +515,9 @@ void XrSwapchainRenderer::shutdown() noexcept {
         for (auto fb : eye.framebuffers) if (fb != VK_NULL_HANDLE) vkDestroyFramebuffer(device_, fb, nullptr);
         for (auto view : eye.views) if (view != VK_NULL_HANDLE) vkDestroyImageView(device_, view, nullptr);
         eye.framebuffers.clear(); eye.views.clear();
+        if (eye.depthView != VK_NULL_HANDLE) { vkDestroyImageView(device_, eye.depthView, nullptr); eye.depthView = VK_NULL_HANDLE; }
+        if (eye.depthImage != VK_NULL_HANDLE) { vkDestroyImage(device_, eye.depthImage, nullptr); eye.depthImage = VK_NULL_HANDLE; }
+        if (eye.depthMemory != VK_NULL_HANDLE) { vkFreeMemory(device_, eye.depthMemory, nullptr); eye.depthMemory = VK_NULL_HANDLE; }
         if (eye.handle != XR_NULL_HANDLE) {
             xrDestroySwapchain(eye.handle);
             eye.handle = XR_NULL_HANDLE;
@@ -419,6 +527,8 @@ void XrSwapchainRenderer::shutdown() noexcept {
     }
 
     if (pipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, pipeline_, nullptr); pipeline_ = VK_NULL_HANDLE; }
+    if (organicaPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, organicaPipeline_, nullptr); organicaPipeline_ = VK_NULL_HANDLE; }
+    if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
     if (pipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr); pipelineLayout_ = VK_NULL_HANDLE; }
     if (renderPass_ != VK_NULL_HANDLE) { vkDestroyRenderPass(device_, renderPass_, nullptr); renderPass_ = VK_NULL_HANDLE; }
 
@@ -434,6 +544,8 @@ void XrSwapchainRenderer::shutdown() noexcept {
     commandBuffer_ = VK_NULL_HANDLE;
     queue_ = VK_NULL_HANDLE;
     device_ = VK_NULL_HANDLE;
+    physicalDevice_ = VK_NULL_HANDLE;
+    depthFormat_ = VK_FORMAT_UNDEFINED;
     session_ = XR_NULL_HANDLE;
 }
 
