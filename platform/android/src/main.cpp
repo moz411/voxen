@@ -49,6 +49,7 @@ void android_main(android_app* app) {
             xr.systemId(),
             session.handle(),
             vulkan.device(),
+            vulkan.physicalDevice(),
             vulkan.graphicsQueue(),
             vulkan.graphicsQueueFamily());
 
