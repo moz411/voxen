@@ -476,8 +476,16 @@ void XrSwapchainRenderer::updateControllerInteraction(
         if (!previousPress_[hand]) {
             heldArtwork_[hand] = nearest;
             if (nearest >= 0) {
-                for (int k = 0; k < 3; ++k)
-                    grabOffsets_[hand][k] = artworkPositions_[nearest][k] - origin[k];
+                // Retain the point on the aim ray and the initial artwork offset.
+                // Rotation of the wrist now moves the artwork, not only translation
+                // of the entire controller.
+                const auto& c = artworkPositions_[nearest];
+                grabDistances_[hand] = (c[0]-origin[0])*dx +
+                                       (c[1]-origin[1])*dy +
+                                       (c[2]-origin[2])*dz;
+                grabOffsets_[hand][0] = c[0] - (origin[0] + dx*grabDistances_[hand]);
+                grabOffsets_[hand][1] = c[1] - (origin[1] + dy*grabDistances_[hand]);
+                grabOffsets_[hand][2] = c[2] - (origin[2] + dz*grabDistances_[hand]);
 #ifdef __ANDROID__
                 __android_log_print(ANDROID_LOG_INFO, "Voxen", "Grabbed artwork %d with hand %d", nearest, static_cast<int>(hand));
 #else
@@ -487,7 +495,10 @@ void XrSwapchainRenderer::updateControllerInteraction(
         }
         if (heldArtwork_[hand] >= 0) {
             auto& c = artworkPositions_[heldArtwork_[hand]];
-            for (int k = 0; k < 3; ++k) c[k] = origin[k] + grabOffsets_[hand][k];
+            const float dir[3] = {dx, dy, dz};
+            for (int k = 0; k < 3; ++k) {
+                c[k] = origin[k] + dir[k]*grabDistances_[hand] + grabOffsets_[hand][k];
+            }
         }
         previousPress_[hand] = true;
     }
