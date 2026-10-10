@@ -1,5 +1,9 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <unknwn.h>
+#endif
 #include <openxr/openxr_platform.h>
 
 #ifdef __ANDROID__
@@ -12,6 +16,7 @@
 #include "cubeFrag.spv.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <stdexcept>
 #include <string>
