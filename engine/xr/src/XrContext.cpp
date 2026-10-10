@@ -90,9 +90,17 @@ void XrContext::initialize() {
 void XrContext::createInstance() {
     requireExtension(XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);
 
-    const char* extensions[] = {
-        XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME,
-    };
+    std::vector<const char*> extensions{XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME};
+#ifdef __ANDROID__
+    uint32_t count = 0;
+    checkXr(xrEnumerateInstanceExtensionProperties(nullptr, 0, &count, nullptr), "enumerate extensions");
+    std::vector<XrExtensionProperties> available(count, {XR_TYPE_EXTENSION_PROPERTIES});
+    checkXr(xrEnumerateInstanceExtensionProperties(nullptr, count, &count, available.data()), "enumerate extension names");
+    passthroughEnabled_ = std::any_of(available.begin(), available.end(), [](const auto& e) {
+        return std::strcmp(e.extensionName, XR_FB_PASSTHROUGH_EXTENSION_NAME) == 0;
+    });
+    if (passthroughEnabled_) extensions.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
+#endif
 
     XrInstanceCreateInfo createInfo{XR_TYPE_INSTANCE_CREATE_INFO};
     std::strncpy(createInfo.applicationInfo.applicationName, "Voxen", XR_MAX_APPLICATION_NAME_SIZE - 1);
@@ -100,8 +108,8 @@ void XrContext::createInstance() {
     std::strncpy(createInfo.applicationInfo.engineName, "Voxen", XR_MAX_ENGINE_NAME_SIZE - 1);
     createInfo.applicationInfo.engineVersion = 1;
     createInfo.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
-    createInfo.enabledExtensionCount = 1;
-    createInfo.enabledExtensionNames = extensions;
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    createInfo.enabledExtensionNames = extensions.data();
 
     checkXr(xrCreateInstance(&createInfo, &instance_), "xrCreateInstance");
 }
@@ -135,6 +143,7 @@ void XrContext::requireExtension(const char* extensionName) const {
 
 void XrContext::shutdown() noexcept {
     systemId_ = XR_NULL_SYSTEM_ID;
+    passthroughEnabled_ = false;
     if (instance_ != XR_NULL_HANDLE) {
         xrDestroyInstance(instance_);
         instance_ = XR_NULL_HANDLE;
