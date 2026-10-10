@@ -523,7 +523,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     rbi.clearValueCount=2; rbi.pClearValues=clears;
     vkCmdBeginRenderPass(commandBuffer_, &rbi, VK_SUBPASS_CONTENTS_INLINE);
 
-    VkViewport viewport{0,0,static_cast<float>(eye.width),static_cast<float>(eye.height),0,1};
+    // OpenXR projection uses Y-up; Vulkan's positive-height viewport flips it.
+    // Use a negative viewport height to retain the OpenXR world-space orientation.
+    VkViewport viewport{0,static_cast<float>(eye.height),static_cast<float>(eye.width),-static_cast<float>(eye.height),0,1};
     VkRect2D scissor{{0,0},{static_cast<uint32_t>(eye.width),static_cast<uint32_t>(eye.height)}};
     vkCmdSetViewport(commandBuffer_,0,1,&viewport); vkCmdSetScissor(commandBuffer_,0,1,&scissor);
     vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_);
