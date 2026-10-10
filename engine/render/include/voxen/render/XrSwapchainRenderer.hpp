@@ -10,6 +10,9 @@
 #include <windows.h>
 #include <unknwn.h>
 #endif
+#ifdef __ANDROID__
+#include <jni.h>
+#endif
 #include <openxr/openxr_platform.h>
 
 namespace voxen::render {
