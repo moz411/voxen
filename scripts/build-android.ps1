@@ -34,7 +34,7 @@ if (Test-Path $wrapper) {
         Write-Host "Downloading verified Gradle $version distribution..."
         try {
             Invoke-WebRequest -Uri $uri -OutFile $archive -UseBasicParsing
-            $sha = ((Invoke-WebRequest -Uri "$uri.sha256" -UseBasicParsing).Content).Trim().Split(" ")[0].ToLowerInvariant()
+            $sha = ([System.Text.Encoding]::ASCII.GetString([byte[]](Invoke-WebRequest -Uri "$uri.sha256" -UseBasicParsing).Content)).Trim().Split(" ")[0].ToLowerInvariant()
             $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
             if ($sha -ne $actual) { throw "Gradle distribution SHA256 mismatch" }
             Expand-Archive -Path $archive -DestinationPath $cache -Force
