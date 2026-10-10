@@ -51,6 +51,8 @@ private:
     XrSpace localSpace_ = XR_NULL_HANDLE;
     XrActionSet actionSet_ = XR_NULL_HANDLE;
     XrAction selectAction_ = XR_NULL_HANDLE;
+    XrAction aimAction_ = XR_NULL_HANDLE;
+    std::array<XrSpace, 2> aimSpaces_{XR_NULL_HANDLE, XR_NULL_HANDLE};
     std::array<XrPath, 2> handPaths_{};
     std::array<bool, 2> selectionPressed_{};
     XrSessionState state_ = XR_SESSION_STATE_UNKNOWN;
