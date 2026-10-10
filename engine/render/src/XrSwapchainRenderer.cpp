@@ -438,7 +438,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
     lastInteractionUpdate_ = now;
     constexpr float stickSpeed = 0.75F;
     constexpr float deadzone = 0.15F;
-    auto applyDeadzone = [](float value) {
+    auto applyDeadzone = [deadzone](float value) {
         const float magnitude = std::fabs(value);
         return magnitude <= deadzone ? 0.0F
             : std::copysign((magnitude - deadzone) / (1.0F - deadzone), value);
