@@ -37,7 +37,8 @@ public:
     void shutdown() noexcept;
     void updateControllerInteraction(const std::array<XrPosef, 2>& poses,
                                      const std::array<bool, 2>& tracked,
-                                     const std::array<bool, 2>& pressed);
+                                     const std::array<bool, 2>& pressed,
+                                     const std::array<XrVector2f, 2>& thumbsticks);
 
     // Acquires, clears and releases both eye images, then fills projection views.
     void render(
@@ -92,6 +93,8 @@ private:
     std::array<bool, 2> previousPress_{};
     std::array<std::array<float, 3>, 2> grabOffsets_{};
     std::array<float, 2> grabDistances_{};
+    std::array<std::array<float, 3>, 2> stickOffsets_{};
+    std::chrono::steady_clock::time_point lastInteractionUpdate_{};
     bool firstFrameLogged_ = false;
     std::chrono::steady_clock::time_point animationStart_ = std::chrono::steady_clock::now();
 };
