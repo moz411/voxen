@@ -10,7 +10,9 @@ if(ANDROID)
 elseif(WIN32)
     find_package(Vulkan REQUIRED)
 
-    find_path(OPENXR_INCLUDE_DIR openxr/openxr.h HINTS
+    find_package(OpenXR QUIET CONFIG)
+    if(NOT TARGET OpenXR::openxr_loader)
+      find_path(OPENXR_INCLUDE_DIR openxr/openxr.h HINTS
         "$ENV{VULKAN_SDK}/Include"
         "$ENV{VULKAN_SDK}/include"
     )
@@ -27,6 +29,7 @@ elseif(WIN32)
         IMPORTED_LOCATION "${OPENXR_LOADER_LIBRARY}"
         INTERFACE_INCLUDE_DIRECTORIES "${OPENXR_INCLUDE_DIR}"
     )
+    endif()
 endif()
 
 add_subdirectory(engine)

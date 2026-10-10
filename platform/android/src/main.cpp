@@ -24,17 +24,26 @@ void android_main(android_app* app) {
     voxen::xr::XrSession session;
     voxen::render::XrSwapchainRenderer renderer;
 
+    __android_log_print(ANDROID_LOG_INFO, kTag, "android_main entered");
     try {
+        __android_log_print(ANDROID_LOG_INFO, kTag, "Initializing engine");
         engine.initialize();
+        __android_log_print(ANDROID_LOG_INFO, kTag, "Initializing OpenXR");
         xr.initialize(app->activity->vm, app->activity->clazz);
+        __android_log_print(ANDROID_LOG_INFO, kTag, "OpenXR initialized; passthrough=%d", xr.passthroughEnabled() ? 1 : 0);
+        __android_log_print(ANDROID_LOG_INFO, kTag, "Initializing Vulkan");
         vulkan.initialize(xr.instance(), xr.systemId());
+        __android_log_print(ANDROID_LOG_INFO, kTag, "Vulkan initialized");
+        __android_log_print(ANDROID_LOG_INFO, kTag, "Initializing XR session");
         session.initialize(
             xr.instance(),
             xr.systemId(),
             vulkan.instance(),
             vulkan.physicalDevice(),
             vulkan.device(),
-            vulkan.graphicsQueueFamily());
+            vulkan.graphicsQueueFamily(),
+            xr.passthroughEnabled());
+        __android_log_print(ANDROID_LOG_INFO, kTag, "XR session initialized; initializing renderer");
         renderer.initialize(
             xr.instance(),
             xr.systemId(),
@@ -43,6 +52,7 @@ void android_main(android_app* app) {
             vulkan.graphicsQueue(),
             vulkan.graphicsQueueFamily());
 
+        __android_log_print(ANDROID_LOG_INFO, kTag, "Renderer initialized");
         __android_log_print(
             ANDROID_LOG_INFO,
             kTag,

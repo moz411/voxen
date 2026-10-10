@@ -1,35 +1,51 @@
 # Voxen
 
-A lightweight OpenXR/Vulkan voxel engine for spatial computing.
+C++20 + OpenXR + Vulkan. Builds are **local on Windows**; no GitHub Actions.
 
-## First milestone
+## Quest 3 / Android APK
 
-The initial milestone targets Meta Quest 3 with a deliberately small native stack:
+Open the `android/` folder in Android Studio. Install SDK API 35, NDK 27, CMake 3.22.1 from SDK Manager. Use **Build > Build APK(s)** (Debug) or run:
 
-- C++20
-- Android NDK + CMake
-- OpenXR
-- Vulkan
-- native Android activity
-
-The first executable goal is an OpenXR session using Vulkan on Quest. Voxel rendering, passthrough and editor UI will be layered on top once the XR/Vulkan lifecycle is stable.
-
-## Layout
-
-```text
-android/          Android application shell
-engine/
-  core/           engine lifecycle
-  xr/             OpenXR integration
-  render/         Vulkan renderer
-  voxel/          voxel world/materials (next milestone)
+```powershell
+.\scripts\build-android.ps1
 ```
 
-## Prerequisites
+The script uses `gradlew.bat` when `gradle/wrapper/gradle-wrapper.jar` exists, otherwise requires a `gradle` executable on PATH. **This repository currently does not contain the Gradle wrapper JAR.** Android Studio's integrated Gradle build is therefore the simplest path.
 
-- Android Studio / Android SDK
-- Android NDK 27+
-- CMake 3.22+
-- OpenXR headers/loader available to the native build
+Output: `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-The build integration for the OpenXR Android loader is intentionally kept explicit; the next bootstrap step will vendor or fetch a pinned OpenXR SDK version and produce the first installable Quest APK.
+Install:
+
+```powershell
+adb install -r android\app\build\outputs\apk\debug\app-debug.apk
+```
+
+The Quest build enables native blue `XR_FB_passthrough` with white contours if the runtime supports that extension. No Vulkan camera Sobel shader is used.
+
+## Windows x64 EXE
+
+Requires:
+- Visual Studio 2022 **Desktop development with C++** (MSVC toolchain and Windows SDK); Android Studio alone does not install MSVC.
+- Vulkan SDK with `glslc.exe` and `VULKAN_SDK` environment variable.
+- CMake 3.22+ on PATH (the Android Studio SDK CMake executable is also suitable).
+- Khronos OpenXR SDK headers and `openxr_loader.lib`, built/installed for Windows x64. Supply its installation path.
+- An active Windows OpenXR runtime that supports Vulkan (e.g. Meta XR Simulator).
+
+Run from repository root in PowerShell:
+
+```powershell
+.\scripts\build-windows.ps1 -OpenXRRoot "C:\SDK\OpenXR" -Configuration Release
+```
+
+Output: `build/windows/Release/voxen_windows.exe`.
+
+On Windows the OpenXR passthrough extension is not requested. The scene uses the existing opaque background; passthrough camera processing is Quest-specific.
+
+## Source layout
+
+- `engine/core`: engine lifecycle
+- `engine/xr`: OpenXR sessions and passthrough
+- `engine/render`: Vulkan swapchains, renderer and shaders
+- `platform/android`: Android entry point
+- `platform/windows`: Windows entry point
+- `scripts`: local build scripts

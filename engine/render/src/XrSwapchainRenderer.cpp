@@ -1,5 +1,9 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <unknwn.h>
+#endif
 #include <openxr/openxr_platform.h>
 
 #ifdef __ANDROID__
@@ -12,6 +16,7 @@
 #include "cubeFrag.spv.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <stdexcept>
 #include <string>
@@ -317,7 +322,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         layout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
-    VkClearValue clear{}; clear.color.float32[0]=0.08F; clear.color.float32[1]=0.12F; clear.color.float32[2]=0.22F; clear.color.float32[3]=1.0F;
+    VkClearValue clear{}; clear.color.float32[0]=0.08F; clear.color.float32[1]=0.12F; clear.color.float32[2]=0.22F; clear.color.float32[3]=0.0F;
     VkRenderPassBeginInfo rbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rbi.renderPass=renderPass_; rbi.framebuffer=eye.framebuffers.at(imageIndex);
     rbi.renderArea.extent={static_cast<uint32_t>(eye.width),static_cast<uint32_t>(eye.height)};
