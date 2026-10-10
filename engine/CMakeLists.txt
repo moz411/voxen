@@ -56,6 +56,7 @@ target_include_directories(voxen_engine
         ${CMAKE_CURRENT_SOURCE_DIR}/xr/include
         ${CMAKE_CURRENT_SOURCE_DIR}/render/include
         ${CMAKE_CURRENT_SOURCE_DIR}/scene/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/voxel/include
         ${VOXEN_GENERATED_DIR}
 )
 
