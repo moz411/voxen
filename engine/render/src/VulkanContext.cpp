@@ -1,6 +1,8 @@
 #include <voxen/render/VulkanContext.hpp>
 
+#ifdef __ANDROID__
 #include <jni.h>
+#endif
 #include <vulkan/vulkan.h>
 #include <openxr/openxr_platform.h>
 
