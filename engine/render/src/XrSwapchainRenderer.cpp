@@ -14,6 +14,9 @@
 
 #include "cubeVert.spv.hpp"
 #include "proceduralFrag.spv.hpp"
+#include "organicaVert.spv.hpp"
+#include "fractalFrag.spv.hpp"
+#include "fractalVert.spv.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -211,9 +214,11 @@ Mat4 viewMatrix(const XrPosef& pose) {
     return multiply(rot, t);
 }
 
-Mat4 modelMatrix() {
+Mat4 modelMatrix(float x = 0.0F, float y = 0.0F, float scale = 0.25F) {
     Mat4 m{};
-    m.m[0]=m.m[5]=m.m[10]=0.25F;
+    m.m[0]=m.m[5]=m.m[10]=scale;
+    m.m[12]=x;
+    m.m[13]=y;
     m.m[15]=1.0F;
     m.m[14]=-1.5F;
     return m;
@@ -257,38 +262,45 @@ void XrSwapchainRenderer::createPipeline() {
     pli.pushConstantRangeCount = 1; pli.pPushConstantRanges = &push;
     checkVk(vkCreatePipelineLayout(device_, &pli, nullptr, &pipelineLayout_), "vkCreatePipelineLayout");
 
-    VkShaderModule vs = makeShader(device_, cubeVert, cubeVertSize);
-    VkShaderModule fs = makeShader(device_, proceduralFrag, proceduralFragSize);
-    VkPipelineShaderStageCreateInfo stages[2]{};
-    stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-    stages[0].stage=VK_SHADER_STAGE_VERTEX_BIT; stages[0].module=vs; stages[0].pName="main";
-    stages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
-    stages[1].stage=VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module=fs; stages[1].pName="main";
-
-    VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
-    VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
-    vp.viewportCount=1; vp.scissorCount=1;
-    VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-    rs.polygonMode=VK_POLYGON_MODE_FILL; rs.cullMode=VK_CULL_MODE_NONE;
-    rs.frontFace=VK_FRONT_FACE_COUNTER_CLOCKWISE; rs.lineWidth=1.0F;
-    VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
-    ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
-    VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-    VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
-    cb.attachmentCount=1; cb.pAttachments=&blend;
-    VkDynamicState dyns[]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dyn{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-    dyn.dynamicStateCount=2; dyn.pDynamicStates=dyns;
-
-    VkGraphicsPipelineCreateInfo pi{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
-    pi.stageCount=2; pi.pStages=stages; pi.pVertexInputState=&vi; pi.pInputAssemblyState=&ia;
-    pi.pViewportState=&vp; pi.pRasterizationState=&rs; pi.pMultisampleState=&ms;
-    pi.pColorBlendState=&cb; pi.pDynamicState=&dyn; pi.layout=pipelineLayout_; pi.renderPass=renderPass_;
-    checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &pipeline_), "vkCreateGraphicsPipelines");
-    vkDestroyShaderModule(device_, fs, nullptr);
-    vkDestroyShaderModule(device_, vs, nullptr);
+    // All three pipelines share a render pass and one 80-byte push constant layout.
+    auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
+                             const std::uint8_t* fb, std::size_t fsz,
+                             VkPipeline& out) {
+        VkShaderModule vs = makeShader(device_, vb, vsz);
+        VkShaderModule fs = makeShader(device_, fb, fsz);
+        VkPipelineShaderStageCreateInfo stages[2]{};
+        stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        stages[0].stage=VK_SHADER_STAGE_VERTEX_BIT; stages[0].module=vs; stages[0].pName="main";
+        stages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        stages[1].stage=VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module=fs; stages[1].pName="main";
+        VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+        VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+        ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+        vp.viewportCount=1; vp.scissorCount=1;
+        VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+        rs.polygonMode=VK_POLYGON_MODE_FILL; rs.cullMode=VK_CULL_MODE_NONE;
+        rs.frontFace=VK_FRONT_FACE_COUNTER_CLOCKWISE; rs.lineWidth=1.0F;
+        VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+        ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
+        VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
+        VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+        cb.attachmentCount=1; cb.pAttachments=&blend;
+        VkDynamicState dyns[]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR};
+        VkPipelineDynamicStateCreateInfo dyn{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+        dyn.dynamicStateCount=2; dyn.pDynamicStates=dyns;
+    
+        VkGraphicsPipelineCreateInfo pi{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+        pi.stageCount=2; pi.pStages=stages; pi.pVertexInputState=&vi; pi.pInputAssemblyState=&ia;
+        pi.pViewportState=&vp; pi.pRasterizationState=&rs; pi.pMultisampleState=&ms;
+        pi.pColorBlendState=&cb; pi.pDynamicState=&dyn; pi.layout=pipelineLayout_; pi.renderPass=renderPass_;
+        checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &out), "vkCreateGraphicsPipelines");
+        vkDestroyShaderModule(device_, fs, nullptr);
+        vkDestroyShaderModule(device_, vs, nullptr);
+    };
+    buildPipeline(cubeVert, cubeVertSize, proceduralFrag, proceduralFragSize, pipeline_);
+    buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
 }
 
 void XrSwapchainRenderer::createFramebuffers() {
@@ -340,14 +352,25 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     vkCmdSetViewport(commandBuffer_,0,1,&viewport); vkCmdSetScissor(commandBuffer_,0,1,&scissor);
     vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_);
 
-    const Mat4 mvp=multiply(projection(xrView.fov,0.05F,100.0F),multiply(viewMatrix(xrView.pose),modelMatrix()));
     const float seconds = std::chrono::duration<float>(
         std::chrono::steady_clock::now() - animationStart_).count();
-    ProceduralPushConstants constants{mvp, {seconds, 1.0F, 1.0F, 0.0F}};
-    vkCmdPushConstants(commandBuffer_, pipelineLayout_,
-        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-        0, sizeof(constants), &constants);
-    vkCmdDraw(commandBuffer_,36,1,0,0);
+    const Mat4 projView = multiply(projection(xrView.fov, 0.05F, 100.0F), viewMatrix(xrView.pose));
+    struct Artwork { float x; float y; float scale; float shape; VkPipeline pipeline; uint32_t vertices; };
+    const std::array<Artwork, 4> scene{{
+        {-1.05F, 0.0F, 0.34F, 0.0F, pipeline_, 36},
+        {-0.35F, 0.0F, 0.31F, 0.0F, organicaPipeline_, 48 * 24 * 6},
+        { 0.35F, 0.0F, 0.31F, 1.0F, organicaPipeline_, 48 * 24 * 6},
+        { 1.05F, 0.0F, 0.45F, 0.0F, fractalPipeline_, 6},
+    }};
+    for (const auto& art : scene) {
+        vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, art.pipeline);
+        const Mat4 mvp = multiply(projView, modelMatrix(art.x, art.y, art.scale));
+        ProceduralPushConstants constants{mvp, {seconds, 1.0F, 1.0F, art.shape}};
+        vkCmdPushConstants(commandBuffer_, pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            0, sizeof(constants), &constants);
+        vkCmdDraw(commandBuffer_, art.vertices, 1, 0, 0);
+    }
     vkCmdEndRenderPass(commandBuffer_);
     checkVk(vkEndCommandBuffer(commandBuffer_), "vkEndCommandBuffer");
     VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO}; submit.commandBufferCount=1; submit.pCommandBuffers=&commandBuffer_;
@@ -419,6 +442,8 @@ void XrSwapchainRenderer::shutdown() noexcept {
     }
 
     if (pipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, pipeline_, nullptr); pipeline_ = VK_NULL_HANDLE; }
+    if (organicaPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, organicaPipeline_, nullptr); organicaPipeline_ = VK_NULL_HANDLE; }
+    if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
     if (pipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr); pipelineLayout_ = VK_NULL_HANDLE; }
     if (renderPass_ != VK_NULL_HANDLE) { vkDestroyRenderPass(device_, renderPass_, nullptr); renderPass_ = VK_NULL_HANDLE; }
 
