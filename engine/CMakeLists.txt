@@ -34,6 +34,7 @@ if(ANDROID OR WIN32)
 
     voxen_embed_shader(cubeVert cube.vert)
     voxen_embed_shader(cubeFrag cube.frag)
+    voxen_embed_shader(proceduralFrag procedural.frag)
 endif()
 
 add_library(voxen_engine STATIC
