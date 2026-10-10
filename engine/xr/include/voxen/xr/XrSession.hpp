@@ -42,11 +42,17 @@ public:
 private:
     void handleSessionStateChanged(const XrEventDataSessionStateChanged& event);
     void initializePassthrough();
+    void initializeActions();
+    void syncActions();
     void destroyPassthrough() noexcept;
 
     XrInstance instance_ = XR_NULL_HANDLE;
     ::XrSession session_ = XR_NULL_HANDLE;
     XrSpace localSpace_ = XR_NULL_HANDLE;
+    XrActionSet actionSet_ = XR_NULL_HANDLE;
+    XrAction selectAction_ = XR_NULL_HANDLE;
+    std::array<XrPath, 2> handPaths_{};
+    std::array<bool, 2> selectionPressed_{};
     XrSessionState state_ = XR_SESSION_STATE_UNKNOWN;
     bool running_ = false;
     bool enablePassthrough_ = false;
