@@ -51,11 +51,23 @@ void XrSwapchainRenderer::initialize(
     XrSystemId systemId,
     ::XrSession session,
     VkDevice device,
+    VkPhysicalDevice physicalDevice,
     VkQueue queue,
     uint32_t queueFamilyIndex) {
     session_ = session;
     device_ = device;
+    physicalDevice_ = physicalDevice;
     queue_ = queue;
+
+    for (VkFormat candidate : {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT}) {
+        VkFormatProperties properties{};
+        vkGetPhysicalDeviceFormatProperties(physicalDevice_, candidate, &properties);
+        if (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+            depthFormat_ = candidate;
+            break;
+        }
+    }
+    if (depthFormat_ == VK_FORMAT_UNDEFINED) throw std::runtime_error("No Vulkan depth attachment format supported");
     queueFamilyIndex_ = queueFamilyIndex;
 
     createCommandResources();
@@ -244,14 +256,27 @@ void XrSwapchainRenderer::createPipeline() {
     color.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     color.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+    VkAttachmentDescription depth{};
+    depth.format = depthFormat_;
+    depth.samples = VK_SAMPLE_COUNT_1_BIT;
+    depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depth.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
     VkAttachmentReference ref{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+    VkAttachmentReference depthRef{1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &ref;
+    subpass.pDepthStencilAttachment = &depthRef;
 
     VkRenderPassCreateInfo rp{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
-    rp.attachmentCount = 1; rp.pAttachments = &color;
+    const VkAttachmentDescription attachments[] = {color, depth};
+    rp.attachmentCount = 2; rp.pAttachments = attachments;
     rp.subpassCount = 1; rp.pSubpasses = &subpass;
     checkVk(vkCreateRenderPass(device_, &rp, nullptr, &renderPass_), "vkCreateRenderPass");
 
@@ -283,6 +308,10 @@ void XrSwapchainRenderer::createPipeline() {
         rs.frontFace=VK_FRONT_FACE_COUNTER_CLOCKWISE; rs.lineWidth=1.0F;
         VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
+        VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+        ds.depthTestEnable = VK_TRUE;
+        ds.depthWriteEnable = VK_TRUE;
+        ds.depthCompareOp = VK_COMPARE_OP_LESS;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
         VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
         cb.attachmentCount=1; cb.pAttachments=&blend;
@@ -293,7 +322,7 @@ void XrSwapchainRenderer::createPipeline() {
         VkGraphicsPipelineCreateInfo pi{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
         pi.stageCount=2; pi.pStages=stages; pi.pVertexInputState=&vi; pi.pInputAssemblyState=&ia;
         pi.pViewportState=&vp; pi.pRasterizationState=&rs; pi.pMultisampleState=&ms;
-        pi.pColorBlendState=&cb; pi.pDynamicState=&dyn; pi.layout=pipelineLayout_; pi.renderPass=renderPass_;
+        pi.pColorBlendState=&cb; pi.pDepthStencilState=&ds; pi.pDynamicState=&dyn; pi.layout=pipelineLayout_; pi.renderPass=renderPass_;
         checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &out), "vkCreateGraphicsPipelines");
         vkDestroyShaderModule(device_, fs, nullptr);
         vkDestroyShaderModule(device_, vs, nullptr);
@@ -304,17 +333,67 @@ void XrSwapchainRenderer::createPipeline() {
 }
 
 void XrSwapchainRenderer::createFramebuffers() {
+    VkPhysicalDeviceMemoryProperties memoryProperties{};
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &memoryProperties);
     for (auto& eye : eyes_) {
+        VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = depthFormat_;
+        imageInfo.extent = {static_cast<uint32_t>(eye.width), static_cast<uint32_t>(eye.height), 1};
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        checkVk(vkCreateImage(device_, &imageInfo, nullptr, &eye.depthImage), "vkCreateImage(depth)");
+
+        VkMemoryRequirements requirements{};
+        vkGetImageMemoryRequirements(device_, eye.depthImage, &requirements);
+        uint32_t memoryType = UINT32_MAX;
+        for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
+            if ((requirements.memoryTypeBits & (1u << i)) &&
+                (memoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+                memoryType = i;
+                break;
+            }
+        }
+        if (memoryType == UINT32_MAX) throw std::runtime_error("No device-local memory type for depth image");
+        VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        allocation.allocationSize = requirements.size;
+        allocation.memoryTypeIndex = memoryType;
+        checkVk(vkAllocateMemory(device_, &allocation, nullptr, &eye.depthMemory), "vkAllocateMemory(depth)");
+        checkVk(vkBindImageMemory(device_, eye.depthImage, eye.depthMemory, 0), "vkBindImageMemory(depth)");
+
+        VkImageViewCreateInfo depthViewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+        depthViewInfo.image = eye.depthImage;
+        depthViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        depthViewInfo.format = depthFormat_;
+        depthViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        depthViewInfo.subresourceRange.levelCount = 1;
+        depthViewInfo.subresourceRange.layerCount = 1;
+        checkVk(vkCreateImageView(device_, &depthViewInfo, nullptr, &eye.depthView), "vkCreateImageView(depth)");
+
         eye.views.resize(eye.images.size());
         eye.framebuffers.resize(eye.images.size());
-        for (std::size_t i=0; i<eye.images.size(); ++i) {
+        for (std::size_t i = 0; i < eye.images.size(); ++i) {
             VkImageViewCreateInfo iv{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-            iv.image=eye.images[i].image; iv.viewType=VK_IMAGE_VIEW_TYPE_2D; iv.format=colorFormat_;
-            iv.subresourceRange.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT; iv.subresourceRange.levelCount=1; iv.subresourceRange.layerCount=1;
-            checkVk(vkCreateImageView(device_, &iv, nullptr, &eye.views[i]), "vkCreateImageView");
+            iv.image = eye.images[i].image;
+            iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            iv.format = colorFormat_;
+            iv.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            iv.subresourceRange.levelCount = 1;
+            iv.subresourceRange.layerCount = 1;
+            checkVk(vkCreateImageView(device_, &iv, nullptr, &eye.views[i]), "vkCreateImageView(color)");
+
+            const VkImageView attachments[] = {eye.views[i], eye.depthView};
             VkFramebufferCreateInfo fb{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-            fb.renderPass=renderPass_; fb.attachmentCount=1; fb.pAttachments=&eye.views[i];
-            fb.width=eye.width; fb.height=eye.height; fb.layers=1;
+            fb.renderPass = renderPass_;
+            fb.attachmentCount = 2;
+            fb.pAttachments = attachments;
+            fb.width = static_cast<uint32_t>(eye.width);
+            fb.height = static_cast<uint32_t>(eye.height);
+            fb.layers = 1;
             checkVk(vkCreateFramebuffer(device_, &fb, nullptr, &eye.framebuffers[i]), "vkCreateFramebuffer");
         }
     }
@@ -344,7 +423,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     VkRenderPassBeginInfo rbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rbi.renderPass=renderPass_; rbi.framebuffer=eye.framebuffers.at(imageIndex);
     rbi.renderArea.extent={static_cast<uint32_t>(eye.width),static_cast<uint32_t>(eye.height)};
-    rbi.clearValueCount=1; rbi.pClearValues=&clear;
+    const VkClearValue clears[] = {clear, VkClearValue{.depthStencil = {1.0F, 0}}};
+    rbi.clearValueCount=2; rbi.pClearValues=clears;
     vkCmdBeginRenderPass(commandBuffer_, &rbi, VK_SUBPASS_CONTENTS_INLINE);
 
     VkViewport viewport{0,0,static_cast<float>(eye.width),static_cast<float>(eye.height),0,1};
@@ -433,6 +513,9 @@ void XrSwapchainRenderer::shutdown() noexcept {
         for (auto fb : eye.framebuffers) if (fb != VK_NULL_HANDLE) vkDestroyFramebuffer(device_, fb, nullptr);
         for (auto view : eye.views) if (view != VK_NULL_HANDLE) vkDestroyImageView(device_, view, nullptr);
         eye.framebuffers.clear(); eye.views.clear();
+        if (eye.depthView != VK_NULL_HANDLE) { vkDestroyImageView(device_, eye.depthView, nullptr); eye.depthView = VK_NULL_HANDLE; }
+        if (eye.depthImage != VK_NULL_HANDLE) { vkDestroyImage(device_, eye.depthImage, nullptr); eye.depthImage = VK_NULL_HANDLE; }
+        if (eye.depthMemory != VK_NULL_HANDLE) { vkFreeMemory(device_, eye.depthMemory, nullptr); eye.depthMemory = VK_NULL_HANDLE; }
         if (eye.handle != XR_NULL_HANDLE) {
             xrDestroySwapchain(eye.handle);
             eye.handle = XR_NULL_HANDLE;
@@ -459,6 +542,8 @@ void XrSwapchainRenderer::shutdown() noexcept {
     commandBuffer_ = VK_NULL_HANDLE;
     queue_ = VK_NULL_HANDLE;
     device_ = VK_NULL_HANDLE;
+    physicalDevice_ = VK_NULL_HANDLE;
+    depthFormat_ = VK_FORMAT_UNDEFINED;
     session_ = XR_NULL_HANDLE;
 }
 
