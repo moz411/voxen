@@ -459,7 +459,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
             const float vz = c[2] - origin[2];
             const float along = vx*dx + vy*dy + vz*dz;
             if (along <= 0.05F || along > 5.0F) continue;
-            const float perpendicularSquared = std::max(0.0F, vx*vx + vy*vy + vz*vz - along*along);
+            const float perpendicularSquared = (std::max)(0.0F, vx*vx + vy*vy + vz*vz - along*along);
             // Inflate the artwork's invisible pick volume slightly for comfortable selection.
             const float radius = scales[i] * (i == 0 ? 1.05F : 1.55F) + 0.08F;
             if (perpendicularSquared <= radius*radius && along < bestDistance) {
