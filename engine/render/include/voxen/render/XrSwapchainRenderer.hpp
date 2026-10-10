@@ -7,6 +7,7 @@
 
 #include <vulkan/vulkan.h>
 #include <openxr/openxr.h>
+#include <voxen/scene/Scene.hpp>
 #ifdef _WIN32
 #include <windows.h>
 #include <unknwn.h>
@@ -82,10 +83,7 @@ private:
     VkPipeline fractalPipeline_ = VK_NULL_HANDLE;
     VkPipeline laserPipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
-    std::array<std::array<float, 3>, 4> artworkPositions_{{
-        {{-1.05F, 0.0F, -1.5F}}, {{-0.35F, 0.0F, -1.5F}},
-        {{0.35F, 0.0F, -1.5F}}, {{1.05F, 0.0F, -1.5F}}
-    }};
+    voxen::scene::Scene scene_{};
     std::array<int, 2> heldArtwork_{{-1, -1}};
     std::array<int, 2> hoveredArtwork_{{-1, -1}};
     std::array<XrPosef, 2> controllerPoses_{};
