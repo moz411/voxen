@@ -12,7 +12,7 @@ elseif(WIN32)
 
     find_package(OpenXR QUIET CONFIG)
     if(NOT TARGET OpenXR::openxr_loader)
-    find_path(OPENXR_INCLUDE_DIR openxr/openxr.h HINTS
+      find_path(OPENXR_INCLUDE_DIR openxr/openxr.h HINTS
         "$ENV{VULKAN_SDK}/Include"
         "$ENV{VULKAN_SDK}/include"
     )
