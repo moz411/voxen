@@ -423,7 +423,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     VkRenderPassBeginInfo rbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rbi.renderPass=renderPass_; rbi.framebuffer=eye.framebuffers.at(imageIndex);
     rbi.renderArea.extent={static_cast<uint32_t>(eye.width),static_cast<uint32_t>(eye.height)};
-    const VkClearValue clears[] = {clear, VkClearValue{.depthStencil = {1.0F, 0}}};
+    VkClearValue clears[2]{};
+    clears[0] = clear;
+    clears[1].depthStencil = {1.0F, 0};
     rbi.clearValueCount=2; rbi.pClearValues=clears;
     vkCmdBeginRenderPass(commandBuffer_, &rbi, VK_SUBPASS_CONTENTS_INLINE);
 
