@@ -481,7 +481,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
 #ifdef __ANDROID__
                 __android_log_print(ANDROID_LOG_INFO, "Voxen", "Grabbed artwork %d with hand %d", nearest, static_cast<int>(hand));
 #else
-                std::printf("[Voxen] Grabbed artwork %d with hand %d\\n", nearest, static_cast<int>(hand));
+                std::printf("[Voxen] Grabbed artwork %d with hand %d\n", nearest, static_cast<int>(hand));
 #endif
             }
         }
