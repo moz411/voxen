@@ -226,13 +226,13 @@ Mat4 viewMatrix(const XrPosef& pose) {
     return multiply(rot, t);
 }
 
-Mat4 modelMatrix(float x = 0.0F, float y = 0.0F, float scale = 0.25F) {
+Mat4 modelMatrix(float x = 0.0F, float y = 0.0F, float scale = 0.25F, float z = -1.5F) {
     Mat4 m{};
     m.m[0]=m.m[5]=m.m[10]=scale;
     m.m[12]=x;
     m.m[13]=y;
     m.m[15]=1.0F;
-    m.m[14]=-1.5F;
+    m.m[14]=z;
     return m;
 }
 
@@ -399,6 +399,67 @@ void XrSwapchainRenderer::createFramebuffers() {
     }
 }
 
+void XrSwapchainRenderer::updateControllerInteraction(
+    const std::array<XrPosef, 2>& poses,
+    const std::array<bool, 2>& tracked,
+    const std::array<bool, 2>& pressed) {
+    constexpr float scales[4] = {0.34F, 0.31F, 0.31F, 0.45F};
+    for (std::size_t hand = 0; hand < 2; ++hand) {
+        if (!pressed[hand]) {
+            heldArtwork_[hand] = -1;
+            previousPress_[hand] = false;
+            continue;
+        }
+        if (!tracked[hand]) {
+            previousPress_[hand] = pressed[hand];
+            continue;
+        }
+        const auto& pose = poses[hand];
+        const auto& q = pose.orientation;
+        const float dx = -2.0F * (q.x * q.z + q.w * q.y);
+        const float dy = -2.0F * (q.y * q.z - q.w * q.x);
+        const float dz = -(1.0F - 2.0F * (q.x*q.x + q.y*q.y));
+        const std::array<float, 3> origin{pose.position.x, pose.position.y, pose.position.z};
+        if (!previousPress_[hand]) {
+            int nearest = -1;
+            float bestDistance = 100.0F;
+            for (int i = 0; i < 4; ++i) {
+                if (heldArtwork_[1-hand] == i) continue;
+                const auto& c = artworkPositions_[i];
+                const float x = origin[0] - c[0];
+                const float y = origin[1] - c[1];
+                const float z = origin[2] - c[2];
+                const float b = x*dx + y*dy + z*dz;
+                const float radius = scales[i] * (i == 0 ? 0.9F : 1.35F);
+                const float discriminant = b*b - (x*x + y*y + z*z - radius*radius);
+                if (discriminant < 0) continue;
+                const float nearHit = -b - std::sqrt(discriminant);
+                const float farHit = -b + std::sqrt(discriminant);
+                const float distance = nearHit > 0 ? nearHit : farHit;
+                if (distance > 0 && distance < bestDistance) {
+                    bestDistance = distance;
+                    nearest = i;
+                }
+            }
+            heldArtwork_[hand] = nearest;
+            if (nearest >= 0) {
+                for (int k = 0; k < 3; ++k)
+                    grabOffsets_[hand][k] = artworkPositions_[nearest][k] - origin[k];
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_INFO, "Voxen", "Grabbed artwork %d with hand %d", nearest, static_cast<int>(hand));
+#else
+                std::printf("[Voxen] Grabbed artwork %d with hand %d\\n", nearest, static_cast<int>(hand));
+#endif
+            }
+        }
+        if (heldArtwork_[hand] >= 0) {
+            auto& c = artworkPositions_[heldArtwork_[hand]];
+            for (int k = 0; k < 3; ++k) c[k] = origin[k] + grabOffsets_[hand][k];
+        }
+        previousPress_[hand] = true;
+    }
+}
+
 void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, const XrView& xrView) {
     checkVk(vkResetFences(device_, 1, &fence_), "vkResetFences");
     checkVk(vkResetCommandBuffer(commandBuffer_, 0), "vkResetCommandBuffer");
@@ -446,7 +507,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     }};
     for (const auto& art : scene) {
         vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, art.pipeline);
-        const Mat4 mvp = multiply(projView, modelMatrix(art.x, art.y, art.scale));
+        const auto& pos = artworkPositions_[&art - scene.data()];
+        const Mat4 mvp = multiply(projView, modelMatrix(pos[0], pos[1], art.scale, pos[2]));
         ProceduralPushConstants constants{mvp, {seconds, 1.0F, 1.0F, art.shape}};
         vkCmdPushConstants(commandBuffer_, pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
