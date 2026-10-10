@@ -31,6 +31,7 @@ public:
         XrSystemId systemId,
         ::XrSession session,
         VkDevice device,
+        VkPhysicalDevice physicalDevice,
         VkQueue queue,
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
@@ -49,6 +50,9 @@ private:
         std::vector<VkImageLayout> layouts;
         std::vector<VkImageView> views;
         std::vector<VkFramebuffer> framebuffers;
+        VkImage depthImage = VK_NULL_HANDLE;
+        VkDeviceMemory depthMemory = VK_NULL_HANDLE;
+        VkImageView depthView = VK_NULL_HANDLE;
     };
 
     void createCommandResources();
@@ -59,6 +63,8 @@ private:
 
     ::XrSession session_ = XR_NULL_HANDLE;
     VkDevice device_ = VK_NULL_HANDLE;
+    VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
+    VkFormat depthFormat_ = VK_FORMAT_UNDEFINED;
     VkQueue queue_ = VK_NULL_HANDLE;
     uint32_t queueFamilyIndex_ = 0;
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
