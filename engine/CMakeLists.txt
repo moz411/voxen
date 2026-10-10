@@ -61,5 +61,8 @@ elseif(WIN32)
 endif()
 
 target_link_libraries(voxen_engine PUBLIC OpenXR::openxr_loader)
+if(WIN32)
+    target_link_libraries(voxen_engine PUBLIC Vulkan::Vulkan)
+endif()
 
 target_compile_features(voxen_engine PUBLIC cxx_std_20)
