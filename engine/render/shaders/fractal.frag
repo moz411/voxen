@@ -1,5 +1,5 @@
 #version 450
-layout(location = 0) in vec3 localColor;
+layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 outColor;
 layout(push_constant) uniform PushConstants {
     mat4 mvp;
@@ -23,8 +23,7 @@ vec3 normalAt(vec3 p) {
                           field(p + vec3(0,0,d)) - field(p - vec3(0,0,d))));
 }
 void main() {
-    vec2 uv = localColor.xy * 2.0 - 1.0;
-    vec3 ro = vec3(uv, 1.6);
+    vec3 ro = vec3(uv * 0.82, 1.6);
     vec3 rd = vec3(0.0, 0.0, -1.0);
     float dist = 0.0;
     bool hit = false;
@@ -37,8 +36,7 @@ void main() {
         if (dist > 3.0) break;
     }
     if (!hit) {
-        outColor = vec4(0.015, 0.035, 0.10, 1.0);
-        return;
+        discard;
     }
     vec3 n = normalAt(p);
     float diffuse = 0.2 + 0.8 * max(dot(n, normalize(vec3(-0.5,0.9,1.1))),0.0);
