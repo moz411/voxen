@@ -2,6 +2,7 @@
 
 #ifdef __ANDROID__
 #include <jni.h>
+#include <android/log.h>
 #endif
 #include <vulkan/vulkan.h>
 #ifdef _WIN32
@@ -103,7 +104,11 @@ void XrContext::createInstance() {
     passthroughEnabled_ = std::any_of(available.begin(), available.end(), [](const auto& e) {
         return std::strcmp(e.extensionName, XR_FB_PASSTHROUGH_EXTENSION_NAME) == 0;
     });
-    if (passthroughEnabled_) extensions.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
+    __android_log_print(ANDROID_LOG_INFO, "Voxen", "XR_FB_passthrough available: %s", passthroughEnabled_ ? "yes" : "no");
+    if (!passthroughEnabled_) {
+        throw std::runtime_error("XR_FB_passthrough unavailable: check com.oculus.feature.PASSTHROUGH manifest flag and Meta runtime");
+    }
+    extensions.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
 #endif
 
     XrInstanceCreateInfo createInfo{XR_TYPE_INSTANCE_CREATE_INFO};
