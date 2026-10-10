@@ -29,6 +29,7 @@ elseif(WIN32)
         IMPORTED_LOCATION "${OPENXR_LOADER_LIBRARY}"
         INTERFACE_INCLUDE_DIRECTORIES "${OPENXR_INCLUDE_DIR}"
     )
+    endif()
 endif()
 
 add_subdirectory(engine)
