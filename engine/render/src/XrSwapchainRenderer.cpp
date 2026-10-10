@@ -17,6 +17,7 @@
 #include "organicaVert.spv.hpp"
 #include "fractalFrag.spv.hpp"
 #include "fractalVert.spv.hpp"
+#include "laserFrag.spv.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -236,6 +237,32 @@ Mat4 modelMatrix(float x = 0.0F, float y = 0.0F, float scale = 0.25F, float z = 
     return m;
 }
 
+// A slender cube aligned with the controller's local -Z aiming direction.
+Mat4 laserMatrix(const XrPosef& pose, float distance) {
+    const auto& q = pose.orientation;
+    const float dx = -2.0F * (q.x*q.z + q.w*q.y);
+    const float dy = -2.0F * (q.y*q.z - q.w*q.x);
+    const float dz = -(1.0F - 2.0F * (q.x*q.x + q.y*q.y));
+    // Take a perpendicular sideways basis, then a second perpendicular axis.
+    float sx = dz, sy = 0.0F, sz = -dx;
+    const float sl = std::sqrt(sx*sx + sz*sz);
+    if (sl < 0.001F) { sx=1.0F; sy=0.0F; sz=0.0F; }
+    else { sx /= sl; sz /= sl; }
+    const float ux = dy*sz - dz*sy;
+    const float uy = dz*sx - dx*sz;
+    const float uz = dx*sy - dy*sx;
+    constexpr float width = 0.006F;
+    Mat4 m{};
+    m.m[0]=sx*width; m.m[1]=sy*width; m.m[2]=sz*width;
+    m.m[4]=ux*width; m.m[5]=uy*width; m.m[6]=uz*width;
+    m.m[8]=dx*distance; m.m[9]=dy*distance; m.m[10]=dz*distance;
+    m.m[12]=pose.position.x+dx*distance*0.5F;
+    m.m[13]=pose.position.y+dy*distance*0.5F;
+    m.m[14]=pose.position.z+dz*distance*0.5F;
+    m.m[15]=1.0F;
+    return m;
+}
+
 VkShaderModule makeShader(VkDevice device, const std::uint8_t* bytes, std::size_t size) {
     VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
     info.codeSize = size;
@@ -310,7 +337,7 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = VK_TRUE;
+        ds.depthWriteEnable = (&out == &laserPipeline_) ? VK_FALSE : VK_TRUE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
         VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
@@ -330,6 +357,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(cubeVert, cubeVertSize, proceduralFrag, proceduralFragSize, pipeline_);
     buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
+    buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
 }
 
 void XrSwapchainRenderer::createFramebuffers() {
@@ -404,43 +432,48 @@ void XrSwapchainRenderer::updateControllerInteraction(
     const std::array<bool, 2>& tracked,
     const std::array<bool, 2>& pressed) {
     constexpr float scales[4] = {0.34F, 0.31F, 0.31F, 0.45F};
+    controllerPoses_ = poses;
+    controllerTracked_ = tracked;
+
     for (std::size_t hand = 0; hand < 2; ++hand) {
-        if (!pressed[hand]) {
-            heldArtwork_[hand] = -1;
-            previousPress_[hand] = false;
-            continue;
-        }
+        hoveredArtwork_[hand] = -1;
         if (!tracked[hand]) {
+            if (!pressed[hand]) heldArtwork_[hand] = -1;
             previousPress_[hand] = pressed[hand];
             continue;
         }
         const auto& pose = poses[hand];
         const auto& q = pose.orientation;
-        const float dx = -2.0F * (q.x * q.z + q.w * q.y);
-        const float dy = -2.0F * (q.y * q.z - q.w * q.x);
+        const float dx = -2.0F * (q.x*q.z + q.w*q.y);
+        const float dy = -2.0F * (q.y*q.z - q.w*q.x);
         const float dz = -(1.0F - 2.0F * (q.x*q.x + q.y*q.y));
         const std::array<float, 3> origin{pose.position.x, pose.position.y, pose.position.z};
-        if (!previousPress_[hand]) {
-            int nearest = -1;
-            float bestDistance = 100.0F;
-            for (int i = 0; i < 4; ++i) {
-                if (heldArtwork_[1-hand] == i) continue;
-                const auto& c = artworkPositions_[i];
-                const float x = origin[0] - c[0];
-                const float y = origin[1] - c[1];
-                const float z = origin[2] - c[2];
-                const float b = x*dx + y*dy + z*dz;
-                const float radius = scales[i] * (i == 0 ? 0.9F : 1.35F);
-                const float discriminant = b*b - (x*x + y*y + z*z - radius*radius);
-                if (discriminant < 0) continue;
-                const float nearHit = -b - std::sqrt(discriminant);
-                const float farHit = -b + std::sqrt(discriminant);
-                const float distance = nearHit > 0 ? nearHit : farHit;
-                if (distance > 0 && distance < bestDistance) {
-                    bestDistance = distance;
-                    nearest = i;
-                }
+
+        int nearest = -1;
+        float bestDistance = 10.0F;
+        for (int i = 0; i < 4; ++i) {
+            if (heldArtwork_[1-hand] == i) continue;
+            const auto& c = artworkPositions_[i];
+            const float vx = c[0] - origin[0];
+            const float vy = c[1] - origin[1];
+            const float vz = c[2] - origin[2];
+            const float along = vx*dx + vy*dy + vz*dz;
+            if (along <= 0.05F || along > 5.0F) continue;
+            const float perpendicularSquared = std::max(0.0F, vx*vx + vy*vy + vz*vz - along*along);
+            // Inflate the artwork's invisible pick volume slightly for comfortable selection.
+            const float radius = scales[i] * (i == 0 ? 1.05F : 1.55F) + 0.08F;
+            if (perpendicularSquared <= radius*radius && along < bestDistance) {
+                bestDistance = along;
+                nearest = i;
             }
+        }
+        hoveredArtwork_[hand] = nearest;
+        if (!pressed[hand]) {
+            heldArtwork_[hand] = -1;
+            previousPress_[hand] = false;
+            continue;
+        }
+        if (!previousPress_[hand]) {
             heldArtwork_[hand] = nearest;
             if (nearest >= 0) {
                 for (int k = 0; k < 3; ++k)
@@ -448,7 +481,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
 #ifdef __ANDROID__
                 __android_log_print(ANDROID_LOG_INFO, "Voxen", "Grabbed artwork %d with hand %d", nearest, static_cast<int>(hand));
 #else
-                std::printf("[Voxen] Grabbed artwork %d with hand %d\n", nearest, static_cast<int>(hand));
+                std::printf("[Voxen] Grabbed artwork %d with hand %d\\n", nearest, static_cast<int>(hand));
 #endif
             }
         }
@@ -514,6 +547,30 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0, sizeof(constants), &constants);
         vkCmdDraw(commandBuffer_, art.vertices, 1, 0, 0);
+    }
+    // Draw the visible controller rays last; depth testing hides them behind artwork.
+    vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, laserPipeline_);
+    for (std::size_t hand = 0; hand < controllerTracked_.size(); ++hand) {
+        if (!controllerTracked_[hand]) continue;
+        float length = 2.5F;
+        const int target = hoveredArtwork_[hand];
+        if (target >= 0) {
+            const auto& q = controllerPoses_[hand].orientation;
+            const float dx = -2.0F * (q.x*q.z + q.w*q.y);
+            const float dy = -2.0F * (q.y*q.z - q.w*q.x);
+            const float dz = -(1.0F - 2.0F * (q.x*q.x + q.y*q.y));
+            const auto& c = artworkPositions_[target];
+            length = std::clamp(
+                (c[0]-controllerPoses_[hand].position.x)*dx +
+                (c[1]-controllerPoses_[hand].position.y)*dy +
+                (c[2]-controllerPoses_[hand].position.z)*dz, 0.1F, 2.5F);
+        }
+        const Mat4 beamMvp = multiply(projView, laserMatrix(controllerPoses_[hand], length));
+        ProceduralPushConstants constants{beamMvp, {seconds, 1.0F, 1.0F, 0.0F}};
+        vkCmdPushConstants(commandBuffer_, pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            0, sizeof(constants), &constants);
+        vkCmdDraw(commandBuffer_, 36, 1, 0, 0);
     }
     vkCmdEndRenderPass(commandBuffer_);
     checkVk(vkEndCommandBuffer(commandBuffer_), "vkEndCommandBuffer");
@@ -591,6 +648,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (pipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, pipeline_, nullptr); pipeline_ = VK_NULL_HANDLE; }
     if (organicaPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, organicaPipeline_, nullptr); organicaPipeline_ = VK_NULL_HANDLE; }
     if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
+    if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
     if (pipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr); pipelineLayout_ = VK_NULL_HANDLE; }
     if (renderPass_ != VK_NULL_HANDLE) { vkDestroyRenderPass(device_, renderPass_, nullptr); renderPass_ = VK_NULL_HANDLE; }
 
