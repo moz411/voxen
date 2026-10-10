@@ -34,7 +34,8 @@ void android_main(android_app* app) {
             vulkan.instance(),
             vulkan.physicalDevice(),
             vulkan.device(),
-            vulkan.graphicsQueueFamily());
+            vulkan.graphicsQueueFamily(),
+            xr.passthroughEnabled());
         renderer.initialize(
             xr.instance(),
             xr.systemId(),
