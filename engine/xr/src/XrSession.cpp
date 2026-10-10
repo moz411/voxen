@@ -14,6 +14,7 @@
 #include <openxr/openxr_platform.h>
 
 #include <stdexcept>
+#include <cstring>
 #include <string>
 
 namespace voxen::xr {
@@ -62,6 +63,7 @@ void XrSession::initialize(
     spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL;
     spaceInfo.poseInReferenceSpace.orientation.w = 1.0F;
     checkXr(xrCreateReferenceSpace(session_, &spaceInfo, &localSpace_), "xrCreateReferenceSpace(LOCAL)");
+    initializeActions();
     if (enablePassthrough_) {
         initializePassthrough();
 #ifdef __ANDROID__
@@ -69,6 +71,78 @@ void XrSession::initialize(
 #else
         std::printf("[Voxen] Passthrough layer created\n");
 #endif
+    }
+}
+
+void XrSession::initializeActions() {
+    checkXr(xrStringToPath(instance_, "/user/hand/left", &handPaths_[0]), "xrStringToPath(left)");
+    checkXr(xrStringToPath(instance_, "/user/hand/right", &handPaths_[1]), "xrStringToPath(right)");
+
+    XrActionSetCreateInfo setInfo{XR_TYPE_ACTION_SET_CREATE_INFO};
+    std::strncpy(setInfo.actionSetName, "voxen_interaction", XR_MAX_ACTION_SET_NAME_SIZE - 1);
+    std::strncpy(setInfo.localizedActionSetName, "Voxen Interaction", XR_MAX_LOCALIZED_ACTION_SET_NAME_SIZE - 1);
+    setInfo.priority = 0;
+    checkXr(xrCreateActionSet(instance_, &setInfo, &actionSet_), "xrCreateActionSet");
+
+    XrActionCreateInfo actionInfo{XR_TYPE_ACTION_CREATE_INFO};
+    actionInfo.actionType = XR_ACTION_TYPE_BOOLEAN_INPUT;
+    std::strncpy(actionInfo.actionName, "select", XR_MAX_ACTION_NAME_SIZE - 1);
+    std::strncpy(actionInfo.localizedActionName, "Select artwork", XR_MAX_LOCALIZED_ACTION_NAME_SIZE - 1);
+    actionInfo.countSubactionPaths = static_cast<uint32_t>(handPaths_.size());
+    actionInfo.subactionPaths = handPaths_.data();
+    checkXr(xrCreateAction(actionSet_, &actionInfo, &selectAction_), "xrCreateAction(select)");
+
+    XrPath profile = XR_NULL_PATH;
+    XrPath leftTrigger = XR_NULL_PATH;
+    XrPath rightTrigger = XR_NULL_PATH;
+    checkXr(xrStringToPath(instance_, "/interaction_profiles/oculus/touch_controller", &profile), "xrStringToPath(touch)");
+    checkXr(xrStringToPath(instance_, "/user/hand/left/input/trigger/value", &leftTrigger), "xrStringToPath(left trigger)");
+    checkXr(xrStringToPath(instance_, "/user/hand/right/input/trigger/value", &rightTrigger), "xrStringToPath(right trigger)");
+
+    // Boolean actions may bind to floating trigger inputs using OpenXR's threshold mapping.
+    const XrActionSuggestedBinding bindings[] = {
+        {selectAction_, leftTrigger},
+        {selectAction_, rightTrigger},
+    };
+    XrInteractionProfileSuggestedBinding suggested{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+    suggested.interactionProfile = profile;
+    suggested.countSuggestedBindings = 2;
+    suggested.suggestedBindings = bindings;
+    checkXr(xrSuggestInteractionProfileBindings(instance_, &suggested), "xrSuggestInteractionProfileBindings");
+
+    XrSessionActionSetsAttachInfo attach{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
+    attach.countActionSets = 1;
+    attach.actionSets = &actionSet_;
+    checkXr(xrAttachSessionActionSets(session_, &attach), "xrAttachSessionActionSets");
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO, "Voxen", "Touch controller actions attached");
+#else
+    std::printf("[Voxen] Touch controller actions attached\\n");
+#endif
+}
+
+void XrSession::syncActions() {
+    XrActiveActionSet active{actionSet_, XR_NULL_PATH};
+    XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO};
+    sync.countActiveActionSets = 1;
+    sync.activeActionSets = &active;
+    checkXr(xrSyncActions(session_, &sync), "xrSyncActions");
+
+    for (std::size_t hand = 0; hand < handPaths_.size(); ++hand) {
+        XrActionStateGetInfo get{XR_TYPE_ACTION_STATE_GET_INFO};
+        get.action = selectAction_;
+        get.subactionPath = handPaths_[hand];
+        XrActionStateBoolean state{XR_TYPE_ACTION_STATE_BOOLEAN};
+        checkXr(xrGetActionStateBoolean(session_, &get, &state), "xrGetActionStateBoolean(select)");
+        const bool pressed = state.isActive == XR_TRUE && state.currentState == XR_TRUE;
+        if (pressed && !selectionPressed_[hand]) {
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_INFO, "Voxen", "%s trigger selected", hand == 0 ? "Left" : "Right");
+#else
+            std::printf("[Voxen] %s trigger selected\\n", hand == 0 ? "Left" : "Right");
+#endif
+        }
+        selectionPressed_[hand] = pressed;
     }
 }
 
@@ -182,6 +256,8 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
     XrFrameState frameState{XR_TYPE_FRAME_STATE};
     checkXr(xrWaitFrame(session_, &waitInfo, &frameState), "xrWaitFrame");
 
+    syncActions();
+
     XrFrameBeginInfo beginInfo{XR_TYPE_FRAME_BEGIN_INFO};
     checkXr(xrBeginFrame(session_, &beginInfo), "xrBeginFrame");
 
@@ -255,6 +331,12 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
 
 void XrSession::shutdown() noexcept {
     destroyPassthrough();
+    if (actionSet_ != XR_NULL_HANDLE) {
+        xrDestroyActionSet(actionSet_);
+        actionSet_ = XR_NULL_HANDLE;
+        selectAction_ = XR_NULL_HANDLE;
+    }
+    selectionPressed_ = {};
     if (localSpace_ != XR_NULL_HANDLE) {
         xrDestroySpace(localSpace_);
         localSpace_ = XR_NULL_HANDLE;
