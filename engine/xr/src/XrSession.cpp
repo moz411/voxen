@@ -62,7 +62,14 @@ void XrSession::initialize(
     spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL;
     spaceInfo.poseInReferenceSpace.orientation.w = 1.0F;
     checkXr(xrCreateReferenceSpace(session_, &spaceInfo, &localSpace_), "xrCreateReferenceSpace(LOCAL)");
-    if (enablePassthrough_) initializePassthrough();
+    if (enablePassthrough_) {
+        initializePassthrough();
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO, "Voxen", "Passthrough layer created");
+#else
+        std::printf("[Voxen] Passthrough layer created\n");
+#endif
+    }
 }
 
 void XrSession::initializePassthrough() {
@@ -146,7 +153,14 @@ void XrSession::handleSessionStateChanged(const XrEventDataSessionStateChanged& 
         beginInfo.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
         checkXr(xrBeginSession(session_, &beginInfo), "xrBeginSession");
         running_ = true;
-        if (passthrough_ != XR_NULL_HANDLE) checkXr(startPassthrough_(passthrough_), "xrPassthroughStartFB");
+        if (passthrough_ != XR_NULL_HANDLE) {
+            checkXr(startPassthrough_(passthrough_), "xrPassthroughStartFB");
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_INFO, "Voxen", "Passthrough started");
+#else
+            std::printf("[Voxen] Passthrough started\n");
+#endif
+        }
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO, "Voxen", "OpenXR session begun");
 #else
@@ -217,6 +231,15 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
             if (passthroughLayer_ != XR_NULL_HANDLE) {
                 layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&passthroughComposition);
                 layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+                static bool loggedComposition = false;
+                if (!loggedComposition) {
+#ifdef __ANDROID__
+                    __android_log_print(ANDROID_LOG_INFO, "Voxen", "Submitting passthrough and transparent projection layers");
+#else
+                    std::printf("[Voxen] Submitting passthrough and transparent projection layers\n");
+#endif
+                    loggedComposition = true;
+                }
             }
             layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer);
         }
