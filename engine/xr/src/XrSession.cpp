@@ -108,6 +108,14 @@ void XrSession::initializeActions() {
     stickInfo.subactionPaths = handPaths_.data();
     checkXr(xrCreateAction(actionSet_, &stickInfo, &thumbstickAction_), "xrCreateAction(thumbstick)");
 
+    XrActionCreateInfo gripInfo{XR_TYPE_ACTION_CREATE_INFO};
+    gripInfo.actionType = XR_ACTION_TYPE_BOOLEAN_INPUT;
+    std::strncpy(gripInfo.actionName, "paint_mode_toggle", XR_MAX_ACTION_NAME_SIZE - 1);
+    std::strncpy(gripInfo.localizedActionName, "Toggle voxel painting", XR_MAX_LOCALIZED_ACTION_NAME_SIZE - 1);
+    gripInfo.countSubactionPaths = static_cast<uint32_t>(handPaths_.size());
+    gripInfo.subactionPaths = handPaths_.data();
+    checkXr(xrCreateAction(actionSet_, &gripInfo, &gripAction_), "xrCreateAction(grip)");
+
     XrPath profile = XR_NULL_PATH;
     XrPath leftTrigger = XR_NULL_PATH;
     XrPath rightTrigger = XR_NULL_PATH;
@@ -115,6 +123,8 @@ void XrSession::initializeActions() {
     XrPath rightAim = XR_NULL_PATH;
     XrPath leftStick = XR_NULL_PATH;
     XrPath rightStick = XR_NULL_PATH;
+    XrPath leftGrip = XR_NULL_PATH;
+    XrPath rightGrip = XR_NULL_PATH;
     checkXr(xrStringToPath(instance_, "/interaction_profiles/oculus/touch_controller", &profile), "xrStringToPath(touch)");
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/trigger/value", &leftTrigger), "xrStringToPath(left trigger)");
     checkXr(xrStringToPath(instance_, "/user/hand/right/input/trigger/value", &rightTrigger), "xrStringToPath(right trigger)");
@@ -125,6 +135,9 @@ void XrSession::initializeActions() {
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/thumbstick", &leftStick), "xrStringToPath(left thumbstick)");
     checkXr(xrStringToPath(instance_, "/user/hand/right/input/thumbstick", &rightStick), "xrStringToPath(right thumbstick)");
 
+    checkXr(xrStringToPath(instance_, "/user/hand/left/input/squeeze/value", &leftGrip), "xrStringToPath(left grip)");
+    checkXr(xrStringToPath(instance_, "/user/hand/right/input/squeeze/value", &rightGrip), "xrStringToPath(right grip)");
+
     // Boolean actions may bind to floating trigger inputs using OpenXR's threshold mapping.
     const XrActionSuggestedBinding bindings[] = {
         {selectAction_, leftTrigger},
@@ -133,10 +146,12 @@ void XrSession::initializeActions() {
         {aimAction_, rightAim},
         {thumbstickAction_, leftStick},
         {thumbstickAction_, rightStick},
+        {gripAction_, leftGrip},
+        {gripAction_, rightGrip},
     };
     XrInteractionProfileSuggestedBinding suggested{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
     suggested.interactionProfile = profile;
-    suggested.countSuggestedBindings = 6;
+    suggested.countSuggestedBindings = 8;
     suggested.suggestedBindings = bindings;
     checkXr(xrSuggestInteractionProfileBindings(instance_, &suggested), "xrSuggestInteractionProfileBindings");
 
@@ -180,6 +195,19 @@ void XrSession::syncActions() {
 #endif
         }
         selectionPressed_[hand] = pressed;
+        get.action = gripAction_;
+        XrActionStateBoolean gripState{XR_TYPE_ACTION_STATE_BOOLEAN};
+        checkXr(xrGetActionStateBoolean(session_, &get, &gripState), "xrGetActionStateBoolean(grip)");
+        gripPressed_[hand] = gripState.isActive == XR_TRUE && gripState.currentState == XR_TRUE;
+        if (gripPressed_[hand] && !previousGripPressed_[hand]) {
+            paintMode_ = !paintMode_;
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_INFO, "Voxen", "Voxel paint mode %s", paintMode_ ? "ON" : "OFF");
+#else
+            std::printf("[Voxen] Voxel paint mode %s\n", paintMode_ ? "ON" : "OFF");
+#endif
+        }
+        previousGripPressed_[hand] = gripPressed_[hand];
         get.action = thumbstickAction_;
         XrActionStateVector2f stickState{XR_TYPE_ACTION_STATE_VECTOR2F};
         checkXr(xrGetActionStateVector2f(session_, &get, &stickState), "xrGetActionStateVector2f(thumbstick)");
@@ -309,7 +337,7 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
             aimPoses[hand] = location.pose;
         }
     }
-    renderer.updateControllerInteraction(aimPoses, aimTracked, selectionPressed_, thumbstickValues_);
+    renderer.updateControllerInteraction(aimPoses, aimTracked, selectionPressed_, thumbstickValues_, paintMode_);
 
     XrFrameBeginInfo beginInfo{XR_TYPE_FRAME_BEGIN_INFO};
     checkXr(xrBeginFrame(session_, &beginInfo), "xrBeginFrame");
@@ -394,8 +422,12 @@ void XrSession::shutdown() noexcept {
         selectAction_ = XR_NULL_HANDLE;
         aimAction_ = XR_NULL_HANDLE;
         thumbstickAction_ = XR_NULL_HANDLE;
+        gripAction_ = XR_NULL_HANDLE;
     }
     selectionPressed_ = {};
+    gripPressed_ = {};
+    previousGripPressed_ = {};
+    paintMode_ = false;
     if (localSpace_ != XR_NULL_HANDLE) {
         xrDestroySpace(localSpace_);
         localSpace_ = XR_NULL_HANDLE;
