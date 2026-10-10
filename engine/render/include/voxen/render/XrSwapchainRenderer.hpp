@@ -6,6 +6,10 @@
 
 #include <vulkan/vulkan.h>
 #include <openxr/openxr.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <unknwn.h>
+#endif
 #include <openxr/openxr_platform.h>
 
 namespace voxen::render {
