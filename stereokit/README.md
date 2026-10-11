@@ -48,3 +48,28 @@ OpenXR include paths are exported to the Voxen target. For runtime diagnosis,
 filter logs for `[Voxen]`. The Quest runtime may reject a second independent
 passthrough layer or blend it differently; fallback should preserve the
 transparent passthrough when native edge support is unavailable.
+
+
+## Voxel brush prototype
+
+Branch: `feature/stereokit-voxel-brush`. On Quest 3, use the **right controller trigger**
+to paint cubes directly in space. The brush preview follows the right controller
+aim pose (local -Z); use **Tip offset (m)** to adjust its distance. The slider
+**Size (m)** controls new voxels only; existing voxels keep their original size.
+The **Hue** slider changes the tint of newly painted voxels. Rotation is fixed
+to world axes. **Undo last voxel** removes one voxel; **Clear voxels** removes all.
+
+The renderer keeps at most 4096 cubes in memory and submits them each frame.
+Stroke interpolation limits gaps during normal controller movement. This is
+a proof of concept, not yet a batched GPU-instancing or persistence solution.
+Current undo removes only one voxel, not an entire stroke. No sound or shader
+selection is wired up yet.
+
+```bash
+cd android
+./gradlew assembleDebug -PvoxenStereoKit=true
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+**Unverified:** The changes have not been compiled or tested on Quest 3 in this
+environment. The established passthrough controls remain intact.
