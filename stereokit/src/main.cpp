@@ -40,7 +40,7 @@ static float animation_time = 0.0f;
 static int note_stride = 0;
 static int algorithm_mode = 0;
 static uint32_t brush_step = 0;
-static float size_velocity = 0.0f;
+
 static float hue = 0.45f;
 static bool painting = true;
 static bool edges_enabled = true;
@@ -267,7 +267,7 @@ static void update_left_buttons() {
 // No per-page or ray-specific fudge offsets.
 static constexpr float panel_width = 0.16f;
 static constexpr float panel_height = 0.43f;
-static constexpr float panel_lift = 0.002f;
+
 
 static pose_t face_panel_pose(int page) {
     // The original -Z face normals pointed INTO the cube. Rotate each
@@ -377,24 +377,10 @@ static void update_controller_palette() {
     /* Orientation follows the left controller, including pitch/roll.
        This intentionally replaces the former floor-upright behavior. */
     carousel_base.orientation = left->pose.orientation;
-    /* const pose_t* head = input_head();
-    if (head) {
-        vec3 target = {head->position.x, carousel_base.position.y,
-                       head->position.z};
-        const float dx = target.x - carousel_base.position.x;
-        const float dz = target.z - carousel_base.position.z;
-        if (dx*dx + dz*dz > 0.0001f)
-            carousel_base.orientation = quat_lookat_up(
-                carousel_base.position, target, {0, 1, 0});
-    }
-
-    */
     // Rotate the five-sided carousel around controller-local Y
     // from the controller's six-degree-of-freedom position.
     const float delta = target_angle - carousel_angle;
     carousel_angle += delta * std::min(1.0f, time_stepf() * 12.0f);
-    const quat spin = quat_from_angles(0, carousel_angle, 0);
-    const quat orientation = quat_mul(carousel_base.orientation, spin);
     // Five panels make a pentagonal tool wheel, not a four-sided cube.
     // Each face is rendered by draw_face() with its own transform.
 
