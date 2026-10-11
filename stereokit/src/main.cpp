@@ -168,6 +168,26 @@ static void update_left_buttons() {
     if (left->x2 & button_state_just_active) redo_stroke();
 }
 
+// Single source of truth for panel geometry. Face -Z is the outward
+// surface in each face's local frame; the window starts at its upper-right.
+// No per-page or ray-specific fudge offsets.
+static constexpr float panel_width = 0.16f;
+static constexpr float panel_height = 0.21f;
+static constexpr float panel_lift = 0.002f;
+static pose_t face_panel_pose(int page) {
+    const quat spin = quat_from_angles(0, carousel_angle, 0);
+    const quat cube_rotation = quat_mul(carousel_base.orientation, spin);
+    const quat rotation = quat_mul(cube_rotation,
+        quat_from_angles(0, -90.0f * page, 0));
+    const vec3 local = {panel_width * 0.5f,
+                        panel_height * 0.5f,
+                        -menu_width * 0.5f - panel_lift};
+    const vec3 offset = quat_mul_vec(rotation, local);
+    return {{carousel_base.position.x + offset.x,
+             carousel_base.position.y + offset.y,
+             carousel_base.position.z + offset.z}, rotation};
+}
+
 static void update_controller_palette() {
     const controller_t* left = input_controller(handed_left);
     if (!left || !(left->tracked & button_state_active)) return;
@@ -207,16 +227,7 @@ static void update_controller_palette() {
                    {menu_width, menu_height, menu_width}),
         {0.20f, 0.65f, 0.85f, 0.12f});
 
-    // Select the front face's real transform for controller targeting.
-    // Each face has its own panel; the cube and panels share one rotation.
-    const quat face_rotation = quat_mul(orientation,
-        quat_from_angles(0, -menu_page*90.0f, 0));
-    const vec3 anchor = quat_mul_vec(face_rotation,
-        {0.125f, menu_height*0.5f - 0.006f, -menu_width*0.5f - 0.005f});
-    palette.position = {carousel_base.position.x + anchor.x,
-                        carousel_base.position.y + anchor.y,
-                        carousel_base.position.z + anchor.z};
-    palette.orientation = face_rotation;
+    palette = face_panel_pose(menu_page);
 }
 // Controller ray to UI-plane intersection, independent of StereoKit's
 // near-hand widget interaction. Local top-left is the window pose.
@@ -243,19 +254,10 @@ static void update_menu_ray() {
     float closest = 2.0f;
     // Intersect each face in its own local coordinates. This uses exactly
     // the same transforms as each rendered StereoKit panel.
-    const quat world_rot = quat_mul(carousel_base.orientation,
-        quat_from_angles(0, carousel_angle, 0));
     for (int page=0; page<page_count; ++page) {
-        const quat face_rot = quat_mul(world_rot,
-            quat_from_angles(0, -page*90.0f, 0));
-        const vec3 face_offset = quat_mul_vec(face_rot,
-            {0.125f, menu_height*0.5f-0.006f,
-             -menu_width*0.5f-0.005f});
-        const vec3 face_origin = {
-            carousel_base.position.x + face_offset.x,
-            carousel_base.position.y + face_offset.y,
-            carousel_base.position.z + face_offset.z};
-        const quat inverse = quat_inverse(face_rot);
+        const pose_t face = face_panel_pose(page);
+        const quat inverse = quat_inverse(face.orientation);
+        const vec3 face_origin = face.position;
         const vec3 relative = {start.x-face_origin.x,
                                start.y-face_origin.y,
                                start.z-face_origin.z};
@@ -266,7 +268,7 @@ static void update_menu_ray() {
         if (t <= 0.0f || t >= closest) continue;
         const float x = o.x + t*d.x, y = o.y + t*d.y;
         // StereoKit's window extends LEFT from the right-edge anchor.
-        if (x < -0.16f || x > 0.008f || y > 0.01f || y < -0.23f) continue;
+        if (x < -panel_width || x > 0.0f || y > 0.0f || y < -panel_height) continue;
         closest = t;
         hit_page = page;
         menu_aiming = true;
@@ -445,22 +447,12 @@ int voxen_stereokit_main() {
         update_menu_ray();
         // Four independent UI surfaces rigidly fixed to four cube faces.
         // Active face uses the same pose as the controller ray intersection.
-        const quat spin = quat_from_angles(0, carousel_angle, 0);
-        const quat world_rotation = quat_mul(carousel_base.orientation, spin);
         for (int page=0; page<page_count; ++page) {
-            const quat face_rot = quat_mul(world_rotation,
-                quat_from_angles(0, -page*90.0f, 0));
-            const vec3 face_offset = quat_mul_vec(face_rot,
-                {0.125f, menu_height*0.5f-0.006f,
-                 -menu_width*0.5f-0.005f});
-            pose_t face_pose = {{
-                carousel_base.position.x+face_offset.x,
-                carousel_base.position.y+face_offset.y,
-                carousel_base.position.z+face_offset.z
-            }, face_rot};
+            pose_t face_pose = face_panel_pose(page);
+            const quat face_rot = face_pose.orientation;
             ui_window_begin(page==0 ? "COLORS" : page==1 ? "SHAPES" :
                             page==2 ? "SOUNDS" : "SCENES",
-                            face_pose, {0.16f,0}, ui_win_normal, ui_move_none);
+                            face_pose, {panel_width,0}, ui_win_normal, ui_move_none);
             // Remote click is accepted only on the active facing page.
             const bool ray_was_click = menu_click;
             if (page != hit_page) menu_click = false;
@@ -480,7 +472,7 @@ int voxen_stereokit_main() {
                 // The color chips use the SAME panel-local pose as the ray.
                 // StereoKit windows extend in local negative X.
                 const vec3 local={-lx-sw*0.5f, ly-sh*0.5f,
-                                  -0.003f};
+                                  -0.004f};
                 const vec3 off=quat_mul_vec(face_rot,local);
                 const vec3 world={
                     face_pose.position.x+off.x,
