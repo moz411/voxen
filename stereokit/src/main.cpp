@@ -3,6 +3,7 @@
 #include <openxr/openxr.h>
 #include "voxen_voxel.hlsl.h"
 #include "voxel_shapes.h"
+#include "artwork.h"
 #include <cstdio>
 #include <vector>
 #include <cmath>
@@ -74,8 +75,34 @@ struct PaintedVoxel {
     bool reveal_loop;
 };
 static std::vector<PaintedVoxel> voxels;
-static std::vector<size_t> stroke_starts;
-static std::vector<std::vector<PaintedVoxel>> redo_strokes;
+static std::vector<voxen::Artwork> artworks;
+static std::vector<voxen::ArtworkSnapshot<PaintedVoxel>> redo_artworks;
+static uint64_t next_artwork_id = 1;
+static bool stroke_active = false;
+static voxen::Artwork pending_artwork{};
+// Begin a semantic artwork before generating any voxels.
+static void begin_artwork(vec3 origin, float extent = 0.0f) {
+    if (stroke_active || voxels.size() >= 4096) return;
+    pending_artwork = {};
+    pending_artwork.id = next_artwork_id++;
+    pending_artwork.first_voxel = static_cast<uint32_t>(voxels.size());
+    pending_artwork.generator = algorithm_mode;
+    pending_artwork.shape = selected_shape;
+    pending_artwork.animation = effect_mode;
+    pending_artwork.shader = gpu_preset;
+    pending_artwork.sound = sound_mode;
+    pending_artwork.origin = origin;
+    pending_artwork.extent = extent;
+    stroke_active = true;
+}
+// Finalize only non-empty artworks. Undo/redo works on semantic units.
+static void finish_artwork() {
+    if (!stroke_active) return;
+    stroke_active = false;
+    pending_artwork.voxel_count =
+        static_cast<uint32_t>(voxels.size()) - pending_artwork.first_voxel;
+    if (pending_artwork.voxel_count) artworks.push_back(pending_artwork);
+}
 static constexpr size_t max_voxels = 4096;
 static bool trigger_down = false;
 static bool last_paint_valid = false;
@@ -150,7 +177,7 @@ static void add_voxel(vec3 p,float size) {
            std::fabs(v.position.y-p.y)<gap &&
            std::fabs(v.position.z-p.z)<gap) return;
     }
-    redo_strokes.clear();
+    redo_artworks.clear();
     const float phase=p.x*11+p.y*7+p.z*13;
     voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,gpu_preset,phase,0.0f,0.0f,0.0f,false});
     if(sound_mode>0 && tones[sound_mode-1] && (++note_stride%8)==1)
@@ -293,16 +320,16 @@ static void commit_volume() {
     const float spacing=side/n;
     // Capped at 1331 candidate samples and 4096 accepted voxels.
     if(voxels.size()>=max_voxels) return;
-    stroke_starts.push_back(voxels.size());
+    begin_artwork(center,side);
     if(algorithm_mode==6 || algorithm_mode==7) {
         generate_planar_fractal(center,side,algorithm_mode==7);
-        if(stroke_starts.back()==voxels.size()) stroke_starts.pop_back();
+        finish_artwork();
         last_paint_valid=false;
         return;
     }
     if(algorithm_mode==10) {
         generate_lorenz(center,side);
-        if(stroke_starts.back()==voxels.size()) stroke_starts.pop_back();
+        finish_artwork();
         last_paint_valid=false;
         return;
     }
@@ -346,6 +373,7 @@ static void update_brush() {
     const controller_t* right = input_controller(handed_right);
     if (!right || !(right->tracked & button_state_active)) {
         trigger_down = false;
+        finish_artwork();
         last_paint_valid = false;
         volume_active = false;
         return;
@@ -376,6 +404,7 @@ static void update_brush() {
     // UI owns the trigger while aiming at a panel.
     if(menu_aiming || menu_capture) {
         if(volume_active) volume_active=false;
+        finish_artwork();
         last_paint_valid=false; trigger_down=false; return;
     }
     if(algorithm_mode>=0) {
@@ -398,10 +427,14 @@ static void update_brush() {
     render_add_mesh(shape_meshes[selected_shape], material,
         matrix_ts(tip, {voxel_size, voxel_size, voxel_size}),
         color_hsv(hue, 1.0f, 1.0f, 1.0f));
-    if (!painting || !pressed) { last_paint_valid = false; return; }
+    if (!painting || !pressed) {
+        finish_artwork();
+        last_paint_valid = false;
+        return;
+    }
 
     if (!last_paint_valid) {
-        if (voxels.size() < max_voxels) stroke_starts.push_back(voxels.size());
+        begin_artwork(tip);
         paint_at(tip);
         last_paint = tip;
         last_paint_valid = true;
@@ -421,22 +454,27 @@ static void update_brush() {
 
 
 static void undo_stroke() {
-    if (stroke_starts.empty()) return;
-    const size_t start = stroke_starts.back();
-    stroke_starts.pop_back();
-    redo_strokes.emplace_back(voxels.begin() + start, voxels.end());
-    voxels.resize(start);
+    finish_artwork();
+    if (artworks.empty()) return;
+    auto artwork = artworks.back();
+    artworks.pop_back();
+    // All artworks are appended chronologically; the last one is a suffix.
+    if (artwork.first_voxel + artwork.voxel_count != voxels.size()) return;
+    voxen::ArtworkSnapshot<PaintedVoxel> snapshot;
+    snapshot.artwork = artwork;
+    snapshot.voxels.assign(voxels.begin()+artwork.first_voxel,voxels.end());
+    redo_artworks.push_back(std::move(snapshot));
+    voxels.resize(artwork.first_voxel);
     last_paint_valid = false;
 }
 static void redo_stroke() {
-    if (redo_strokes.empty()) return;
-    std::vector<PaintedVoxel> stroke = std::move(redo_strokes.back());
-    redo_strokes.pop_back();
-    stroke_starts.push_back(voxels.size());
-    for (auto &v : stroke) {
-        if (voxels.size() >= max_voxels) break;
-        voxels.push_back(v);
-    }
+    if (redo_artworks.empty()) return;
+    auto snapshot = std::move(redo_artworks.back());
+    redo_artworks.pop_back();
+    if (snapshot.voxels.size() > max_voxels - voxels.size()) return;
+    snapshot.artwork.first_voxel = static_cast<uint32_t>(voxels.size());
+    voxels.insert(voxels.end(),snapshot.voxels.begin(),snapshot.voxels.end());
+    artworks.push_back(snapshot.artwork);
     last_paint_valid = false;
 }
 static void update_left_buttons() {
