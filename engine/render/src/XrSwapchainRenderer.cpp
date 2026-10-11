@@ -227,9 +227,12 @@ Mat4 viewMatrix(const XrPosef& pose) {
     return multiply(rot, t);
 }
 
-Mat4 modelMatrix(float x = 0.0F, float y = 0.0F, float scale = 0.25F, float z = -1.5F) {
+Mat4 modelMatrix(float x = 0.0F, float y = 0.0F, float scale = 0.25F, float z = -1.5F, float yaw = 0.0F) {
     Mat4 m{};
-    m.m[0]=m.m[5]=m.m[10]=scale;
+    const float c = std::cos(yaw), si = std::sin(yaw);
+    m.m[0]=c*scale; m.m[2]=-si*scale;
+    m.m[5]=scale;
+    m.m[8]=si*scale; m.m[10]=c*scale;
     m.m[12]=x;
     m.m[13]=y;
     m.m[15]=1.0F;
@@ -443,7 +446,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         return magnitude <= deadzone ? 0.0F
             : std::copysign((magnitude - deadzone) / (1.0F - deadzone), value);
     };
-    constexpr float scales[4] = {0.34F, 0.31F, 0.31F, 0.45F};
+    const auto& artworks = scene_.artworks();
     controllerPoses_ = poses;
     controllerTracked_ = tracked;
 
@@ -465,7 +468,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         float bestDistance = 10.0F;
         for (int i = 0; i < 4; ++i) {
             if (heldArtwork_[1-hand] == i) continue;
-            const auto& c = artworkPositions_[i];
+            const auto& c = artworks[i].transform.position;
             const float vx = c[0] - origin[0];
             const float vy = c[1] - origin[1];
             const float vz = c[2] - origin[2];
@@ -473,7 +476,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
             if (along <= 0.05F || along > 5.0F) continue;
             const float perpendicularSquared = (std::max)(0.0F, vx*vx + vy*vy + vz*vz - along*along);
             // Inflate the artwork's invisible pick volume slightly for comfortable selection.
-            const float radius = scales[i] * (i == 0 ? 1.05F : 1.55F) + 0.08F;
+            const float radius = artworks[i].transform.scale * (i == 0 ? 1.05F : 1.55F) + 0.08F;
             if (perpendicularSquared <= radius*radius && along < bestDistance) {
                 bestDistance = along;
                 nearest = i;
@@ -491,7 +494,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
                 // Retain the point on the aim ray and the initial artwork offset.
                 // Rotation of the wrist now moves the artwork, not only translation
                 // of the entire controller.
-                const auto& c = artworkPositions_[nearest];
+                const auto& c = scene_.artworks()[nearest].transform.position;
                 grabDistances_[hand] = (c[0]-origin[0])*dx +
                                        (c[1]-origin[1])*dy +
                                        (c[2]-origin[2])*dz;
@@ -518,7 +521,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
             const float rightZ = horizontalLength > 0.001F ? dx/horizontalLength : 0.0F;
             stickOffsets_[hand][0] += rightX * sx * stickSpeed * dt;
             stickOffsets_[hand][2] += rightZ * sx * stickSpeed * dt;
-            auto& c = artworkPositions_[heldArtwork_[hand]];
+            auto& c = scene_.artworks()[heldArtwork_[hand]].transform.position;
             const float dir[3] = {dx, dy, dz};
             for (int k = 0; k < 3; ++k) {
                 c[k] = origin[k] + dir[k]*grabDistances_[hand] +
@@ -569,22 +572,36 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     const float seconds = std::chrono::duration<float>(
         std::chrono::steady_clock::now() - animationStart_).count();
     const Mat4 projView = multiply(projection(xrView.fov, 0.05F, 100.0F), viewMatrix(xrView.pose));
-    struct Artwork { float x; float y; float scale; float shape; VkPipeline pipeline; uint32_t vertices; };
-    const std::array<Artwork, 4> scene{{
-        {-1.05F, 0.0F, 0.34F, 0.0F, pipeline_, 36},
-        {-0.35F, 0.0F, 0.31F, 0.0F, organicaPipeline_, 48 * 24 * 6},
-        { 0.35F, 0.0F, 0.31F, 1.0F, organicaPipeline_, 48 * 24 * 6},
-        { 1.05F, 0.0F, 0.45F, 0.0F, fractalPipeline_, 6},
-    }};
-    for (const auto& art : scene) {
-        vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, art.pipeline);
-        const auto& pos = artworkPositions_[&art - scene.data()];
-        const Mat4 mvp = multiply(projView, modelMatrix(pos[0], pos[1], art.scale, pos[2]));
-        ProceduralPushConstants constants{mvp, {seconds, 1.0F, 1.0F, art.shape}};
+    for (const auto& artwork : scene_.artworks()) {
+        VkPipeline artPipeline = pipeline_;
+        uint32_t vertices = 36;
+        float shape = 0.0F;
+        switch (artwork.kind) {
+            case voxen::scene::ArtworkKind::NeonCube:
+                break;
+            case voxen::scene::ArtworkKind::OrganicSphere:
+                artPipeline = organicaPipeline_;
+                vertices = 48 * 24 * 6;
+                break;
+            case voxen::scene::ArtworkKind::OrganicTorus:
+                artPipeline = organicaPipeline_;
+                vertices = 48 * 24 * 6;
+                shape = 1.0F;
+                break;
+            case voxen::scene::ArtworkKind::Fractal:
+                artPipeline = fractalPipeline_;
+                vertices = 6;
+                break;
+        }
+        vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, artPipeline);
+        const auto& t = artwork.transform;
+        const Mat4 mvp = multiply(projView, modelMatrix(
+            t.position[0], t.position[1], t.scale, t.position[2], t.yawRadians));
+        ProceduralPushConstants constants{mvp, {seconds, artwork.animationSpeed, 1.0F, shape}};
         vkCmdPushConstants(commandBuffer_, pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0, sizeof(constants), &constants);
-        vkCmdDraw(commandBuffer_, art.vertices, 1, 0, 0);
+        vkCmdDraw(commandBuffer_, vertices, 1, 0, 0);
     }
     // Draw the visible controller rays last; depth testing hides them behind artwork.
     vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, laserPipeline_);
@@ -597,7 +614,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const float dx = -2.0F * (q.x*q.z + q.w*q.y);
             const float dy = -2.0F * (q.y*q.z - q.w*q.x);
             const float dz = -(1.0F - 2.0F * (q.x*q.x + q.y*q.y));
-            const auto& c = artworkPositions_[target];
+            const auto& c = scene_.artworks()[target].transform.position;
             length = std::clamp(
                 (c[0]-controllerPoses_[hand].position.x)*dx +
                 (c[1]-controllerPoses_[hand].position.y)*dy +
