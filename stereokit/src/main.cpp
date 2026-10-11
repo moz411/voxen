@@ -12,8 +12,8 @@ sk_settings_t app_settings = {"Voxen StereoKit"};
 static pose_t palette = {{-0.25f, 0.0f, -0.55f}, quat_identity};
 static int menu_page = 0;
 static constexpr int page_count = 4;
-static constexpr float menu_width = 0.24f;
-static constexpr float menu_height = 0.30f;
+static constexpr float menu_width = 0.17f;
+static constexpr float menu_height = 0.23f;
 static float carousel_angle = 0.0f;
 static float target_angle = 0.0f;
 static pose_t carousel_base = pose_identity;
@@ -28,7 +28,10 @@ static float menu_hit_y = 0.0f;
 static material_t carousel_mat = nullptr;
 static bool stick_latched = false;
 static bool show_ui_ray = true;
-static float voxel_size = 0.045f;
+static float voxel_size = 0.04f;
+static int selected_shape = 0;
+static mesh_t sphere_mesh = nullptr;
+static float stick_repeat = 0.0f;
 static float hue = 0.45f;
 static bool painting = true;
 static bool edges_enabled = true;
@@ -38,7 +41,7 @@ static float background_hue = 0.64f;
 static float background_brightness = 0.33f;
 static mesh_t cube = nullptr;
 static material_t material = nullptr;
-struct PaintedVoxel { vec3 position; float size; color128 tint; };
+struct PaintedVoxel { vec3 position; float size; color128 tint; int shape; };
 static std::vector<PaintedVoxel> voxels;
 static std::vector<size_t> stroke_starts;
 static std::vector<std::vector<PaintedVoxel>> redo_strokes;
@@ -64,9 +67,18 @@ static vec3 aim_forward(quat q) {
 }
 static void paint_at(vec3 position) {
     if (voxels.size() >= max_voxels) return;
+    const float size = voxel_size;
+    position = {std::round(position.x/size)*size,
+                std::round(position.y/size)*size,
+                std::round(position.z/size)*size};
+    for (const auto& v : voxels) {
+        const float min_gap = (v.size + size)*0.5f - 0.0001f;
+        if (std::fabs(v.position.x-position.x) < min_gap &&
+            std::fabs(v.position.y-position.y) < min_gap &&
+            std::fabs(v.position.z-position.z) < min_gap) return;
+    }
     redo_strokes.clear();
-    voxels.push_back({position, voxel_size,
-        color_hsv(hue, 1.0f, 1.0f, 1.0f)});
+    voxels.push_back({position, size, color_hsv(hue,1,1,1), selected_shape});
 }
 static void update_brush() {
     const controller_t* right = input_controller(handed_right);
@@ -74,6 +86,12 @@ static void update_brush() {
         trigger_down = false;
         last_paint_valid = false;
         return;
+    }
+    stick_repeat -= time_stepf();
+    if (std::fabs(right->stick.y) > 0.65f && stick_repeat <= 0) {
+        voxel_size = std::clamp(voxel_size + (right->stick.y > 0 ? 0.01f : -0.01f),
+                                0.01f, 0.12f);
+        stick_repeat = 0.20f;
     }
     const bool pressed = trigger_down
         ? right->trigger > 0.45f : right->trigger > trigger_threshold;
@@ -87,7 +105,7 @@ static void update_brush() {
     // Do not paint through the UI when the right ray targets the palette.
     if (menu_aiming || menu_capture) { last_paint_valid = false; trigger_down = false; return; }
     // Live fixed-size, axis-aligned brush cursor.
-    render_add_mesh(cube, material,
+    render_add_mesh(selected_shape ? sphere_mesh : cube, material,
         matrix_ts(tip, {voxel_size, voxel_size, voxel_size}),
         color_hsv(hue, 1.0f, 1.0f, 1.0f));
     if (!painting || !pressed) { last_paint_valid = false; return; }
@@ -148,7 +166,7 @@ static void update_controller_palette() {
         target_angle += direction * 90.0f;
         stick_latched = true;
     }
-    const vec3 local_offset = {0.0f, 0.095f, -0.055f};
+    const vec3 local_offset = {0.0f, 0.06f, -0.025f};
     const vec3 offset = quat_mul_vec(left->pose.orientation, local_offset);
     carousel_base.position = {left->pose.position.x + offset.x,
                               left->pose.position.y + offset.y,
@@ -181,12 +199,12 @@ static void update_controller_palette() {
     // anchor. Anchor at the RIGHT edge so the 23 cm window is centered
     // on the 24 cm face; previous -X offset shifted the entire UI left.
     // Keep UI normal independent of the decorative carousel spin.
-    const vec3 anchor = quat_mul_vec(carousel_base.orientation,
-        {0.115f, menu_height*0.5f - 0.008f, -menu_width*0.5f - 0.012f});
+    const vec3 anchor = quat_mul_vec(orientation,
+        {0.08f, menu_height*0.5f - 0.008f, -menu_width*0.5f - 0.005f});
     palette.position = {carousel_base.position.x + anchor.x,
                         carousel_base.position.y + anchor.y,
                         carousel_base.position.z + anchor.z};
-    palette.orientation = carousel_base.orientation;
+    palette.orientation = orientation;
 }
 // Controller ray to UI-plane intersection, independent of StereoKit's
 // near-hand widget interaction. Local top-left is the window pose.
@@ -220,7 +238,7 @@ static void update_menu_ray() {
     if (t <= 0.0f || t > 2.0f) return;
     const float x = origin_local.x + t * direction_local.x;
     const float y = origin_local.y + t * direction_local.y;
-    if (x < -0.005f || x > 0.235f || y > 0.005f || y < -0.31f) return;
+    if (x < -0.005f || x > 0.16f || y > 0.005f || y < -0.23f) return;
     menu_aiming = true;
     menu_hit_x = x;
     menu_hit_y = y;
@@ -247,10 +265,10 @@ static void draw_menu_ray() {
 }
 // Fixed layout: the ray and widgets share identical local rectangles.
 // Avoid relying on StereoKit's near-hand interaction for remote trigger clicks.
-static constexpr float control_x = 0.012f;
-static constexpr float control_w = 0.205f;
-static constexpr float control_h = 0.038f;
-static float control_y(int row) { return -0.073f - row * 0.052f; }
+static constexpr float control_x = 0.008f;
+static constexpr float control_w = 0.145f;
+static constexpr float control_h = 0.03f;
+static float control_y(int row) { return -0.045f - row * 0.04f; }
 static bool hit_row(int row) {
     if (!menu_aiming) return false;
     const float top = control_y(row);
@@ -361,6 +379,7 @@ int voxen_stereokit_main() {
     if (!sk_init(app_settings)) return 1;
     edge_passthrough.initialize();
     cube = mesh_find(default_id_mesh_cube);
+    sphere_mesh = mesh_gen_sphere(1.0f,3);
     material = material_copy(material_find(default_id_material));
     voxels.reserve(max_voxels);
     carousel_mat = material_copy(material_find(default_id_material));
@@ -374,39 +393,29 @@ int voxen_stereokit_main() {
         update_controller_palette();
         update_left_buttons();
         update_menu_ray();
-        ui_window_begin("VOXEN | Palette", palette, {0.23f, 0},
+        ui_window_begin("VOXEN", palette, {0.16f, 0},
                         ui_win_normal, ui_move_none);
         if (menu_page == 0) {
-            menu_slider("Voxel size", voxel_size, 0.015f, 0.15f, 0.005f, 0);
-            menu_slider("Color hue", hue, 0.0f, 1.0f, 0.01f, 1);
-            menu_slider("Tip offset", brush_distance, 0.02f, 0.20f, 0.005f, 2);
-            if (menu_button(painting ? "Brush: ON" : "Brush: OFF", 3)) painting = !painting;
+            if (menu_button("Red",0)) hue = 0.0f;
+            if (menu_button("Yellow",1)) hue = 0.16f;
+            if (menu_button("Cyan",2)) hue = 0.5f;
+            if (menu_button("Purple",3)) hue = 0.77f;
         } else if (menu_page == 1) {
-            if (menu_button("Undo stroke", 0)) undo_stroke();
-            if (menu_button("Redo stroke", 1)) redo_stroke();
-            if (menu_button("Clear voxels", 2)) {
-                voxels.clear(); stroke_starts.clear(); redo_strokes.clear();
-                last_paint_valid = false;
-            }
-            if (menu_button(show_ui_ray ? "UI ray: ON" : "UI ray: OFF", 3))
-                show_ui_ray = !show_ui_ray;
+            if (menu_button("Cube",0)) selected_shape = 0;
+            if (menu_button("Sphere",1)) selected_shape = 1;
+            ui_label("Tetrahedron: next");
         } else if (menu_page == 2) {
-            if (edge_passthrough.available) {
-                if (menu_button(edges_enabled ? "Contours: ON" : "Contours: OFF", 0))
-                    edges_enabled = !edges_enabled;
-                menu_slider("Camera alpha", camera_opacity, 0.0f, 1.0f, 0.01f, 1);
-                menu_slider("Edge hue", edge_hue, 0.0f, 1.0f, 0.01f, 2);
-                menu_slider("Background light", background_brightness, 0.0f, 1.0f, 0.01f, 3);
-            } else ui_label("Native contours unavailable");
+            ui_label("SOUNDS");
+            ui_label("Spatial sound: next");
         } else {
-            if (menu_button("Brush page", 0)) menu_page = 0;
-            if (menu_button("Scene page", 1)) menu_page = 1;
-            if (menu_button("FX page", 2)) menu_page = 2;
+            ui_label("SCENES");
+            ui_label("Save / Load: next");
+            ui_label("X Undo / Y Redo");
         }
         ui_window_end();
 
         for (const PaintedVoxel& voxel : voxels)
-            render_add_mesh(cube, material,
+            render_add_mesh(voxel.shape ? sphere_mesh : cube, material,
                 matrix_ts(voxel.position, {voxel.size, voxel.size, voxel.size}),
                 voxel.tint);
         update_brush();
@@ -423,6 +432,7 @@ int voxen_stereokit_main() {
     }, [] {
         edge_passthrough.shutdown();
         mesh_release(cube);
+        mesh_release(sphere_mesh);
         material_release(material);
         material_release(carousel_mat);
     });
