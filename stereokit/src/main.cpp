@@ -12,8 +12,8 @@ sk_settings_t app_settings = {"Voxen StereoKit"};
 static pose_t palette = {{-0.25f, 0.0f, -0.55f}, quat_identity};
 static int menu_page = 0;
 static constexpr int page_count = 4;
-static constexpr float menu_width = 0.24f;
-static constexpr float menu_height = 0.32f;
+static constexpr float menu_width = 0.34f;
+static constexpr float menu_height = 0.47f;
 static float carousel_angle = 0.0f;
 static float target_angle = 0.0f;
 static pose_t carousel_base = pose_identity;
@@ -27,11 +27,12 @@ static bool edges_enabled = true;
 static float camera_opacity = 0.0f;
 static float edge_hue = 0.5f;
 static float background_hue = 0.64f;
-static float background_brightness = 0.12f;
+static float background_brightness = 0.33f;
 static mesh_t cube = nullptr;
 static material_t material = nullptr;
 struct PaintedVoxel { vec3 position; float size; color128 tint; };
 static std::vector<PaintedVoxel> voxels;
+static std::vector<size_t> stroke_starts;
 static constexpr size_t max_voxels = 4096;
 static bool trigger_down = false;
 static bool last_paint_valid = false;
@@ -80,6 +81,7 @@ static void update_brush() {
     if (!painting || !pressed) { last_paint_valid = false; return; }
 
     if (!last_paint_valid) {
+        if (voxels.size() < max_voxels) stroke_starts.push_back(voxels.size());
         paint_at(tip);
         last_paint = tip;
         last_paint_valid = true;
@@ -108,7 +110,7 @@ static void update_controller_palette() {
         target_angle += direction * 90.0f;
         stick_latched = true;
     }
-    const vec3 local_offset = {0.0f, 0.16f, -0.11f};
+    const vec3 local_offset = {0.0f, 0.19f, -0.15f};
     const vec3 offset = quat_mul_vec(left->pose.orientation, local_offset);
     carousel_base.position = {left->pose.position.x + offset.x,
                               left->pose.position.y + offset.y,
@@ -128,11 +130,11 @@ static void update_controller_palette() {
                    {menu_width, menu_height, menu_width}),
         {0.20f, 0.65f, 0.85f, 0.12f});
 
-    // UI is mounted on the front face, with its lower edge above controller.
-    // The active page swaps when the face rotation ends, preventing rear-face
-    // panels from becoming unexpectedly interactive.
+    // StereoKit window pose is the upper-left corner, not the center.
+    // Center a 30 cm-wide page on the front face of the 34 cm cube.
+    // Reserve vertical room for the dynamically sized page's controls.
     const vec3 anchor = quat_mul_vec(carousel_base.orientation,
-        {-menu_width*0.5f, menu_height*0.5f, -menu_width*0.5f - 0.008f});
+        {-0.15f, menu_height*0.5f - 0.008f, -menu_width*0.5f - 0.012f});
     palette.position = {carousel_base.position.x + anchor.x,
                         carousel_base.position.y + anchor.y,
                         carousel_base.position.z + anchor.z};
@@ -249,7 +251,7 @@ int voxen_stereokit_main() {
     ui_enable_far_interact(true);
     sk_run([] {
         update_controller_palette();
-        ui_window_begin("VOXEN | Palette", palette, {0.24f, 0},
+        ui_window_begin("VOXEN | Palette", palette, {0.30f, 0},
                         ui_win_normal, ui_move_none);
         ui_label("Left stick: rotate cube");
         if (menu_page == 0) {
@@ -260,8 +262,12 @@ int voxen_stereokit_main() {
             if (ui_button(painting ? "Brush: ON" : "Brush: OFF")) painting = !painting;
         } else if (menu_page == 1) {
             ui_label("SCENE");
-            if (ui_button("Undo last voxel") && !voxels.empty()) voxels.pop_back();
-            if (ui_button("Clear voxels")) { voxels.clear(); last_paint_valid = false; }
+            if (ui_button("Undo stroke") && !stroke_starts.empty()) {
+                voxels.resize(stroke_starts.back());
+                stroke_starts.pop_back();
+                last_paint_valid = false;
+            }
+            if (ui_button("Clear voxels")) { voxels.clear(); stroke_starts.clear(); last_paint_valid = false; }
             char count[64];
             std::snprintf(count, sizeof(count), "Voxels: %zu / %zu", voxels.size(), max_voxels);
             ui_label(count);
