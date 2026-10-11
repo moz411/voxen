@@ -115,3 +115,19 @@ validation on Quest 3 before merging.
 - Sound and Scene panels are visible placeholders; no fabricated Save/Load or audio action.
 - X/Y remain stroke Undo/Redo. Controller ray/trigger actions are still experimental.
 - Quest device compilation and face alignment not yet verified.
+
+
+## Face-aware remote controls experiment
+
+Branch `feature/vr-palette-ray-controls`:
+- Right controller ray displays only when intersecting one of the four physical panel planes.
+- Right trigger on the targeted face invokes manual UI hit testing; painting is inhibited for the duration of the UI press.
+- COLOR face has a 4x4 HSV swatch palette.
+- Right stick horizontal changes voxel size (+/- 1 cm per deflection);
+  right stick vertical cycles Cube/Sphere.
+- Brush cursor moved closer to the controller (2.5 cm from aim pose).
+- Each face panel and its ray hit plane moved 15 mm right to address title drift.
+
+Implementation uses custom ray hit testing instead of StereoKit hand proximity.
+Not yet built or validated on Quest; face alignment and swatch targeting still
+need hands-on testing.
