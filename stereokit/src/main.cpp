@@ -11,6 +11,10 @@ static float voxel_size = 0.045f;
 static float hue = 0.45f;
 static bool painting = true;
 static bool edges_enabled = false;
+static float camera_opacity = 0.0f;
+static float edge_hue = 0.5f;
+static float background_hue = 0.0f;
+static float background_brightness = 0.0f;
 static mesh_t cube = nullptr;
 static material_t material = nullptr;
 
@@ -65,11 +69,11 @@ struct EdgePassthrough {
         std::printf("[Voxen] XR_FB_passthrough edge layer ready\n");
     }
 
-    void frame(bool edges) {
+    void frame(bool edges, float camera_alpha, color128 edge_color) {
         if (!available || !edges) return;
         XrPassthroughStyleFB style{XR_TYPE_PASSTHROUGH_STYLE_FB};
-        style.textureOpacityFactor = 1.0f;
-        style.edgeColor = {0.0f, 1.0f, 1.0f, 1.0f};
+        style.textureOpacityFactor = camera_alpha;
+        style.edgeColor = {edge_color.r, edge_color.g, edge_color.b, edge_color.a};
         const auto result = set_style(layer, &style);
         if (XR_FAILED(result)) return;
         XrCompositionLayerPassthroughFB composition{
@@ -77,7 +81,8 @@ struct EdgePassthrough {
         composition.flags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
         composition.layerHandle = layer;
         // Behind the stereoscopic projection and UI.
-        backend_openxr_composition_layer(&composition, sizeof(composition), -100);
+        // Place edges above the opaque StereoKit background.
+        backend_openxr_composition_layer(&composition, sizeof(composition), 100);
     }
 
     void shutdown() {
@@ -107,8 +112,17 @@ int voxen_stereokit_main() {
         ui_hslider("Hue", hue, 0.0f, 1.0f, 0.01f);
         if (ui_button(painting ? "Brush: ON" : "Brush: OFF")) painting = !painting;
         if (edge_passthrough.available) {
-            if (ui_button(edges_enabled ? "Contours cyan: ON" : "Contours cyan: OFF"))
+            if (ui_button(edges_enabled ? "Contours: ON" : "Contours: OFF"))
                 edges_enabled = !edges_enabled;
+            if (edges_enabled) {
+                ui_label("Camera opacity");
+                ui_hslider("Camera", camera_opacity, 0.0f, 1.0f, 0.01f);
+                ui_label("Edge hue");
+                ui_hslider("Edge hue", edge_hue, 0.0f, 1.0f, 0.01f);
+                ui_label("Background color");
+                ui_hslider("Background hue", background_hue, 0.0f, 1.0f, 0.01f);
+                ui_hslider("Background brightness", background_brightness, 0.0f, 1.0f, 0.01f);
+            }
         } else {
             ui_label("Contours: XR_FB_passthrough unavailable");
         }
@@ -117,7 +131,15 @@ int voxen_stereokit_main() {
         if (painting)
             mesh_draw(cube, material, matrix_ts({0, 0, -0.8f},
                 {voxel_size, voxel_size, voxel_size}));
-        edge_passthrough.frame(edges_enabled);
+        if (edges_enabled && edge_passthrough.available) {
+            render_enable_skytex(false);
+            render_set_clear_color(
+                color_hsv(background_hue, 1.0f, background_brightness, 1.0f));
+        } else {
+            render_set_clear_color({0, 0, 0, 0});
+        }
+        edge_passthrough.frame(edges_enabled, camera_opacity,
+            color_hsv(edge_hue, 1.0f, 1.0f, 1.0f));
     }, [] {
         edge_passthrough.shutdown();
         mesh_release(cube);
