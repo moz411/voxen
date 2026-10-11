@@ -38,6 +38,8 @@ static sound_t tones[3] = {nullptr,nullptr,nullptr};
 static int sound_mode = 0; // 0 silence, 1 soft bell, 2 bright pulse, 3 bass
 static int effect_mode = 0; // 0 solid, 1 breathe, 2 color wave, 3 shimmer
 static float animation_time = 0.0f;
+static bool lorenz_animated = true;
+static int lorenz_speed = 1; // 0 slow, 1 normal, 2 fast
 static int note_stride = 0;
 static int algorithm_mode = -1;
 static int gpu_preset = 0;
@@ -65,6 +67,7 @@ struct PaintedVoxel {
     int effect;
     int gpu_preset;
     float phase;
+    float reveal_at; // 0 = always visible; otherwise absolute animation time
 };
 static std::vector<PaintedVoxel> voxels;
 static std::vector<size_t> stroke_starts;
@@ -145,7 +148,7 @@ static void add_voxel(vec3 p,float size) {
     }
     redo_strokes.clear();
     const float phase=p.x*11+p.y*7+p.z*13;
-    voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,gpu_preset,phase});
+    voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,gpu_preset,phase,0.0f});
     if(sound_mode>0 && tones[sound_mode-1] && (++note_stride%8)==1)
         sound_play(tones[sound_mode-1],p,0.2f);
 }
@@ -202,6 +205,8 @@ static void generate_lorenz(const vec3& center,float side) {
     vec3 prev{};
     bool have_prev=false;
     const int previous_sound=sound_mode;
+    const float duration=lorenz_speed==0?20.0f:(lorenz_speed==2?4.0f:9.0f);
+    const float start_time=animation_time;
     sound_mode=0; // Avoid hundreds of simultaneous spatial notes at commit.
     for(const auto& q:path) {
         if(voxels.size()>=max_voxels) break;
@@ -209,7 +214,11 @@ static void generate_lorenz(const vec3& center,float side) {
                        center.y+(q.z-mid.z)*scale,
                        center.z+(q.y-mid.y)*scale};
         if(have_prev && dist(at,prev)<size*0.85f) continue;
+        const size_t before=voxels.size();
         add_voxel(at,size);
+        if(voxels.size()>before && lorenz_animated)
+            voxels.back().reveal_at=start_time+duration*
+                (static_cast<float>(&q-&path[0])/static_cast<float>(samples));
         prev=at;
         have_prev=true;
     }
@@ -483,7 +492,16 @@ static void draw_face(int page) {
             if(face_button(face,page,sounds[i],0.12f-i*0.045f,sound_mode==i))
                 sound_mode=i;
     } else if(page==3) {
-        face_text(face,"SAVE / LOAD: SOON",0,0.06f);
+        face_text(face,"LORENZ TIMELINE",0,0.153f);
+        if(face_button(face,page,"STATIC",0.100f,!lorenz_animated))
+            lorenz_animated=false;
+        if(face_button(face,page,"DRAW",0.060f,lorenz_animated))
+            lorenz_animated=true;
+        face_text(face,"NEXT LORENZ STROKE",0,0.015f);
+        static const char* speeds[]={"SLOW 20S","NORMAL 9S","FAST 4S"};
+        for(int i=0;i<3;++i)
+            if(face_button(face,page,speeds[i],-0.046f-i*0.043f,
+                           lorenz_speed==i)) lorenz_speed=i;
     } else {
         static const char* algorithms[]={"SPHERE","JITTER","WAVE","HELIX",
             "SHELL","LATTICE","MANDELBROT","JULIA","BRANCH","CORTEX",
@@ -772,6 +790,7 @@ int voxen_stereokit_main() {
             if(gpu_materials[i]) material_set_float(gpu_materials[i],
                                                      "time",animation_time);
         for(const PaintedVoxel& voxel:voxels) {
+            if(voxel.reveal_at>animation_time) continue;
             const float side=voxel.size*animated_scale(voxel);
             material_t voxel_mat=gpu_materials[voxel.gpu_preset];
             render_add_mesh(voxel.shape?sphere_mesh:cube,
