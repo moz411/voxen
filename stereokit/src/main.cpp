@@ -26,6 +26,7 @@ static vec3 menu_hit{};
 static float menu_hit_x = 0.0f;
 static float menu_hit_y = 0.0f;
 static material_t carousel_mat = nullptr;
+static text_style_t panel_text_style = 0;
 static bool stick_latched = false;
 static bool show_ui_ray = true;
 static float voxel_size = 0.04f;
@@ -174,20 +175,72 @@ static void update_left_buttons() {
 static constexpr float panel_width = 0.16f;
 static constexpr float panel_height = 0.21f;
 static constexpr float panel_lift = 0.002f;
-static pose_t face_panel_pose(int page) {
-    const quat spin = quat_from_angles(0, carousel_angle, 0);
-    const quat cube_rotation = quat_mul(carousel_base.orientation, spin);
-    const quat rotation = quat_mul(cube_rotation,
-        quat_from_angles(0, -90.0f * page, 0));
-    const vec3 local = {panel_width * 0.5f,
-                        panel_height * 0.5f,
-                        -menu_width * 0.5f - panel_lift};
-    const vec3 offset = quat_mul_vec(rotation, local);
-    return {{carousel_base.position.x + offset.x,
-             carousel_base.position.y + offset.y,
-             carousel_base.position.z + offset.z}, rotation};
-}
 
+static pose_t face_panel_pose(int page) {
+    const quat rotation = quat_mul(
+        quat_mul(carousel_base.orientation,quat_from_angles(0,carousel_angle,0)),
+        quat_from_angles(0,-90.0f*page,0));
+    const vec3 offset=quat_mul_vec(rotation,{0,0,-menu_width*0.5f-0.003f});
+    return {{carousel_base.position.x+offset.x,
+             carousel_base.position.y+offset.y,
+             carousel_base.position.z+offset.z},rotation};
+}
+static vec3 panel_world(const pose_t& face,float x,float y,float z=0) {
+    const vec3 o=quat_mul_vec(face.orientation,{x,y,z});
+    return {face.position.x+o.x,face.position.y+o.y,face.position.z+o.z};
+}
+static void face_rect(const pose_t& face,float x,float y,float w,float h,
+                      color128 color,float z=-0.002f) {
+    render_add_mesh(cube,carousel_mat,matrix_trs(
+        panel_world(face,x,y,z),face.orientation,{w,h,0.002f}),color);
+}
+static void face_text(const pose_t& face,const char* label,float x,float y) {
+    const quat rotation=quat_mul(face.orientation,quat_from_angles(0,180,0));
+    text_add_at(label,matrix_trs(panel_world(face,x,y,-0.006f),
+        rotation,{1,1,1}),panel_text_style);
+}
+static bool panel_hover(int page,float x,float y,float w,float h) {
+    return menu_aiming && hit_page==page &&
+       std::fabs(menu_hit_x-x)<w*0.5f &&
+       std::fabs(menu_hit_y-y)<h*0.5f;
+}
+static bool face_button(const pose_t& face,int page,const char* label,float y) {
+    const bool hover=panel_hover(page,0,y,0.135f,0.042f);
+    face_rect(face,0,y,0.135f,0.038f,
+        hover?color128{0.15f,0.75f,0.9f,0.9f}:
+              color128{0.12f,0.25f,0.35f,0.85f});
+    face_text(face,label,0,y);
+    if(hover && menu_click && click_sound)
+        sound_play(click_sound,menu_hit,0.35f);
+    return hover && menu_click;
+}
+static void draw_face(int page) {
+    const pose_t face=face_panel_pose(page);
+    face_rect(face,0,0,panel_width,panel_height,
+        {0.06f,0.13f,0.22f,0.80f},0);
+    static const char* titles[]={"COLORS","SHAPES","SOUNDS","SCENES"};
+    face_text(face,titles[page],0,0.085f);
+    if(page==0) {
+        for(int i=0;i<16;++i) {
+            const float x=-0.057f+(i%4)*0.038f;
+            const float y=0.041f-(i/4)*0.038f;
+            const bool hover=panel_hover(page,x,y,0.034f,0.034f);
+            face_rect(face,x,y,hover?0.038f:0.032f,
+                hover?0.038f:0.032f,color_hsv(i/16.0f,1,1,1));
+            if(hover && menu_click) {
+                hue=i/16.0f;
+                if(click_sound) sound_play(click_sound,menu_hit,0.35f);
+            }
+        }
+    } else if(page==1) {
+        if(face_button(face,page,"CUBE",0.035f)) selected_shape=0;
+        if(face_button(face,page,"SPHERE",-0.025f)) selected_shape=1;
+    } else if(page==2) {
+        face_text(face,"AUDIO: SOON",0,0.015f);
+    } else {
+        face_text(face,"SAVE/LOAD: SOON",0,0.015f);
+    }
+}
 static void update_controller_palette() {
     const controller_t* left = input_controller(handed_left);
     if (!left || !(left->tracked & button_state_active)) return;
@@ -267,12 +320,12 @@ static void update_menu_ray() {
         const float t = -o.z / d.z;
         if (t <= 0.0f || t >= closest) continue;
         const float x = o.x + t*d.x, y = o.y + t*d.y;
-        // StereoKit's window extends LEFT from the right-edge anchor.
-        if (x < -panel_width || x > 0.0f || y > 0.0f || y < -panel_height) continue;
+        if (std::fabs(x)>panel_width*0.5f ||
+            std::fabs(y)>panel_height*0.5f) continue;
         closest = t;
         hit_page = page;
         menu_aiming = true;
-        menu_hit_x = -x; // positive logical left-to-right panel position
+        menu_hit_x = x;
         menu_hit_y = y;
         menu_hit = {start.x+forward.x*t, start.y+forward.y*t,
                     start.z+forward.z*t};
@@ -440,66 +493,14 @@ int voxen_stereokit_main() {
     input_hand_visible(handed_right, false);
     input_hand_solid(handed_left, false);
     input_hand_solid(handed_right, false);
-    ui_enable_far_interact(true);
+    ui_enable_far_interact(false);
+    panel_text_style=text_make_style(font_find(default_id_font),0.012f,
+        {0.95f,0.98f,1,1});
     sk_run([] {
         update_controller_palette();
         update_left_buttons();
         update_menu_ray();
-        // Four independent UI surfaces rigidly fixed to four cube faces.
-        // Active face uses the same pose as the controller ray intersection.
-        for (int page=0; page<page_count; ++page) {
-            pose_t face_pose = face_panel_pose(page);
-            const quat face_rot = face_pose.orientation;
-            ui_window_begin(page==0 ? "COLORS" : page==1 ? "SHAPES" :
-                            page==2 ? "SOUNDS" : "SCENES",
-                            face_pose, {panel_width,0}, ui_win_normal, ui_move_none);
-            // Remote click is accepted only on the active facing page.
-            const bool ray_was_click = menu_click;
-            if (page != hit_page) menu_click = false;
-        if (page == 0) {
-            // 16-color HSV palette: four rows, four swatches per row.
-            // Colored swatches are rendered on the actual face, and clicking
-            // uses the ray's face-local coordinates, not proximity hands.
-            for (int i=0;i<16;i++) {
-                const int col=i%4, row=i/4;
-                const float sw=0.034f, sh=0.034f;
-                const float lx = 0.014f + col*0.035f;
-                const float ly = -0.052f-row*0.038f;
-                const bool hover = page==hit_page && menu_aiming &&
-                    menu_hit_x>=lx && menu_hit_x<lx+sw &&
-                    menu_hit_y<=ly && menu_hit_y>ly-sh;
-                const color128 tint=color_hsv(i/16.0f,1.0f,1.0f,1.0f);
-                // The color chips use the SAME panel-local pose as the ray.
-                // StereoKit windows extend in local negative X.
-                const vec3 local={-lx-sw*0.5f, ly-sh*0.5f,
-                                  -0.004f};
-                const vec3 off=quat_mul_vec(face_rot,local);
-                const vec3 world={
-                    face_pose.position.x+off.x,
-                    face_pose.position.y+off.y,
-                    face_pose.position.z+off.z};
-                render_add_mesh(cube,material,matrix_trs(world,face_rot,
-                    {sw*(hover?1.18f:1.0f),sh*(hover?1.18f:1.0f),0.003f}),tint);
-                if (hover && menu_click) {
-                    hue=i/16.0f;
-                    if (click_sound) sound_play(click_sound,menu_hit,0.35f);
-                }
-            }
-        } else if (page == 1) {
-            if (menu_button("Cube",0)) selected_shape = 0;
-            if (menu_button("Sphere",1)) selected_shape = 1;
-            ui_label("Tetrahedron: next");
-        } else if (page == 2) {
-            ui_label("SOUNDS");
-            ui_label("Spatial sound: next");
-        } else {
-            ui_label("SCENES");
-            ui_label("Save / Load: next");
-            ui_label("X Undo / Y Redo");
-        }
-            menu_click = ray_was_click;
-            ui_window_end();
-        }
+        for(int page=0;page<page_count;++page) draw_face(page);
 
         for (const PaintedVoxel& voxel : voxels)
             render_add_mesh(voxel.shape ? sphere_mesh : cube, material,
