@@ -64,7 +64,7 @@ if(VOXEN_USE_STEREOKIT)
         target_link_libraries(voxen PRIVATE StereoKitC ${VOXEN_OPENXR_HEADERS_TARGET} android log)
         skshaderc_compile_headers(voxen
             ${CMAKE_CURRENT_BINARY_DIR}/voxen_shaders/
-            "-O3 -f -e -t ${SK_SHADER_TARGETS} -i ${stereokitc_SOURCE_DIR}/tools/include"
+            "-O3 -f -e -t e -i ${stereokitc_SOURCE_DIR}/tools/include"
             stereokit/shaders/voxen_voxel.hlsl)
         target_include_directories(voxen PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/voxen_shaders/)
     else()
@@ -72,10 +72,14 @@ if(VOXEN_USE_STEREOKIT)
         target_link_libraries(voxen_stereokit PRIVATE StereoKitC ${VOXEN_OPENXR_HEADERS_TARGET})
         skshaderc_compile_headers(voxen_stereokit
             ${CMAKE_CURRENT_BINARY_DIR}/voxen_shaders/
-            "-O3 -f -e -t ${SK_SHADER_TARGETS} -i ${stereokitc_SOURCE_DIR}/tools/include"
+            "-O3 -f -e -t e -i ${stereokitc_SOURCE_DIR}/tools/include"
             stereokit/shaders/voxen_voxel.hlsl)
         target_include_directories(voxen_stereokit PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/voxen_shaders/)
     endif()
+    # Generated HLSL header is included directly by main.cpp; depend on it
+    # explicitly so Ninja never compiles main.cpp ahead of skshaderc.
+    set_source_files_properties(stereokit/src/main.cpp PROPERTIES
+        OBJECT_DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/voxen_shaders/voxen_voxel.hlsl.h")
     return()
 endif()
 
