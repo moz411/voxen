@@ -5,6 +5,9 @@
 #include "voxel_shapes.h"
 #include "artwork.h"
 #include <cstdio>
+#include <fstream>
+#include <cstdint>
+#include <cstring>
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -14,7 +17,7 @@ using namespace sk;
 sk_settings_t app_settings = {"Voxen StereoKit"};
 static pose_t palette = {{-0.25f, 0.0f, -0.55f}, quat_identity};
 static int menu_page = 0;
-static constexpr int page_count = 6;
+static constexpr int page_count = 7;
 static constexpr float menu_width = 0.17f;
 static constexpr float menu_height = 0.46f;
 static float carousel_angle = 0.0f;
@@ -42,6 +45,9 @@ static int effect_mode = 0; // 0 solid, 1 breathe, 2 color wave, 3 shimmer
 static float animation_time = 0.0f;
 static int lorenz_playback = 1; // 0 static, 1 once, 2 loop
 static int lorenz_speed = 1; // 0 slow, 1 normal, 2 fast
+static int generator_playback = 1; // 0 static, 1 once, 2 loop
+static int generator_speed = 1;
+static int generator_sound = 0;
 static int note_stride = 0;
 static int algorithm_mode = -1;
 static int gpu_preset = 0;
@@ -55,6 +61,9 @@ static shader_t voxel_shader = nullptr;
 static material_t gpu_materials[6] = {};
 static uint32_t brush_step = 0;
 static bool volume_active = false;
+static bool save_confirmation = false;
+static bool restore_confirmation = false;
+static const char* storage_status = "NOT SAVED";
 static vec3 volume_start{};
 static vec3 volume_end{};
 
@@ -103,7 +112,7 @@ static void begin_artwork(vec3 origin, float extent = 0.0f) {
     pending_artwork.shape = selected_shape;
     pending_artwork.animation = effect_mode;
     pending_artwork.shader = gpu_preset;
-    pending_artwork.sound = sound_mode;
+    pending_artwork.sound = generator_sound;
     pending_artwork.origin = origin;
     pending_artwork.extent = extent;
     stroke_active = true;
@@ -208,7 +217,7 @@ static void generate_lorenz(const vec3& center,float side) {
     vec3 prev{};
     bool have_prev=false;
     const int previous_sound=sound_mode;
-    const float duration=lorenz_speed==0?20.0f:(lorenz_speed==2?4.0f:9.0f);
+    const float duration=generator_speed==0?20.0f:(generator_speed==2?4.0f:9.0f);
     const float start_time=animation_time;
     sound_mode=0; // Avoid hundreds of simultaneous spatial notes at commit.
     for(size_t point_index=0;point_index<path.size();++point_index) {
@@ -220,13 +229,13 @@ static void generate_lorenz(const vec3& center,float side) {
         if(have_prev && dist(at,prev)<size*0.85f) continue;
         const size_t before=voxels.size();
         add_voxel(at,size);
-        if(voxels.size()>before && lorenz_playback!=0) {
+        if(voxels.size()>before && generator_playback!=0) {
             auto& v=voxels.back();
             v.reveal_start=start_time;
             v.reveal_progress=static_cast<float>(point_index)/
                                static_cast<float>(samples);
             v.reveal_duration=duration;
-            v.reveal_loop=(lorenz_playback==2);
+            v.reveal_loop=(generator_playback==2);
         }
         prev=at;
         have_prev=true;
@@ -365,8 +374,82 @@ static void commit_volume() {
         case 12: generate_fibonacci(center,side); break;
         default: break;
     }
+    // Uniform reveal scheduler for every generator, preserving Lorenz's
+    // trajectory order. Previous artworks keep their own playback settings.
+    const float duration=generator_speed==0?20.0f:(generator_speed==2?4.0f:9.0f);
+    const size_t first=pending_artwork.first_voxel;
+    const size_t count=voxels.size()-first;
+    for(size_t i=0;i<count;++i) {
+        PaintedVoxel& v=voxels[first+i];
+        v.reveal_start=animation_time;
+        v.reveal_progress=count>1?static_cast<float>(i)/static_cast<float>(count-1):0.0f;
+        v.reveal_duration=generator_playback==0?0.0f:duration;
+        v.reveal_loop=generator_playback==2;
+    }
+    if(generator_sound>0 && tones[generator_sound-1])
+        sound_play(tones[generator_sound-1],center,0.22f);
     finish_artwork();
     last_paint_valid=false;
+}
+// Versioned binary slot. A temporary file isn't used here because some
+// Android app sandboxes restrict rename across storage locations.
+static const char* scene_path() {
+#ifdef __ANDROID__
+    return "/data/data/org.voxen.xr/files/voxen_gallery.bin";
+#else
+    return "voxen_gallery.bin";
+#endif
+}
+struct SceneHeader { uint32_t magic,version,count; };
+struct SavedVoxel {
+    float x,y,z,size,r,g,b,a,phase,progress,duration;
+    int32_t shape,effect,shader;
+    uint8_t loop;
+};
+static_assert(sizeof(SavedVoxel)==60,"Unexpected persisted voxel layout");
+static void save_scene() {
+    std::ofstream out(scene_path(),std::ios::binary|std::ios::trunc);
+    if(!out) {storage_status="SAVE FAILED";return;}
+    SceneHeader h{0x564f584eu,1,static_cast<uint32_t>(voxels.size())};
+    out.write(reinterpret_cast<const char*>(&h),sizeof(h));
+    for(const auto& v:voxels) {
+        SavedVoxel p{v.position.x,v.position.y,v.position.z,v.size,
+            v.tint.r,v.tint.g,v.tint.b,v.tint.a,v.phase,v.reveal_progress,
+            v.reveal_duration,v.shape,v.effect,v.gpu_preset,
+            static_cast<uint8_t>(v.reveal_loop)};
+        out.write(reinterpret_cast<const char*>(&p),sizeof(p));
+    }
+    out.flush();
+    storage_status=out.good()?"SAVED":"SAVE FAILED";
+}
+static void load_scene() {
+    std::ifstream in(scene_path(),std::ios::binary);
+    SceneHeader h{};
+    if(!in.read(reinterpret_cast<char*>(&h),sizeof(h)) ||
+       h.magic!=0x564f584eu || h.version!=1 || h.count>max_voxels) {
+        storage_status="INVALID / NO FILE";return;
+    }
+    std::vector<PaintedVoxel> recovered;
+    recovered.reserve(h.count);
+    for(uint32_t i=0;i<h.count;++i) {
+        SavedVoxel p{};
+        if(!in.read(reinterpret_cast<char*>(&p),sizeof(p)) ||
+           !std::isfinite(p.x)||!std::isfinite(p.y)||!std::isfinite(p.z)||
+           !std::isfinite(p.size)||p.size<=0 || p.size>2 ||
+           p.shape<0||p.shape>=voxen_shapes::count||
+           p.shader<0||p.shader>=6||p.effect<0||p.effect>3) {
+            storage_status="CORRUPT FILE";return;
+        }
+        recovered.push_back({{p.x,p.y,p.z},p.size,{p.r,p.g,p.b,p.a},
+            p.shape,p.effect,p.shader,p.phase,animation_time,
+            p.progress,p.duration,p.loop!=0});
+    }
+    voxels.swap(recovered);
+    artworks.clear();redo_artworks.clear();
+    property_undo.clear();property_redo.clear();
+    selected_artwork_id=0;stroke_active=false;volume_active=false;
+    last_paint_valid=false;
+    storage_status="RESTORED";
 }
 static color128 animated_tint(const PaintedVoxel& v) {
     if (v.effect==2) {
@@ -635,13 +718,17 @@ static constexpr float panel_height = 0.43f;
 
 // A single controller-mounted face. Logical pages replace each other in
 // place; never arrange five 46cm surfaces around a 17cm cube.
-static pose_t face_panel_pose(int /*page*/) {
+static pose_t face_panel_pose(int page) {
     const quat rotation=quat_mul(carousel_base.orientation,
                                   quat_from_angles(0,180.0f,0));
     const vec3 outward=quat_mul_vec(rotation,{0,0,0.005f});
-    return {{carousel_base.position.x+outward.x,
-             carousel_base.position.y+outward.y,
-             carousel_base.position.z+outward.z},rotation};
+    // ALGORITHMS and PARAMS are a paired side-by-side workspace.
+    const bool pair=menu_page==2 || menu_page==4;
+    const float shift=pair?(page==2?-0.087f:page==4?0.087f:0.0f):0.0f;
+    const vec3 lateral=quat_mul_vec(rotation,{shift,0,0});
+    return {{carousel_base.position.x+outward.x+lateral.x,
+             carousel_base.position.y+outward.y+lateral.y,
+             carousel_base.position.z+outward.z+lateral.z},rotation};
 }
 static vec3 panel_world(const pose_t& face,float x,float y,float z=0) {
     const vec3 o=quat_mul_vec(face.orientation,{x,y,z});
@@ -684,7 +771,7 @@ static void draw_face(int page) {
     const pose_t face=face_panel_pose(page);
     face_rect(face,0,0,panel_width,panel_height,
         {0.06f,0.13f,0.22f,0.80f},0.003f);
-    static const char* titles[]={"COLORS","SHAPES","ALGORITHMS","SHADERS","PARAMS","ANIMATIONS"};
+    static const char* titles[]={"COLORS","SHAPES","ALGORITHMS","SHADERS","PARAMS","ANIMATIONS","SAVE / LOAD"};
     face_text(face,titles[page],0,0.188f);
     if(page==0) {
         for(int i=0;i<16;++i) {
@@ -731,7 +818,10 @@ static void draw_face(int page) {
             const int id=ids[i];
             if(face_button(face,page,algorithms[i],0.135f-i*0.060f,
                            algorithm_mode==id))
+            {
                 algorithm_mode=(algorithm_mode==id?-1:id);
+                save_confirmation=false;
+            }
         }
     } else if(page==3) {
         face_text(face,"GPU MATERIALS",0,0.153f);
@@ -790,12 +880,12 @@ static void draw_face(int page) {
         if(count==0) face_text(face,"CHOOSE IN ALGORITHMS",0,0.07f);
         const bool is_lorenz=algorithm_mode==10;
         for(int i=0;i<count;++i) {
-            const float y=is_lorenz?0.118f-i*0.067f:0.105f-i*0.067f;
+            const float y=0.137f-i*0.047f;
             char value[64];
             std::snprintf(value,sizeof(value),"%s %.3f",names[i],*values[i]);
             face_text(face,value,0,y);
-            const float by=y-(is_lorenz?0.028f:0.035f);
-            const float bh=is_lorenz?0.025f:0.030f;
+            const float by=y-0.019f;
+            const float bh=0.020f;
             const bool minus=panel_hover(page,-0.040f,by,0.070f,bh);
             const bool plus=panel_hover(page,0.040f,by,0.070f,bh);
             face_rect(face,-0.040f,by,0.070f,bh-0.001f,
@@ -807,17 +897,28 @@ static void draw_face(int page) {
             if(menu_click&&(minus||plus))
                 *values[i]=std::clamp(*values[i]+(plus?steps[i]:-steps[i]),minima[i],maxima[i]);
         }
-        if(is_lorenz) {
-            static const char* modes[]={"STATIC","DRAW ONCE","LOOP"};
-            char playback_label[64];
-            std::snprintf(playback_label,sizeof(playback_label),"PLAY: %s",modes[lorenz_playback]);
-            if(face_button(face,page,playback_label,-0.104f))
-                lorenz_playback=(lorenz_playback+1)%3;
-            static const char* speeds[]={"SLOW 20S","NORMAL 9S","FAST 4S"};
-            char speed_label[64];
-            std::snprintf(speed_label,sizeof(speed_label),"SPEED: %s",speeds[lorenz_speed]);
-            if(face_button(face,page,speed_label,-0.162f))
-                lorenz_speed=(lorenz_speed+1)%3;
+        if(count>0) {
+            static const char* playback[]={"STATIC","ONCE","LOOP"};
+            char label[64];
+            std::snprintf(label,sizeof(label),"TIME: %s",playback[generator_playback]);
+            if(face_button(face,page,label,-0.112f))
+                generator_playback=(generator_playback+1)%3;
+            static const char* speeds[]={"20 SEC","9 SEC","4 SEC"};
+            std::snprintf(label,sizeof(label),"DURATION: %s",speeds[generator_speed]);
+            if(face_button(face,page,label,-0.147f))
+                generator_speed=(generator_speed+1)%3;
+            static const char* sounds[]={"MUTE","BELL","PULSE","BASS"};
+            std::snprintf(label,sizeof(label),"SOUND: %s",sounds[generator_sound]);
+            if(face_button(face,page,label,-0.180f))
+                generator_sound=(generator_sound+1)%4;
+            if(face_button(face,page,"RESET PARAMS",-0.207f)) {
+                lorenz_sigma=10; lorenz_rho=28; lorenz_beta=8.0f/3.0f;
+                rossler_a=0.2f; rossler_b=0.2f; rossler_c=5.7f;
+                fractal_zoom=1; fractal_center_x=0; fractal_center_y=0;
+                julia_real=-0.745f; julia_imag=0.186f;
+                fibonacci_turns=5; fibonacci_spacing=1;
+                generator_playback=1; generator_speed=1; generator_sound=0;
+            }
         }
     } else if(page==5) {
         face_text(face,"VOXEL ANIMATION",0,0.145f);
@@ -825,6 +926,20 @@ static void draw_face(int page) {
         for(int i=0;i<4;++i)
             if(face_button(face,page,effects[i],0.085f-i*0.065f,effect_mode==i))
                 effect_mode=i;
+    } else if(page==6) {
+        face_text(face,"SCENE SLOT 1",0,0.125f);
+        face_text(face,storage_status,0,0.073f);
+        if(face_button(face,page,save_confirmation?"CONFIRM SAVE":"SAVE",0.015f)) {
+            if(save_confirmation) { save_scene(); save_confirmation=false; }
+            else save_confirmation=true;
+        }
+        if(face_button(face,page,restore_confirmation?"CONFIRM LOAD":"RESTORE",-0.050f)) {
+            if(restore_confirmation) { load_scene(); restore_confirmation=false; }
+            else restore_confirmation=true;
+        }
+        if(face_button(face,page,"CANCEL",-0.115f)) {
+            save_confirmation=false; restore_confirmation=false;
+        }
     }
 }
 static void update_controller_palette() {
@@ -884,7 +999,8 @@ static void update_menu_ray() {
     float closest = 2.0f;
     // Intersect each face in its own local coordinates. This uses exactly
     // the same transforms as each rendered StereoKit panel.
-    for (int page=menu_page; page<=menu_page; ++page) {
+    for (int page=0; page<page_count; ++page) {
+        if(page!=menu_page && !((menu_page==2 || menu_page==4) && (page==2 || page==4))) continue;
         const pose_t face = face_panel_pose(page);
         const quat inverse = quat_inverse(face.orientation);
         const vec3 face_origin = face.position;
@@ -1099,7 +1215,8 @@ int voxen_stereokit_main() {
         update_left_buttons();
         update_menu_ray();
         // Never render overlapping inactive pages.
-        draw_face(menu_page);
+        if(menu_page==2 || menu_page==4) { draw_face(2); draw_face(4); }
+        else draw_face(menu_page);
 
         animation_time += time_stepf();
         for(int i=0;i<6;++i)
