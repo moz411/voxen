@@ -31,7 +31,8 @@ static bool show_ui_ray = true;
 static float voxel_size = 0.04f;
 static int selected_shape = 0;
 static mesh_t sphere_mesh = nullptr;
-static float stick_repeat = 0.0f;
+static sound_t click_sound = nullptr;
+static float size_velocity = 0.0f;
 static float hue = 0.45f;
 static bool painting = true;
 static bool edges_enabled = true;
@@ -51,7 +52,7 @@ static bool last_paint_valid = false;
 static vec3 last_paint{};
 static float brush_distance = 0.025f;
 static bool shape_stick_latched = false;
-static bool size_stick_latched = false;
+
 static int hit_page = -1;
 static float trigger_threshold = 0.65f;
 
@@ -91,11 +92,13 @@ static void update_brush() {
         return;
     }
     // Right-stick horizontal: voxel size. Vertical: cycle shapes.
-    if (std::fabs(right->stick.x) < 0.30f) size_stick_latched = false;
-    if (!size_stick_latched && std::fabs(right->stick.x) > 0.70f) {
+    // Continuous size adjustment, proportional to stick deflection.
+    const float axis = right->stick.x;
+    if (std::fabs(axis) > 0.18f) {
+        const float input = (std::fabs(axis)-0.18f)/0.82f;
         voxel_size = std::clamp(voxel_size +
-                (right->stick.x > 0 ? 0.01f : -0.01f), 0.01f, 0.12f);
-        size_stick_latched = true;
+            (axis > 0 ? 1.0f : -1.0f)*input*0.065f*time_stepf(),
+            0.01f, 0.12f);
     }
     if (std::fabs(right->stick.y) < 0.30f) shape_stick_latched = false;
     if (!shape_stick_latched && std::fabs(right->stick.y) > 0.70f) {
@@ -209,7 +212,7 @@ static void update_controller_palette() {
     const quat face_rotation = quat_mul(orientation,
         quat_from_angles(0, -menu_page*90.0f, 0));
     const vec3 anchor = quat_mul_vec(face_rotation,
-        {0.08f, menu_height*0.5f - 0.006f, -menu_width*0.5f - 0.005f});
+        {-0.08f, menu_height*0.5f - 0.006f, -menu_width*0.5f - 0.005f});
     palette.position = {carousel_base.position.x + anchor.x,
                         carousel_base.position.y + anchor.y,
                         carousel_base.position.z + anchor.z};
@@ -246,7 +249,7 @@ static void update_menu_ray() {
         const quat face_rot = quat_mul(world_rot,
             quat_from_angles(0, -page*90.0f, 0));
         const vec3 face_offset = quat_mul_vec(face_rot,
-            {0.095f, menu_height*0.5f-0.006f,
+            {-0.08f, menu_height*0.5f-0.006f,
              -menu_width*0.5f-0.005f});
         const vec3 face_origin = {
             carousel_base.position.x + face_offset.x,
@@ -307,7 +310,22 @@ static bool menu_button(const char* caption, int row) {
     // Native near-field interaction stays usable; remote click is independent.
     const bool near_click = ui_button_at(caption,
         {control_x, control_y(row), 0}, {control_w, control_h});
-    return near_click || (menu_click && hit_row(row));
+    const bool remote_click = menu_click && hit_row(row);
+    if (menu_aiming && hit_row(row)) {
+        // Subtle luminous surface indication on the focused interactive row.
+        const vec3 local = {-control_x-control_w*0.5f,
+                             control_y(row)-control_h*0.5f, -0.016f};
+        const vec3 offset = quat_mul_vec(palette.orientation,local);
+        render_add_mesh(cube, carousel_mat,
+            matrix_trs({palette.position.x+offset.x,
+                        palette.position.y+offset.y,
+                        palette.position.z+offset.z},
+                       palette.orientation, {control_w,control_h,0.002f}),
+            {0.25f,0.95f,1.0f,0.60f});
+    }
+    if ((near_click || remote_click) && click_sound)
+        sound_play(click_sound, menu_hit, 0.35f);
+    return near_click || remote_click;
 }
 static void menu_slider(const char* caption, float& value, float lo, float hi,
                         float step, int row) {
@@ -409,6 +427,10 @@ int voxen_stereokit_main() {
     cube = mesh_find(default_id_mesh_cube);
     sphere_mesh = mesh_gen_sphere(1.0f,3);
     material = material_copy(material_find(default_id_material));
+    click_sound = sound_generate([](float t) -> float {
+        const float envelope = std::exp(-42.0f*t);
+        return 0.28f*envelope*std::sin(6.2831853f*880.0f*t);
+    }, 0.09f);
     voxels.reserve(max_voxels);
     carousel_mat = material_copy(material_find(default_id_material));
     material_set_transparency(carousel_mat, transparency_blend);
@@ -429,7 +451,7 @@ int voxen_stereokit_main() {
             const quat face_rot = quat_mul(world_rotation,
                 quat_from_angles(0, -page*90.0f, 0));
             const vec3 face_offset = quat_mul_vec(face_rot,
-                {0.095f, menu_height*0.5f-0.006f,
+                {-0.08f, menu_height*0.5f-0.006f,
                  -menu_width*0.5f-0.005f});
             pose_t face_pose = {{
                 carousel_base.position.x+face_offset.x,
@@ -451,18 +473,25 @@ int voxen_stereokit_main() {
                 const float sw=0.034f, sh=0.034f;
                 const float lx = 0.014f + col*0.035f;
                 const float ly = -0.052f-row*0.038f;
+                const bool hover = page==hit_page && menu_aiming &&
+                    menu_hit_x>=lx && menu_hit_x<lx+sw &&
+                    menu_hit_y<=ly && menu_hit_y>ly-sh;
                 const color128 tint=color_hsv(i/16.0f,1.0f,1.0f,1.0f);
-                const vec3 local={-lx-0.016f, ly-0.015f, -0.012f};
+                // The color chips use the SAME panel-local pose as the ray.
+                // StereoKit windows extend in local negative X.
+                const vec3 local={-lx-sw*0.5f, ly-sh*0.5f,
+                                  -0.003f};
                 const vec3 off=quat_mul_vec(face_rot,local);
                 const vec3 world={
                     face_pose.position.x+off.x,
                     face_pose.position.y+off.y,
                     face_pose.position.z+off.z};
                 render_add_mesh(cube,material,matrix_trs(world,face_rot,
-                    {sw,sh,0.002f}),tint);
-                if (page==hit_page && menu_click &&
-                    menu_hit_x>=lx && menu_hit_x<lx+sw &&
-                    menu_hit_y<=ly && menu_hit_y>ly-sh) hue=i/16.0f;
+                    {sw*(hover?1.18f:1.0f),sh*(hover?1.18f:1.0f),0.003f}),tint);
+                if (hover && menu_click) {
+                    hue=i/16.0f;
+                    if (click_sound) sound_play(click_sound,menu_hit,0.35f);
+                }
             }
         } else if (page == 1) {
             if (menu_button("Cube",0)) selected_shape = 0;
@@ -501,6 +530,7 @@ int voxen_stereokit_main() {
         mesh_release(sphere_mesh);
         material_release(material);
         material_release(carousel_mat);
+        if (click_sound) sound_release(click_sound);
     });
     return 0;
 }
