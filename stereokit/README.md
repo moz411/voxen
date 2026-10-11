@@ -195,3 +195,31 @@ painted voxels; no persistent audio sources or scene serialization yet.
 
 Build/test on Quest 3 before merging. This branch is intentionally isolated
 from main while we validate both audio routing and frame time with 4096 voxels.
+
+
+## Five-panel procedural painting experiment
+
+Branch `feature/algorithmic-brush-five-panels` (not yet Quest-tested):
+
+- The four-face tool cube becomes a **five-faced carousel** with 72 degree
+  left-stick steps and 46 cm panel height, twice the previous 23 cm.
+- Unlike the earlier world-upright carousel, the entire tool rotates with
+  left-controller orientation, including pitch and roll.
+- Text is reduced to 8.5 mm; buttons to 25 mm, with compact selected-state
+  highlighting. Sound and animation options are exposed individually, not
+  hidden behind a cycling toggle.
+- The fifth **ALGORITHMS** panel selects 10 brush-generation modes:
+  FREE, JITTER, WAVE, HELIX, SHELL, LATTICE, MANDELBROT, JULIA, BRANCH, CORTEX.
+  These are inexpensive *stylized procedural voxel placement samplers*.
+  MANDELBROT/JULIA use 16 iteration escape-time samples to perturb height and
+  voxel size; neither mode is a full fractal mesh generator. CORTEX is a
+  folded-field effect, not a medical reconstruction.
+- Every generated candidate is still tested against voxel AABBs to reject
+  overlaps. All dimensions currently scale uniformly per voxel; independent
+  X/Y/Z voxel scaling is future work.
+- The 5 surfaces are rendered individually in a pentagonal arrangement,
+  rather than inside a four-faced underlying mesh. Scene Save/Load remains
+  a placeholder.
+- Build with plain `cd android && ./gradlew assembleDebug` (StereoKit default).
+  No install step documented. Validate orientation, page picking, buttons and
+  performance on Quest 3 before merging.
