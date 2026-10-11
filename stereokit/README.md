@@ -292,3 +292,11 @@ This first stage uses fixed Lorenz parameters, with no per-parameter UI yet.
 A future iteration can expose sigma/rho/beta, multiple starting states and
 time-dependent drawing. This branch is **not yet built or Quest-tested**.
 Build with `cd android && ./gradlew assembleDebug`.
+
+
+### Lorenz reveal animation (experimental)
+
+The fourth controller page, formerly the placeholder SCENES panel, is now **LORENZ**.
+Choose **STATIC** or **DRAW** and a reveal duration of **SLOW 20S**, **NORMAL 9S**, or **FAST 4S** before creating the next Lorenz sculpture. DRAW computes the complete Lorenz trajectory immediately, but stamps each generated voxel with a future reveal time. Each frame renders only the samples whose reveal time has elapsed. The existing GPU material and animation continue to work; the completed sculpture remains displayed. Undo/Redo retain the stamped voxel data. No new geometry is generated per frame.
+
+This replaces the unused scene placeholder while we develop the first work in the *Attracteurs étranges* collection. Timing only affects newly created Lorenz strokes; existing sculptures are not restarted by switching the mode. Not compiled or Quest-tested yet.
