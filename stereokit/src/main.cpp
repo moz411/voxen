@@ -12,11 +12,16 @@ sk_settings_t app_settings = {"Voxen StereoKit"};
 static pose_t palette = {{-0.25f, 0.0f, -0.55f}, quat_identity};
 static int menu_page = 0;
 static constexpr int page_count = 4;
-static constexpr float menu_width = 0.34f;
-static constexpr float menu_height = 0.47f;
+static constexpr float menu_width = 0.24f;
+static constexpr float menu_height = 0.30f;
 static float carousel_angle = 0.0f;
 static float target_angle = 0.0f;
 static pose_t carousel_base = pose_identity;
+static bool menu_aiming = false;
+static bool menu_trigger_down = false;
+static vec3 menu_hit{};
+static float menu_hit_x = 0.0f;
+static float menu_hit_y = 0.0f;
 static material_t carousel_mat = nullptr;
 static bool stick_latched = false;
 static bool show_ui_ray = true;
@@ -33,6 +38,7 @@ static material_t material = nullptr;
 struct PaintedVoxel { vec3 position; float size; color128 tint; };
 static std::vector<PaintedVoxel> voxels;
 static std::vector<size_t> stroke_starts;
+static std::vector<std::vector<PaintedVoxel>> redo_strokes;
 static constexpr size_t max_voxels = 4096;
 static bool trigger_down = false;
 static bool last_paint_valid = false;
@@ -55,6 +61,7 @@ static vec3 aim_forward(quat q) {
 }
 static void paint_at(vec3 position) {
     if (voxels.size() >= max_voxels) return;
+    redo_strokes.clear();
     voxels.push_back({position, voxel_size,
         color_hsv(hue, 1.0f, 1.0f, 1.0f)});
 }
@@ -100,6 +107,32 @@ static void update_brush() {
 }
 
 
+static void undo_stroke() {
+    if (stroke_starts.empty()) return;
+    const size_t start = stroke_starts.back();
+    stroke_starts.pop_back();
+    redo_strokes.emplace_back(voxels.begin() + start, voxels.end());
+    voxels.resize(start);
+    last_paint_valid = false;
+}
+static void redo_stroke() {
+    if (redo_strokes.empty()) return;
+    std::vector<PaintedVoxel> stroke = std::move(redo_strokes.back());
+    redo_strokes.pop_back();
+    stroke_starts.push_back(voxels.size());
+    for (auto &v : stroke) {
+        if (voxels.size() >= max_voxels) break;
+        voxels.push_back(v);
+    }
+    last_paint_valid = false;
+}
+static void update_left_buttons() {
+    const controller_t* left = input_controller(handed_left);
+    if (!left || !(left->tracked & button_state_active)) return;
+    if (left->x1 & button_state_just_active) undo_stroke();
+    if (left->x2 & button_state_just_active) redo_stroke();
+}
+
 static void update_controller_palette() {
     const controller_t* left = input_controller(handed_left);
     if (!left || !(left->tracked & button_state_active)) return;
@@ -110,7 +143,7 @@ static void update_controller_palette() {
         target_angle += direction * 90.0f;
         stick_latched = true;
     }
-    const vec3 local_offset = {0.0f, 0.19f, -0.15f};
+    const vec3 local_offset = {0.0f, 0.095f, -0.055f};
     const vec3 offset = quat_mul_vec(left->pose.orientation, local_offset);
     carousel_base.position = {left->pose.position.x + offset.x,
                               left->pose.position.y + offset.y,
@@ -134,7 +167,7 @@ static void update_controller_palette() {
     // Center a 30 cm-wide page on the front face of the 34 cm cube.
     // Reserve vertical room for the dynamically sized page's controls.
     const vec3 anchor = quat_mul_vec(carousel_base.orientation,
-        {-0.15f, menu_height*0.5f - 0.008f, -menu_width*0.5f - 0.012f});
+        {-0.115f, menu_height*0.5f - 0.008f, -menu_width*0.5f - 0.012f});
     palette.position = {carousel_base.position.x + anchor.x,
                         carousel_base.position.y + anchor.y,
                         carousel_base.position.z + anchor.z};
@@ -251,7 +284,8 @@ int voxen_stereokit_main() {
     ui_enable_far_interact(true);
     sk_run([] {
         update_controller_palette();
-        ui_window_begin("VOXEN | Palette", palette, {0.30f, 0},
+        update_left_buttons();
+        ui_window_begin("VOXEN | Palette", palette, {0.23f, 0},
                         ui_win_normal, ui_move_none);
         ui_label("Left stick: rotate cube");
         if (menu_page == 0) {
@@ -262,12 +296,9 @@ int voxen_stereokit_main() {
             if (ui_button(painting ? "Brush: ON" : "Brush: OFF")) painting = !painting;
         } else if (menu_page == 1) {
             ui_label("SCENE");
-            if (ui_button("Undo stroke") && !stroke_starts.empty()) {
-                voxels.resize(stroke_starts.back());
-                stroke_starts.pop_back();
-                last_paint_valid = false;
-            }
-            if (ui_button("Clear voxels")) { voxels.clear(); stroke_starts.clear(); last_paint_valid = false; }
+            if (ui_button("Undo stroke")) undo_stroke();
+            if (ui_button("Redo stroke")) redo_stroke();
+            if (ui_button("Clear voxels")) { voxels.clear(); stroke_starts.clear(); redo_strokes.clear(); last_paint_valid = false; }
             char count[64];
             std::snprintf(count, sizeof(count), "Voxels: %zu / %zu", voxels.size(), max_voxels);
             ui_label(count);
