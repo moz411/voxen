@@ -81,6 +81,8 @@ static void update_brush() {
         right->aim.position.y + fwd.y*brush_distance,
         right->aim.position.z + fwd.z*brush_distance
     };
+    // Do not paint through the UI when the right ray targets the palette.
+    if (menu_aiming) { last_paint_valid = false; trigger_down = false; return; }
     // Live fixed-size, axis-aligned brush cursor.
     render_add_mesh(cube, material,
         matrix_ts(tip, {voxel_size, voxel_size, voxel_size}),
@@ -173,19 +175,52 @@ static void update_controller_palette() {
                         carousel_base.position.z + anchor.z};
     palette.orientation = carousel_base.orientation;
 }
+// Controller ray to UI-plane intersection, independent of StereoKit's
+// near-hand widget interaction. Local top-left is the window pose.
+static void update_menu_ray() {
+    menu_aiming = false;
+    const controller_t* right = input_controller(handed_right);
+    if (!right || !(right->tracked & button_state_active)) {
+        menu_trigger_down = false;
+        return;
+    }
+    const vec3 start = right->aim.position;
+    const vec3 forward = aim_forward(right->aim.orientation);
+    const quat inverse = quat_inverse(palette.orientation);
+    const vec3 relative = {start.x - palette.position.x,
+                           start.y - palette.position.y,
+                           start.z - palette.position.z};
+    const vec3 origin_local = quat_mul_vec(inverse, relative);
+    const vec3 direction_local = quat_mul_vec(inverse, forward);
+    if (std::fabs(direction_local.z) < 0.0001f) return;
+    const float t = -origin_local.z / direction_local.z;
+    if (t <= 0.0f || t > 2.0f) return;
+    const float x = origin_local.x + t * direction_local.x;
+    const float y = origin_local.y + t * direction_local.y;
+    if (x < -0.005f || x > 0.235f || y > 0.005f || y < -0.31f) return;
+    menu_aiming = true;
+    menu_hit_x = x;
+    menu_hit_y = y;
+    menu_hit = {start.x + forward.x*t,
+                start.y + forward.y*t,
+                start.z + forward.z*t};
+}
 static void draw_menu_ray() {
     if (!show_ui_ray) return;
     const controller_t* right = input_controller(handed_right);
     if (!right || !(right->tracked & button_state_active)) return;
     const vec3 start = right->aim.position;
     const vec3 fwd = aim_forward(right->aim.orientation);
-    const vec3 end = {start.x + fwd.x * 1.5f,
-                      start.y + fwd.y * 1.5f,
-                      start.z + fwd.z * 1.5f};
-    const color32 ray_color = {110, 215, 255, 150};
+    const vec3 end = menu_aiming ? menu_hit :
+        vec3{start.x + fwd.x*1.3f, start.y + fwd.y*1.3f, start.z + fwd.z*1.3f};
+    const color32 ray_color = menu_aiming ? color32{80,255,190,220}
+                                          : color32{110,215,255,140};
     line_add(start, end, ray_color, ray_color, 0.0015f);
+    if (menu_aiming) {
+        const vec3 marker_end = {menu_hit.x, menu_hit.y+0.012f, menu_hit.z};
+        line_add(menu_hit, marker_end, ray_color, ray_color, 0.004f);
+    }
 }
-
 // Own our own passthrough layer; StereoKit still owns OpenXR instance/session.
 // Failure is non-fatal: default alpha-blended passthrough remains available.
 struct EdgePassthrough {
@@ -285,6 +320,7 @@ int voxen_stereokit_main() {
     sk_run([] {
         update_controller_palette();
         update_left_buttons();
+        update_menu_ray();
         ui_window_begin("VOXEN | Palette", palette, {0.23f, 0},
                         ui_win_normal, ui_move_none);
         ui_label("Left stick: rotate cube");
