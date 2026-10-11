@@ -212,7 +212,7 @@ static void update_controller_palette() {
     const quat face_rotation = quat_mul(orientation,
         quat_from_angles(0, -menu_page*90.0f, 0));
     const vec3 anchor = quat_mul_vec(face_rotation,
-        {-0.08f, menu_height*0.5f - 0.006f, -menu_width*0.5f - 0.005f});
+        {0.125f, menu_height*0.5f - 0.006f, -menu_width*0.5f - 0.005f});
     palette.position = {carousel_base.position.x + anchor.x,
                         carousel_base.position.y + anchor.y,
                         carousel_base.position.z + anchor.z};
@@ -249,7 +249,7 @@ static void update_menu_ray() {
         const quat face_rot = quat_mul(world_rot,
             quat_from_angles(0, -page*90.0f, 0));
         const vec3 face_offset = quat_mul_vec(face_rot,
-            {-0.08f, menu_height*0.5f-0.006f,
+            {0.125f, menu_height*0.5f-0.006f,
              -menu_width*0.5f-0.005f});
         const vec3 face_origin = {
             carousel_base.position.x + face_offset.x,
@@ -451,7 +451,7 @@ int voxen_stereokit_main() {
             const quat face_rot = quat_mul(world_rotation,
                 quat_from_angles(0, -page*90.0f, 0));
             const vec3 face_offset = quat_mul_vec(face_rot,
-                {-0.08f, menu_height*0.5f-0.006f,
+                {0.125f, menu_height*0.5f-0.006f,
                  -menu_width*0.5f-0.005f});
             pose_t face_pose = {{
                 carousel_base.position.x+face_offset.x,
