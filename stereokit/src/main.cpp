@@ -191,20 +191,17 @@ static vec3 panel_world(const pose_t& face,float x,float y,float z=0) {
     const vec3 o=quat_mul_vec(face.orientation,{x,y,z});
     return {face.position.x+o.x,face.position.y+o.y,face.position.z+o.z};
 }
+// face_panel_pose's local +Z points OUT of the cube.
+// Render every surface and glyph in that exact orientation and on the
+// positive-Z (viewer) side. No second 180-degree flip anywhere.
 static void face_rect(const pose_t& face,float x,float y,float w,float h,
-                      color128 color,float z=-0.002f) {
-    // The cube face points along local -Z. Turn the visible quad to
-    // face the user, including background, buttons and color swatches.
-    const quat outward=quat_mul(face.orientation,quat_from_angles(0,180,0));
+                      color128 color,float z=0.004f) {
     render_add_mesh(cube,carousel_mat,matrix_trs(
-        panel_world(face,x,y,z),outward,{w,h,0.002f}),color);
+        panel_world(face,x,y,z),face.orientation,{w,h,0.002f}),color);
 }
 static void face_text(const pose_t& face,const char* label,float x,float y) {
-    // Mesh face orientation and StereoKit text facing conventions differ.
-    // Rotate text 180 degrees around local Y to avoid mirrored labels.
-    const quat text_rotation=quat_mul(face.orientation,quat_from_angles(0,180,0));
-    text_add_at(label,matrix_trs(panel_world(face,x,y,-0.006f),
-        text_rotation,{1,1,1}),panel_text_style);
+    text_add_at(label,matrix_trs(panel_world(face,x,y,0.011f),
+        face.orientation,{1,1,1}),panel_text_style);
 }
 static bool panel_hover(int page,float x,float y,float w,float h) {
     return menu_aiming && hit_page==page &&
@@ -224,7 +221,7 @@ static bool face_button(const pose_t& face,int page,const char* label,float y) {
 static void draw_face(int page) {
     const pose_t face=face_panel_pose(page);
     face_rect(face,0,0,panel_width,panel_height,
-        {0.06f,0.13f,0.22f,0.80f},0);
+        {0.06f,0.13f,0.22f,0.80f},0.003f);
     static const char* titles[]={"COLORS","SHAPES","SOUNDS","SCENES"};
     face_text(face,titles[page],0,0.085f);
     if(page==0) {
