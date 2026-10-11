@@ -82,6 +82,8 @@ private:
     VkPipeline organicaPipeline_ = VK_NULL_HANDLE;
     VkPipeline fractalPipeline_ = VK_NULL_HANDLE;
     VkPipeline laserPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxelDebugPipeline_ = VK_NULL_HANDLE;
+    std::size_t lastLoggedVoxelDrawCount_ = 0;
     std::array<EyeSwapchain, 2> eyes_{};
     voxen::scene::Scene scene_{};
     voxen::voxel::VoxelWorld voxelWorld_{};
