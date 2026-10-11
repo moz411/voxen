@@ -24,10 +24,10 @@ static float voxel_size = 0.045f;
 static float hue = 0.45f;
 static bool painting = true;
 static bool edges_enabled = true;
-static float camera_opacity = 1.0f;
+static float camera_opacity = 0.0f;
 static float edge_hue = 0.5f;
-static float background_hue = 0.0f;
-static float background_brightness = 0.0f;
+static float background_hue = 0.64f;
+static float background_brightness = 0.12f;
 static mesh_t cube = nullptr;
 static material_t material = nullptr;
 struct PaintedVoxel { vec3 position; float size; color128 tint; };
@@ -215,11 +215,8 @@ struct EdgePassthrough {
         composition.layerHandle = layer;
         // Behind the stereoscopic projection and UI.
         // Place edges above the opaque StereoKit background.
-        // With a fully visible camera, composite behind the UI/projection.
-        // When camera is hidden, keep the edge-only effect over the
-        // solid background as before.
-        const int sort_order = camera_alpha >= 0.999f ? -100 : 100;
-        backend_openxr_composition_layer(&composition, sizeof(composition), sort_order);
+        // Composite the contours above the opaque color background.
+        backend_openxr_composition_layer(&composition, sizeof(composition), 100);
     }
 
     void shutdown() {
@@ -296,7 +293,7 @@ int voxen_stereokit_main() {
                 voxel.tint);
         update_brush();
         draw_menu_ray();
-        if (edges_enabled && edge_passthrough.available && camera_opacity < 0.999f) {
+        if (edges_enabled && edge_passthrough.available) {
             render_enable_skytex(false);
             render_set_clear_color(
                 color_hsv(background_hue, 1.0f, background_brightness, 1.0f));
