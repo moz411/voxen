@@ -11,13 +11,20 @@ using namespace sk;
 sk_settings_t app_settings = {"Voxen StereoKit"};
 static pose_t palette = {{-0.25f, 0.0f, -0.55f}, quat_identity};
 static int menu_page = 0;
+static constexpr int page_count = 4;
+static constexpr float menu_width = 0.24f;
+static constexpr float menu_height = 0.32f;
+static float carousel_angle = 0.0f;
+static float target_angle = 0.0f;
+static pose_t carousel_base = pose_identity;
+static material_t carousel_mat = nullptr;
 static bool stick_latched = false;
 static bool show_ui_ray = true;
 static float voxel_size = 0.045f;
 static float hue = 0.45f;
 static bool painting = true;
-static bool edges_enabled = false;
-static float camera_opacity = 0.0f;
+static bool edges_enabled = true;
+static float camera_opacity = 1.0f;
 static float edge_hue = 0.5f;
 static float background_hue = 0.0f;
 static float background_brightness = 0.0f;
@@ -96,16 +103,40 @@ static void update_controller_palette() {
     if (!left || !(left->tracked & button_state_active)) return;
     if (std::fabs(left->stick.x) < 0.35f) stick_latched = false;
     if (!stick_latched && std::fabs(left->stick.x) > 0.7f) {
-        menu_page = (menu_page + (left->stick.x > 0 ? 1 : 2)) % 3;
+        const int direction = left->stick.x > 0 ? 1 : -1;
+        menu_page = (menu_page + direction + page_count) % page_count;
+        target_angle += direction * 90.0f;
         stick_latched = true;
     }
-    const vec3 local_offset = {0.0f, 0.105f, -0.115f};
+    const vec3 local_offset = {0.0f, 0.16f, -0.11f};
     const vec3 offset = quat_mul_vec(left->pose.orientation, local_offset);
-    palette.position = {left->pose.position.x + offset.x,
-                        left->pose.position.y + offset.y,
-                        left->pose.position.z + offset.z};
+    carousel_base.position = {left->pose.position.x + offset.x,
+                              left->pose.position.y + offset.y,
+                              left->pose.position.z + offset.z};
     const pose_t* head = input_head();
-    if (head) palette.orientation = quat_lookat(palette.position, head->position);
+    if (head) carousel_base.orientation =
+        quat_lookat(carousel_base.position, head->position);
+
+    // Rotate the transparent four-sided carousel, smoothly and independently
+    // from the controller's six-degree-of-freedom position.
+    const float delta = target_angle - carousel_angle;
+    carousel_angle += delta * std::min(1.0f, time_stepf() * 12.0f);
+    const quat spin = quat_from_angles(0, carousel_angle, 0);
+    const quat orientation = quat_mul(carousel_base.orientation, spin);
+    render_add_mesh(cube, carousel_mat,
+        matrix_trs(carousel_base.position, orientation,
+                   {menu_width, menu_height, menu_width}),
+        {0.20f, 0.65f, 0.85f, 0.12f});
+
+    // UI is mounted on the front face, with its lower edge above controller.
+    // The active page swaps when the face rotation ends, preventing rear-face
+    // panels from becoming unexpectedly interactive.
+    const vec3 anchor = quat_mul_vec(carousel_base.orientation,
+        {-menu_width*0.5f, menu_height*0.5f, -menu_width*0.5f - 0.008f});
+    palette.position = {carousel_base.position.x + anchor.x,
+                        carousel_base.position.y + anchor.y,
+                        carousel_base.position.z + anchor.z};
+    palette.orientation = carousel_base.orientation;
 }
 static void draw_menu_ray() {
     if (!show_ui_ray) return;
@@ -208,6 +239,8 @@ int voxen_stereokit_main() {
     cube = mesh_find(default_id_mesh_cube);
     material = material_copy(material_find(default_id_material));
     voxels.reserve(max_voxels);
+    carousel_mat = material_copy(material_find(default_id_material));
+    material_set_transparency(carousel_mat, transparency_blend);
     input_hand_visible(handed_left, false);
     input_hand_visible(handed_right, false);
     input_hand_solid(handed_left, false);
@@ -217,7 +250,7 @@ int voxen_stereokit_main() {
         update_controller_palette();
         ui_window_begin("VOXEN | Palette", palette, {0.24f, 0},
                         ui_win_normal, ui_move_none);
-        ui_label("Left stick: Brush / Scene / FX");
+        ui_label("Left stick: rotate cube");
         if (menu_page == 0) {
             ui_label("BRUSH - right trigger to paint");
             ui_hslider("Size (m)", voxel_size, 0.015f, 0.15f, 0.005f);
@@ -233,7 +266,7 @@ int voxen_stereokit_main() {
             ui_label(count);
             if (ui_button(show_ui_ray ? "UI ray: ON" : "UI ray: OFF"))
                 show_ui_ray = !show_ui_ray;
-        } else {
+        } else if (menu_page == 2) {
             ui_label("PASSTHROUGH / FX");
             if (edge_passthrough.available) {
                 if (ui_button(edges_enabled ? "Contours: ON" : "Contours: OFF"))
@@ -245,6 +278,11 @@ int voxen_stereokit_main() {
                     ui_hslider("Background brightness", background_brightness, 0.0f, 1.0f, 0.01f);
                 }
             } else ui_label("Native contours unavailable");
+        } else {
+            ui_label("VOXEN / INFO");
+            ui_label("Right trigger: paint voxels");
+            ui_label("Left stick: rotate palette");
+            ui_label("Four faces / four panels");
         }
         ui_window_end();
 
@@ -267,6 +305,7 @@ int voxen_stereokit_main() {
         edge_passthrough.shutdown();
         mesh_release(cube);
         material_release(material);
+        material_release(carousel_mat);
     });
     return 0;
 }
