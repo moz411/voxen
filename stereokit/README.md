@@ -259,3 +259,15 @@ shell or inactive faces are drawn. It follows the left controller's full pose,
 with the tall panel center positioned 23.5 cm above the controller along its
 local Y axis. This is an intentionally simpler, testable replacement for the
 3D carousel while preserving all five page contents and the procedural brush.
+
+
+## Surface fractals and procedural material presets
+
+Branch `feature/surface-fractals-material-presets`:
+- Mandelbrot and Julia sample the 2D XZ domain and generate a single relief layer, with height driven by escape-time iteration (not filled 3D fractal volumes).
+- WAVE and SHELL also use 2D relief height fields; SPHERE, JITTER, HELIX, LATTICE, BRANCH and CORTEX retain full 3D sampling.
+- COLORS panel includes six material looks in a 2x3 grid: MATTE, NEON, PLASMA, HOLOGRAM, LAVA, ICE. Each new voxel records its chosen preset independently of later selections.
+- IMPORTANT: These are time-varying procedural color treatments, **not actual custom GPU texture shaders**. True surface-coordinate shaders require a subsequent StereoKit material/shader implementation.
+- Keep the existing 4096-voxel cap, collision rejection, and per-stroke undo.
+
+Build: `cd android && ./gradlew assembleDebug`. The branch has not yet been built or verified on the Quest 3. No installation command is needed here.
