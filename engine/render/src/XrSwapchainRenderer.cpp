@@ -320,7 +320,7 @@ void XrSwapchainRenderer::createPipeline() {
     // All three pipelines share a render pass and one 80-byte push constant layout.
     auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
                              const std::uint8_t* fb, std::size_t fsz,
-                             VkPipeline& out) {
+                             VkPipeline& out, bool diagnosticVoxel = false) {
         VkShaderModule vs = makeShader(device_, vb, vsz);
         VkShaderModule fs = makeShader(device_, fb, fsz);
         VkPipelineShaderStageCreateInfo stages[2]{};
@@ -339,8 +339,8 @@ void XrSwapchainRenderer::createPipeline() {
         VkPipelineMultisampleStateCreateInfo ms{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
-        ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_) ? VK_FALSE : VK_TRUE;
+        ds.depthTestEnable = diagnosticVoxel ? VK_FALSE : VK_TRUE;
+        ds.depthWriteEnable = diagnosticVoxel ? VK_FALSE : ((&out == &laserPipeline_) ? VK_FALSE : VK_TRUE);
         ds.depthCompareOp = VK_COMPARE_OP_LESS;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
         VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
@@ -361,6 +361,8 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
+    // Diagnostic: voxel cubes bypass depth to isolate Quest visibility issues.
+    buildPipeline(cubeVert, cubeVertSize, proceduralFrag, proceduralFragSize, voxelDebugPipeline_, true);
 }
 
 void XrSwapchainRenderer::createFramebuffers() {
@@ -542,17 +544,26 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     // First prototype: one procedural cube draw per occupied cell.
     // Rendering is deliberately capped to keep Quest GPU work bounded;
     // the next milestone replaces this with instancing.
-    vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
+    vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, voxelDebugPipeline_);
     for (const auto& cell : voxelWorld_.cells()) {
         const float x = (static_cast<float>(cell.x) + 0.5F)*voxen::voxel::VoxelWorld::cellSize;
         const float y = (static_cast<float>(cell.y) + 0.5F)*voxen::voxel::VoxelWorld::cellSize;
         const float z = (static_cast<float>(cell.z) + 0.5F)*voxen::voxel::VoxelWorld::cellSize;
-        const Mat4 mvp = multiply(projView, modelMatrix(x,y,voxen::voxel::VoxelWorld::cellSize,z));
+        const Mat4 mvp = multiply(projView, modelMatrix(x,y,voxen::voxel::VoxelWorld::cellSize*2.0F,z));
         ProceduralPushConstants constants{mvp, {seconds, 1.0F, 1.0F, 0.0F}};
         vkCmdPushConstants(commandBuffer_, pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0, sizeof(constants), &constants);
         vkCmdDraw(commandBuffer_, 36, 1, 0, 0);
+    }
+    // Log once per voxel count, not once per eye/frame.
+    if (!voxelWorld_.cells().empty() && voxelWorld_.cells().size() != lastLoggedVoxelDrawCount_) {
+        lastLoggedVoxelDrawCount_ = voxelWorld_.cells().size();
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO, "Voxen", "Vulkan voxel draws submitted: count=%zu (diagnostic no-depth)", lastLoggedVoxelDrawCount_);
+#else
+        std::printf("[Voxen] Vulkan voxel draws submitted: count=%zu (diagnostic no-depth)\n", lastLoggedVoxelDrawCount_);
+#endif
     }
     // Controller rays intentionally hidden in painting mode.
     // OpenBrush-style selection will be implemented separately.
@@ -633,6 +644,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (organicaPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, organicaPipeline_, nullptr); organicaPipeline_ = VK_NULL_HANDLE; }
     if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
+    if (voxelDebugPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, voxelDebugPipeline_, nullptr); voxelDebugPipeline_ = VK_NULL_HANDLE; }
     if (pipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr); pipelineLayout_ = VK_NULL_HANDLE; }
     if (renderPass_ != VK_NULL_HANDLE) { vkDestroyRenderPass(device_, renderPass_, nullptr); renderPass_ = VK_NULL_HANDLE; }
 
