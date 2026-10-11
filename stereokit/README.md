@@ -273,3 +273,47 @@ Branch `feature/stereokit-gpu-voxel-shaders`, based on `main`.
 - **No build or Quest validation performed**. Shader compiler integration, GLES shader variants, winding and performance must be validated on device before merging.
 
 Build: `cd android && ./gradlew assembleDebug`. No APK installation command included.
+
+## Attracteurs étranges — oeuvre 01 : Lorenz
+
+This experimental branch adds **LORENZ** as the eleventh entry in the ALGORITHMS page.
+The French exhibition title is **Attracteurs étranges**.
+
+Unlike the earlier stylized occupancy algorithms, this uses the actual Lorenz
+ordinary differential equations (sigma = 10, rho = 28, beta = 8/3), integrated
+with fourth-order Runge–Kutta, dt = 0.008. We discard 1,500 initial warmup
+steps, then sample 2,600 states, fit the trajectory uniformly into the cube
+defined by trigger press/release, and place small voxels along that 3D curve.
+The sculpture remains a single Undo stroke and uses the selected GPU material.
+To avoid overwhelming the headset, the generator respects the existing total
+voxel cap and emits at most one spatial note on completion.
+
+This first stage uses fixed Lorenz parameters, with no per-parameter UI yet.
+A future iteration can expose sigma/rho/beta, multiple starting states and
+time-dependent drawing. This branch is **not yet built or Quest-tested**.
+Build with `cd android && ./gradlew assembleDebug`.
+
+
+### Lorenz reveal animation (experimental)
+
+The fourth controller page, formerly the placeholder SCENES panel, is now **LORENZ**.
+Choose **STATIC** or **DRAW** and a reveal duration of **SLOW 20S**, **NORMAL 9S**, or **FAST 4S** before creating the next Lorenz sculpture. DRAW computes the complete Lorenz trajectory immediately, but stamps each generated voxel with a future reveal time. Each frame renders only the samples whose reveal time has elapsed. The existing GPU material and animation continue to work; the completed sculpture remains displayed. Undo/Redo retain the stamped voxel data. No new geometry is generated per frame.
+
+This replaces the unused scene placeholder while we develop the first work in the *Attracteurs étranges* collection. Timing only affects newly created Lorenz strokes; existing sculptures are not restarted by switching the mode. Not compiled or Quest-tested yet.
+
+
+### Lorenz playback: LOOP
+
+LORENZ panel now has three exclusive playback modes for **new** sculptures:
+**STATIC**, **DRAW ONCE**, and **LOOP**, with SLOW/NORMAL/FAST durations.
+LOOP reveals the precomputed Lorenz trajectory again from the beginning at the
+end of each interval; no new voxels are allocated and geometry is not
+reintegrated per frame. Each voxel retains its sculpture-specific playback
+start, normalized trajectory progress, duration, and looping flag, so Undo/Redo
+and multiple independent Lorenz sculptures remain supported.
+
+StereoKit's `AnimMode.Loop` documented at
+https://stereokit.net/Pages/StereoKit/AnimMode.html is for model animation
+clips (`Model.PlayAnim`). Voxen's procedural per-voxel reveal is therefore
+implemented with its own time/fmod calculation rather than `AnimMode`.
+This change is not yet built or headset-tested.

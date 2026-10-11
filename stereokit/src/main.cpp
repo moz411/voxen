@@ -38,6 +38,8 @@ static sound_t tones[3] = {nullptr,nullptr,nullptr};
 static int sound_mode = 0; // 0 silence, 1 soft bell, 2 bright pulse, 3 bass
 static int effect_mode = 0; // 0 solid, 1 breathe, 2 color wave, 3 shimmer
 static float animation_time = 0.0f;
+static int lorenz_playback = 1; // 0 static, 1 once, 2 loop
+static int lorenz_speed = 1; // 0 slow, 1 normal, 2 fast
 static int note_stride = 0;
 static int algorithm_mode = -1;
 static int gpu_preset = 0;
@@ -65,6 +67,10 @@ struct PaintedVoxel {
     int effect;
     int gpu_preset;
     float phase;
+    float reveal_start; // Seconds since application start
+    float reveal_progress; // Normalized sample position, 0..1
+    float reveal_duration; // Zero = always visible
+    bool reveal_loop;
 };
 static std::vector<PaintedVoxel> voxels;
 static std::vector<size_t> stroke_starts;
@@ -145,7 +151,7 @@ static void add_voxel(vec3 p,float size) {
     }
     redo_strokes.clear();
     const float phase=p.x*11+p.y*7+p.z*13;
-    voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,gpu_preset,phase});
+    voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,gpu_preset,phase,0.0f,0.0f,0.0f,false});
     if(sound_mode>0 && tones[sound_mode-1] && (++note_stride%8)==1)
         sound_play(tones[sound_mode-1],p,0.2f);
 }
@@ -155,6 +161,79 @@ static void paint_at(vec3 p) {
     p={std::round(p.x/size)*size,std::round(p.y/size)*size,
        std::round(p.z/size)*size};
     add_voxel(p,size);
+}
+// First artwork in "Attracteurs étranges": the real Lorenz system.
+// RK4 integrates the classic (sigma=10, rho=28, beta=8/3) flow in phase space.
+// The resulting trajectory is uniformly fitted inside the trigger-defined cube,
+// preserving the attractor's proportions instead of faking its butterfly shape.
+struct LorenzPoint { float x,y,z; };
+static LorenzPoint lorenz_velocity(const LorenzPoint& p) {
+    return {10.0f*(p.y-p.x),p.x*(28.0f-p.z)-p.y,
+            p.x*p.y-(8.0f/3.0f)*p.z};
+}
+static LorenzPoint lorenz_add(const LorenzPoint& a,const LorenzPoint& b,float scale) {
+    return {a.x+b.x*scale,a.y+b.y*scale,a.z+b.z*scale};
+}
+static LorenzPoint lorenz_advance(const LorenzPoint& p,float dt) {
+    const auto k1=lorenz_velocity(p);
+    const auto k2=lorenz_velocity(lorenz_add(p,k1,dt*0.5f));
+    const auto k3=lorenz_velocity(lorenz_add(p,k2,dt*0.5f));
+    const auto k4=lorenz_velocity(lorenz_add(p,k3,dt));
+    return {p.x+dt*(k1.x+2*k2.x+2*k3.x+k4.x)/6.0f,
+            p.y+dt*(k1.y+2*k2.y+2*k3.y+k4.y)/6.0f,
+            p.z+dt*(k1.z+2*k2.z+2*k3.z+k4.z)/6.0f};
+}
+static void generate_lorenz(const vec3& center,float side) {
+    constexpr int warmup=1500;
+    constexpr int samples=2600;
+    constexpr float dt=0.008f;
+    LorenzPoint p={0.1f,0.0f,0.0f};
+    for(int i=0;i<warmup;++i) p=lorenz_advance(p,dt);
+    std::vector<LorenzPoint> path;
+    path.reserve(samples);
+    LorenzPoint low=p, high=p;
+    for(int i=0;i<samples;++i) {
+        p=lorenz_advance(p,dt);
+        path.push_back(p);
+        low={std::min(low.x,p.x),std::min(low.y,p.y),std::min(low.z,p.z)};
+        high={std::max(high.x,p.x),std::max(high.y,p.y),std::max(high.z,p.z)};
+    }
+    const float extent=std::max({high.x-low.x,high.y-low.y,high.z-low.z,0.001f});
+    const float scale=side*0.88f/extent;
+    const LorenzPoint mid={(low.x+high.x)*0.5f,(low.y+high.y)*0.5f,
+                           (low.z+high.z)*0.5f};
+    // X,Y are the butterfly's horizontal axes, Z maps to world-up.
+    // Small voxels keep the trajectory recognizable even for short gestures.
+    const float size=std::max(0.003f,side/70.0f);
+    vec3 prev{};
+    bool have_prev=false;
+    const int previous_sound=sound_mode;
+    const float duration=lorenz_speed==0?20.0f:(lorenz_speed==2?4.0f:9.0f);
+    const float start_time=animation_time;
+    sound_mode=0; // Avoid hundreds of simultaneous spatial notes at commit.
+    for(size_t point_index=0;point_index<path.size();++point_index) {
+        const auto& q=path[point_index];
+        if(voxels.size()>=max_voxels) break;
+        const vec3 at={center.x+(q.x-mid.x)*scale,
+                       center.y+(q.z-mid.z)*scale,
+                       center.z+(q.y-mid.y)*scale};
+        if(have_prev && dist(at,prev)<size*0.85f) continue;
+        const size_t before=voxels.size();
+        add_voxel(at,size);
+        if(voxels.size()>before && lorenz_playback!=0) {
+            auto& v=voxels.back();
+            v.reveal_start=start_time;
+            v.reveal_progress=static_cast<float>(point_index)/
+                               static_cast<float>(samples);
+            v.reveal_duration=duration;
+            v.reveal_loop=(lorenz_playback==2);
+        }
+        prev=at;
+        have_prev=true;
+    }
+    sound_mode=previous_sound;
+    if(previous_sound>0 && tones[previous_sound-1])
+        sound_play(tones[previous_sound-1],center,0.22f);
 }
 static void commit_volume() {
     if(!volume_active) return;
@@ -173,6 +252,12 @@ static void commit_volume() {
     // Capped at 1331 candidate samples and 4096 accepted voxels.
     if(voxels.size()>=max_voxels) return;
     stroke_starts.push_back(voxels.size());
+    if(algorithm_mode==10) {
+        generate_lorenz(center,side);
+        if(stroke_starts.back()==voxels.size()) stroke_starts.pop_back();
+        last_paint_valid=false;
+        return;
+    }
     for(int iz=0;iz<n && voxels.size()<max_voxels;++iz)
       for(int iy=0;iy<n && voxels.size()<max_voxels;++iy)
         for(int ix=0;ix<n && voxels.size()<max_voxels;++ix) {
@@ -371,7 +456,7 @@ static void draw_face(int page) {
     const pose_t face=face_panel_pose(page);
     face_rect(face,0,0,panel_width,panel_height,
         {0.06f,0.13f,0.22f,0.80f},0.003f);
-    static const char* titles[]={"COLORS","SHAPES","SOUNDS","SCENES","ALGORITHMS"};
+    static const char* titles[]={"COLORS","SHAPES","SOUNDS","LORENZ","ALGORITHMS"};
     face_text(face,titles[page],0,0.188f);
     if(page==0) {
         for(int i=0;i<16;++i) {
@@ -416,12 +501,22 @@ static void draw_face(int page) {
             if(face_button(face,page,sounds[i],0.12f-i*0.045f,sound_mode==i))
                 sound_mode=i;
     } else if(page==3) {
-        face_text(face,"SAVE / LOAD: SOON",0,0.06f);
+        face_text(face,"LORENZ TIMELINE",0,0.153f);
+        static const char* modes[]={"STATIC","DRAW ONCE","LOOP"};
+        for(int i=0;i<3;++i)
+            if(face_button(face,page,modes[i],0.118f-i*0.043f,
+                           lorenz_playback==i)) lorenz_playback=i;
+        face_text(face,"NEXT LORENZ STROKE",0,-0.032f);
+        static const char* speeds[]={"SLOW 20S","NORMAL 9S","FAST 4S"};
+        for(int i=0;i<3;++i)
+            if(face_button(face,page,speeds[i],-0.088f-i*0.043f,
+                           lorenz_speed==i)) lorenz_speed=i;
     } else {
         static const char* algorithms[]={"SPHERE","JITTER","WAVE","HELIX",
-            "SHELL","LATTICE","MANDELBROT","JULIA","BRANCH","CORTEX"};
-        for(int i=0;i<10;++i)
-            if(face_button(face,page,algorithms[i],0.148f-i*0.036f,
+            "SHELL","LATTICE","MANDELBROT","JULIA","BRANCH","CORTEX",
+            "LORENZ"};
+        for(int i=0;i<11;++i)
+            if(face_button(face,page,algorithms[i],0.164f-i*0.033f,
                            algorithm_mode==i)) algorithm_mode=(algorithm_mode==i?-1:i);
     }
 }
@@ -704,6 +799,13 @@ int voxen_stereokit_main() {
             if(gpu_materials[i]) material_set_float(gpu_materials[i],
                                                      "time",animation_time);
         for(const PaintedVoxel& voxel:voxels) {
+            if(voxel.reveal_duration>0.0f) {
+                const float elapsed=std::max(0.0f,animation_time-voxel.reveal_start);
+                const float progress_time=voxel.reveal_loop
+                    ? std::fmod(elapsed,voxel.reveal_duration) : elapsed;
+                if(progress_time<voxel.reveal_progress*voxel.reveal_duration)
+                    continue;
+            }
             const float side=voxel.size*animated_scale(voxel);
             material_t voxel_mat=gpu_materials[voxel.gpu_preset];
             render_add_mesh(voxel.shape?sphere_mesh:cube,
