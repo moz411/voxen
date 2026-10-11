@@ -1,3 +1,5 @@
+val voxenStereoKit = providers.gradleProperty("voxenStereoKit").orNull == "true"
+
 plugins { id("com.android.application") }
 
 android {
@@ -15,10 +17,15 @@ android {
             cmake {
                 cppFlags += "-std=c++20"
                 arguments += "-DANDROID_STL=c++_shared"
+                arguments += "-DVOXEN_USE_STEREOKIT=${if (voxenStereoKit) "ON" else "OFF"}"
             }
         }
         ndk { abiFilters += "arm64-v8a" }
     }
+
+    sourceSets.getByName("main").manifest.srcFile(
+        if (voxenStereoKit) "src/stereokit/AndroidManifest.xml" else "src/main/AndroidManifest.xml"
+    )
 
     buildFeatures {
         prefab = true

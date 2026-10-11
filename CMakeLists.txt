@@ -32,6 +32,43 @@ elseif(WIN32)
     endif()
 endif()
 
+# Experimental StereoKit backend; old Vulkan backend remains the default.
+option(VOXEN_USE_STEREOKIT "Build the StereoKit XR/UI prototype" OFF)
+if(VOXEN_USE_STEREOKIT)
+    include(FetchContent)
+    set(SK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(SK_BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+    set(SK_PHYSICS OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(StereoKitC
+        GIT_REPOSITORY https://github.com/StereoKit/StereoKit.git
+        GIT_TAG v0.3.11
+        GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(StereoKitC)
+    # StereoKit's OpenXR headers are a private dependency; our edge extension
+    # directly includes openxr/openxr.h and needs the header target too.
+    if(TARGET OpenXR::headers)
+        set(VOXEN_OPENXR_HEADERS_TARGET OpenXR::headers)
+    elseif(TARGET OpenXR::openxr_loader)
+        set(VOXEN_OPENXR_HEADERS_TARGET OpenXR::openxr_loader)
+    else()
+        message(FATAL_ERROR "StereoKit did not provide OpenXR headers")
+    endif()
+
+    if(ANDROID)
+        add_library(voxen SHARED
+            stereokit/src/main.cpp
+            stereokit/android/android_main.cpp
+            ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c)
+        target_include_directories(voxen PRIVATE
+            ${ANDROID_NDK}/sources/android/native_app_glue)
+        target_link_libraries(voxen PRIVATE StereoKitC ${VOXEN_OPENXR_HEADERS_TARGET} android log)
+    else()
+        add_executable(voxen_stereokit stereokit/src/main.cpp)
+        target_link_libraries(voxen_stereokit PRIVATE StereoKitC ${VOXEN_OPENXR_HEADERS_TARGET})
+    endif()
+    return()
+endif()
+
 add_subdirectory(engine)
 
 if(ANDROID)
