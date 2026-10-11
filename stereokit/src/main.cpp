@@ -195,16 +195,16 @@ static void update_controller_palette() {
                    {menu_width, menu_height, menu_width}),
         {0.20f, 0.65f, 0.85f, 0.12f});
 
-    // StereoKit's window layout extends toward local -X from its
-    // anchor. Anchor at the RIGHT edge so the 23 cm window is centered
-    // on the 24 cm face; previous -X offset shifted the entire UI left.
-    // Keep UI normal independent of the decorative carousel spin.
-    const vec3 anchor = quat_mul_vec(orientation,
-        {0.08f, menu_height*0.5f - 0.008f, -menu_width*0.5f - 0.005f});
+    // Select the front face's real transform for controller targeting.
+    // Each face has its own panel; the cube and panels share one rotation.
+    const quat face_rotation = quat_mul(orientation,
+        quat_from_angles(0, -menu_page*90.0f, 0));
+    const vec3 anchor = quat_mul_vec(face_rotation,
+        {0.08f, menu_height*0.5f - 0.006f, -menu_width*0.5f - 0.005f});
     palette.position = {carousel_base.position.x + anchor.x,
                         carousel_base.position.y + anchor.y,
                         carousel_base.position.z + anchor.z};
-    palette.orientation = orientation;
+    palette.orientation = face_rotation;
 }
 // Controller ray to UI-plane intersection, independent of StereoKit's
 // near-hand widget interaction. Local top-left is the window pose.
@@ -393,18 +393,37 @@ int voxen_stereokit_main() {
         update_controller_palette();
         update_left_buttons();
         update_menu_ray();
-        ui_window_begin("VOXEN", palette, {0.16f, 0},
-                        ui_win_normal, ui_move_none);
-        if (menu_page == 0) {
+        // Four independent UI surfaces rigidly fixed to four cube faces.
+        // Active face uses the same pose as the controller ray intersection.
+        const quat spin = quat_from_angles(0, carousel_angle, 0);
+        const quat world_rotation = quat_mul(carousel_base.orientation, spin);
+        for (int page=0; page<page_count; ++page) {
+            const quat face_rot = quat_mul(world_rotation,
+                quat_from_angles(0, -page*90.0f, 0));
+            const vec3 face_offset = quat_mul_vec(face_rot,
+                {0.08f, menu_height*0.5f-0.006f,
+                 -menu_width*0.5f-0.005f});
+            pose_t face_pose = {{
+                carousel_base.position.x+face_offset.x,
+                carousel_base.position.y+face_offset.y,
+                carousel_base.position.z+face_offset.z
+            }, face_rot};
+            ui_window_begin(page==0 ? "COLORS" : page==1 ? "SHAPES" :
+                            page==2 ? "SOUNDS" : "SCENES",
+                            face_pose, {0.16f,0}, ui_win_normal, ui_move_none);
+            // Remote click is accepted only on the active facing page.
+            const bool ray_was_click = menu_click;
+            if (page != menu_page) menu_click = false;
+        if (page == 0) {
             if (menu_button("Red",0)) hue = 0.0f;
             if (menu_button("Yellow",1)) hue = 0.16f;
             if (menu_button("Cyan",2)) hue = 0.5f;
             if (menu_button("Purple",3)) hue = 0.77f;
-        } else if (menu_page == 1) {
+        } else if (page == 1) {
             if (menu_button("Cube",0)) selected_shape = 0;
             if (menu_button("Sphere",1)) selected_shape = 1;
             ui_label("Tetrahedron: next");
-        } else if (menu_page == 2) {
+        } else if (page == 2) {
             ui_label("SOUNDS");
             ui_label("Spatial sound: next");
         } else {
@@ -412,7 +431,9 @@ int voxen_stereokit_main() {
             ui_label("Save / Load: next");
             ui_label("X Undo / Y Redo");
         }
-        ui_window_end();
+            menu_click = ray_was_click;
+            ui_window_end();
+        }
 
         for (const PaintedVoxel& voxel : voxels)
             render_add_mesh(voxel.shape ? sphere_mesh : cube, material,
