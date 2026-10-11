@@ -423,11 +423,12 @@ static void update_controller_palette() {
     /* Orientation follows the left controller, including pitch/roll.
        This intentionally replaces the former floor-upright behavior. */
     carousel_base.orientation = left->pose.orientation;
-    // Rotate the five-sided carousel around controller-local Y
+    // Rotate the four-sided carousel around controller-local Y
     // from the controller's six-degree-of-freedom position.
     const float delta = target_angle - carousel_angle;
     carousel_angle += delta * std::min(1.0f, time_stepf() * 12.0f);
     // Five logical pages, but only four physical faces on a compact cube.
+    const quat spin=quat_from_angles(0,carousel_angle,0);
     render_add_mesh(cube,carousel_mat,matrix_trs(carousel_base.position,
         quat_mul(carousel_base.orientation,spin),
         {menu_width,menu_height,menu_width}),{0.2f,0.65f,0.85f,0.12f});
