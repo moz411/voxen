@@ -2,6 +2,8 @@
 #include <stereokit_ui.h>
 #include <openxr/openxr.h>
 #include "voxen_voxel.hlsl.h"
+#include "voxel_shapes.h"
+#include "artwork.h"
 #include <cstdio>
 #include <vector>
 #include <cmath>
@@ -12,7 +14,7 @@ using namespace sk;
 sk_settings_t app_settings = {"Voxen StereoKit"};
 static pose_t palette = {{-0.25f, 0.0f, -0.55f}, quat_identity};
 static int menu_page = 0;
-static constexpr int page_count = 5;
+static constexpr int page_count = 6;
 static constexpr float menu_width = 0.17f;
 static constexpr float menu_height = 0.46f;
 static float carousel_angle = 0.0f;
@@ -32,7 +34,7 @@ static bool stick_latched = false;
 static bool show_ui_ray = true;
 static float voxel_size = 0.04f;
 static int selected_shape = 0;
-static mesh_t sphere_mesh = nullptr;
+static std::array<mesh_t,voxen_shapes::count> shape_meshes{};
 static sound_t click_sound = nullptr;
 static sound_t tones[3] = {nullptr,nullptr,nullptr};
 static int sound_mode = 0; // 0 silence, 1 soft bell, 2 bright pulse, 3 bass
@@ -73,8 +75,34 @@ struct PaintedVoxel {
     bool reveal_loop;
 };
 static std::vector<PaintedVoxel> voxels;
-static std::vector<size_t> stroke_starts;
-static std::vector<std::vector<PaintedVoxel>> redo_strokes;
+static std::vector<voxen::Artwork> artworks;
+static std::vector<voxen::ArtworkSnapshot<PaintedVoxel>> redo_artworks;
+static uint64_t next_artwork_id = 1;
+static bool stroke_active = false;
+static voxen::Artwork pending_artwork{};
+// Begin a semantic artwork before generating any voxels.
+static void begin_artwork(vec3 origin, float extent = 0.0f) {
+    if (stroke_active || voxels.size() >= 4096) return;
+    pending_artwork = {};
+    pending_artwork.id = next_artwork_id++;
+    pending_artwork.first_voxel = static_cast<uint32_t>(voxels.size());
+    pending_artwork.generator = algorithm_mode;
+    pending_artwork.shape = selected_shape;
+    pending_artwork.animation = effect_mode;
+    pending_artwork.shader = gpu_preset;
+    pending_artwork.sound = sound_mode;
+    pending_artwork.origin = origin;
+    pending_artwork.extent = extent;
+    stroke_active = true;
+}
+// Finalize only non-empty artworks. Undo/redo works on semantic units.
+static void finish_artwork() {
+    if (!stroke_active) return;
+    stroke_active = false;
+    pending_artwork.voxel_count =
+        static_cast<uint32_t>(voxels.size()) - pending_artwork.first_voxel;
+    if (pending_artwork.voxel_count) artworks.push_back(pending_artwork);
+}
 static constexpr size_t max_voxels = 4096;
 static bool trigger_down = false;
 static bool last_paint_valid = false;
@@ -149,7 +177,7 @@ static void add_voxel(vec3 p,float size) {
            std::fabs(v.position.y-p.y)<gap &&
            std::fabs(v.position.z-p.z)<gap) return;
     }
-    redo_strokes.clear();
+    redo_artworks.clear();
     const float phase=p.x*11+p.y*7+p.z*13;
     voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,gpu_preset,phase,0.0f,0.0f,0.0f,false});
     if(sound_mode>0 && tones[sound_mode-1] && (++note_stride%8)==1)
@@ -235,6 +263,47 @@ static void generate_lorenz(const vec3& center,float side) {
     if(previous_sound>0 && tones[previous_sound-1])
         sound_play(tones[previous_sound-1],center,0.22f);
 }
+// A planar fractal is sampled in its native complex plane, never extruded into
+// an arbitrary height field. The current preview is world-upright XY; a later
+// iteration can orient the canvas using the controller's release pose.
+static int complex_escape(float real, float imag, bool julia) {
+    float zr = julia ? real : 0.0f;
+    float zi = julia ? imag : 0.0f;
+    const float cr = julia ? -0.745f : real;
+    const float ci = julia ? 0.186f : imag;
+    constexpr int max_iterations = 64;
+    for (int i = 0; i < max_iterations; ++i) {
+        if (zr*zr + zi*zi > 4.0f) return i;
+        const float next_real = zr*zr - zi*zi + cr;
+        zi = 2.0f*zr*zi + ci;
+        zr = next_real;
+    }
+    return max_iterations;
+}
+static void generate_planar_fractal(const vec3& center, float side, bool julia) {
+    constexpr int resolution = 46;
+    const float spacing = side / resolution;
+    // One flat voxel layer with a maximum of 2116 candidates.
+    const float voxel_edge = spacing * 0.86f;
+    const int previous_sound = sound_mode;
+    sound_mode = 0;
+    for (int iy = 0; iy < resolution && voxels.size() < max_voxels; ++iy)
+        for (int ix = 0; ix < resolution && voxels.size() < max_voxels; ++ix) {
+            const float u = (ix + 0.5f) / resolution;
+            const float v = (iy + 0.5f) / resolution;
+            const float real = julia ? -1.5f + 3.0f*u : -2.25f + 3.0f*u;
+            const float imag = -1.5f + 3.0f*v;
+            // Keep interior and nearby high-iteration boundary for a legible
+            // silhouette; do not fill the entire exterior of the canvas.
+            if (complex_escape(real, imag, julia) < 24) continue;
+            add_voxel({center.x + (ix + 0.5f - resolution*0.5f)*spacing,
+                       center.y + (iy + 0.5f - resolution*0.5f)*spacing,
+                       center.z}, voxel_edge);
+        }
+    sound_mode = previous_sound;
+    if (previous_sound > 0 && tones[previous_sound-1])
+        sound_play(tones[previous_sound-1], center, 0.22f);
+}
 static void commit_volume() {
     if(!volume_active) return;
     volume_active=false;
@@ -251,10 +320,16 @@ static void commit_volume() {
     const float spacing=side/n;
     // Capped at 1331 candidate samples and 4096 accepted voxels.
     if(voxels.size()>=max_voxels) return;
-    stroke_starts.push_back(voxels.size());
+    begin_artwork(center,side);
+    if(algorithm_mode==6 || algorithm_mode==7) {
+        generate_planar_fractal(center,side,algorithm_mode==7);
+        finish_artwork();
+        last_paint_valid=false;
+        return;
+    }
     if(algorithm_mode==10) {
         generate_lorenz(center,side);
-        if(stroke_starts.back()==voxels.size()) stroke_starts.pop_back();
+        finish_artwork();
         last_paint_valid=false;
         return;
     }
@@ -272,7 +347,7 @@ static void commit_volume() {
                 x*4.1f+y*2.7f+z*5.3f+algorithm_mode));
             add_voxel(p,spacing*scale);
         }
-    if(stroke_starts.back()==voxels.size()) stroke_starts.pop_back();
+    finish_artwork();
     last_paint_valid=false;
 }
 static color128 animated_tint(const PaintedVoxel& v) {
@@ -298,6 +373,7 @@ static void update_brush() {
     const controller_t* right = input_controller(handed_right);
     if (!right || !(right->tracked & button_state_active)) {
         trigger_down = false;
+        finish_artwork();
         last_paint_valid = false;
         volume_active = false;
         return;
@@ -313,7 +389,7 @@ static void update_brush() {
     }
     if (std::fabs(right->stick.y) < 0.30f) shape_stick_latched = false;
     if (!shape_stick_latched && std::fabs(right->stick.y) > 0.70f) {
-        selected_shape = (selected_shape + (right->stick.y > 0 ? 1 : 1)) % 2;
+        selected_shape = (selected_shape + (right->stick.y > 0 ? 1 : voxen_shapes::count-1)) % voxen_shapes::count;
         shape_stick_latched = true;
     }
     const bool pressed = trigger_down
@@ -328,9 +404,11 @@ static void update_brush() {
     // UI owns the trigger while aiming at a panel.
     if(menu_aiming || menu_capture) {
         if(volume_active) volume_active=false;
+        finish_artwork();
         last_paint_valid=false; trigger_down=false; return;
     }
     if(algorithm_mode>=0) {
+        finish_artwork();
         if(pressed) {
             if(!volume_active) { volume_start=tip; volume_active=true; }
             volume_end=tip;
@@ -347,13 +425,17 @@ static void update_brush() {
         return;
     }
     // Live fixed-size, axis-aligned brush cursor.
-    render_add_mesh(selected_shape ? sphere_mesh : cube, material,
+    render_add_mesh(shape_meshes[selected_shape], material,
         matrix_ts(tip, {voxel_size, voxel_size, voxel_size}),
         color_hsv(hue, 1.0f, 1.0f, 1.0f));
-    if (!painting || !pressed) { last_paint_valid = false; return; }
+    if (!painting || !pressed) {
+        finish_artwork();
+        last_paint_valid = false;
+        return;
+    }
 
     if (!last_paint_valid) {
-        if (voxels.size() < max_voxels) stroke_starts.push_back(voxels.size());
+        begin_artwork(tip);
         paint_at(tip);
         last_paint = tip;
         last_paint_valid = true;
@@ -373,22 +455,30 @@ static void update_brush() {
 
 
 static void undo_stroke() {
-    if (stroke_starts.empty()) return;
-    const size_t start = stroke_starts.back();
-    stroke_starts.pop_back();
-    redo_strokes.emplace_back(voxels.begin() + start, voxels.end());
-    voxels.resize(start);
+    finish_artwork();
+    if (artworks.empty()) return;
+    auto artwork = artworks.back();
+    artworks.pop_back();
+    // All artworks are appended chronologically; the last one is a suffix.
+    if (artwork.first_voxel + artwork.voxel_count != voxels.size()) {
+        artworks.push_back(artwork);
+        return;
+    }
+    voxen::ArtworkSnapshot<PaintedVoxel> snapshot;
+    snapshot.artwork = artwork;
+    snapshot.voxels.assign(voxels.begin()+artwork.first_voxel,voxels.end());
+    redo_artworks.push_back(std::move(snapshot));
+    voxels.resize(artwork.first_voxel);
     last_paint_valid = false;
 }
 static void redo_stroke() {
-    if (redo_strokes.empty()) return;
-    std::vector<PaintedVoxel> stroke = std::move(redo_strokes.back());
-    redo_strokes.pop_back();
-    stroke_starts.push_back(voxels.size());
-    for (auto &v : stroke) {
-        if (voxels.size() >= max_voxels) break;
-        voxels.push_back(v);
-    }
+    if (redo_artworks.empty()) return;
+    auto snapshot = std::move(redo_artworks.back());
+    redo_artworks.pop_back();
+    if (snapshot.voxels.size() > max_voxels - voxels.size()) return;
+    snapshot.artwork.first_voxel = static_cast<uint32_t>(voxels.size());
+    voxels.insert(voxels.end(),snapshot.voxels.begin(),snapshot.voxels.end());
+    artworks.push_back(snapshot.artwork);
     last_paint_valid = false;
 }
 static void update_left_buttons() {
@@ -456,7 +546,7 @@ static void draw_face(int page) {
     const pose_t face=face_panel_pose(page);
     face_rect(face,0,0,panel_width,panel_height,
         {0.06f,0.13f,0.22f,0.80f},0.003f);
-    static const char* titles[]={"COLORS","SHAPES","SOUNDS","LORENZ","ALGORITHMS"};
+    static const char* titles[]={"COLORS","SHAPES","SOUNDS","LORENZ","ALGORITHMS","SHADERS"};
     face_text(face,titles[page],0,0.188f);
     if(page==0) {
         for(int i=0;i<16;++i) {
@@ -470,30 +560,26 @@ static void draw_face(int page) {
                 if(click_sound) sound_play(click_sound,menu_hit,0.35f);
             }
         }
-        face_text(face,"GPU MATERIALS",0,-0.056f);
-        static const char* names[]={"MATTE","NEON","PLASMA","HOLO","LAVA","ICE"};
-        for(int i=0;i<6;++i) {
-            const float x=(i%2==0?-0.041f:0.041f);
-            const float y=-0.096f-(i/2)*0.045f;
-            const bool hover=panel_hover(page,x,y,0.074f,0.033f);
-            face_rect(face,x,y,0.074f,0.031f,
+    } else if(page==1) {
+        for(int i=0;i<voxen_shapes::count;++i) {
+            const int col=i%2,row=i/2;
+            const float x=col==0?-0.041f:0.041f;
+            const float y=0.135f-row*0.051f;
+            const bool hover=panel_hover(page,x,y,0.076f,0.038f);
+            face_rect(face,x,y,0.075f,0.036f,
                 hover?color128{0.2f,0.8f,0.95f,0.95f}:
-                gpu_preset==i?color128{0.18f,0.62f,0.45f,0.9f}:
+                selected_shape==i?color128{0.18f,0.62f,0.45f,0.9f}:
                 color128{0.10f,0.24f,0.35f,0.85f});
-            face_text(face,names[i],x,y);
+            face_text(face,voxen_shapes::labels[i],x,y);
             if(hover && menu_click) {
-                gpu_preset=i;
+                selected_shape=i;
                 if(click_sound) sound_play(click_sound,menu_hit,0.35f);
             }
         }
-    } else if(page==1) {
-        if(face_button(face,page,"[ ] CUBE",0.13f,selected_shape==0))
-            selected_shape=0;
-        if(face_button(face,page,"( ) SPHERE",0.09f,selected_shape==1))
-            selected_shape=1;
+        face_text(face,"VOXEL ANIMATION",0,-0.075f);
         static const char* effects[]={"SOLID","BREATHE","RAINBOW","SHIMMER"};
         for(int i=0;i<4;++i)
-            if(face_button(face,page,effects[i],0.035f-i*0.04f,effect_mode==i))
+            if(face_button(face,page,effects[i],-0.110f-i*0.030f,effect_mode==i))
                 effect_mode=i;
     } else if(page==2) {
         static const char* sounds[]={"MUTE","BELL","PULSE","BASS"};
@@ -511,13 +597,30 @@ static void draw_face(int page) {
         for(int i=0;i<3;++i)
             if(face_button(face,page,speeds[i],-0.088f-i*0.043f,
                            lorenz_speed==i)) lorenz_speed=i;
-    } else {
+    } else if(page==4) {
         static const char* algorithms[]={"SPHERE","JITTER","WAVE","HELIX",
             "SHELL","LATTICE","MANDELBROT","JULIA","BRANCH","CORTEX",
             "LORENZ"};
         for(int i=0;i<11;++i)
             if(face_button(face,page,algorithms[i],0.164f-i*0.033f,
                            algorithm_mode==i)) algorithm_mode=(algorithm_mode==i?-1:i);
+    } else if(page==5) {
+        face_text(face,"GPU MATERIALS",0,0.153f);
+        static const char* names[]={"MATTE","NEON","PLASMA","HOLO","LAVA","ICE"};
+        for(int i=0;i<6;++i) {
+            const float x=(i%2==0?-0.041f:0.041f);
+            const float y=0.090f-(i/2)*0.058f;
+            const bool hover=panel_hover(page,x,y,0.074f,0.033f);
+            face_rect(face,x,y,0.074f,0.031f,
+                hover?color128{0.2f,0.8f,0.95f,0.95f}:
+                gpu_preset==i?color128{0.18f,0.62f,0.45f,0.9f}:
+                color128{0.10f,0.24f,0.35f,0.85f});
+            face_text(face,names[i],x,y);
+            if(hover && menu_click) {
+                gpu_preset=i;
+                if(click_sound) sound_play(click_sound,menu_hit,0.35f);
+            }
+        }
     }
 }
 static void update_controller_palette() {
@@ -751,7 +854,7 @@ int voxen_stereokit_main() {
     if (!sk_init(app_settings)) return 1;
     edge_passthrough.initialize();
     cube = mesh_find(default_id_mesh_cube);
-    sphere_mesh = mesh_gen_sphere(1.0f,3);
+    shape_meshes = voxen_shapes::create(cube);
     material = material_copy(material_find(default_id_material));
     click_sound = sound_generate([](float t) -> float {
         const float envelope = std::exp(-42.0f*t);
@@ -808,7 +911,7 @@ int voxen_stereokit_main() {
             }
             const float side=voxel.size*animated_scale(voxel);
             material_t voxel_mat=gpu_materials[voxel.gpu_preset];
-            render_add_mesh(voxel.shape?sphere_mesh:cube,
+            render_add_mesh(shape_meshes[std::clamp(voxel.shape,0,voxen_shapes::count-1)],
                 voxel_mat?voxel_mat:material,
                 matrix_ts(voxel.position,{side,side,side}),
                 voxel_mat?voxel.tint:animated_tint(voxel));
@@ -826,8 +929,7 @@ int voxen_stereokit_main() {
             color_hsv(edge_hue, 1.0f, 1.0f, 1.0f));
     }, [] {
         edge_passthrough.shutdown();
-        mesh_release(cube);
-        mesh_release(sphere_mesh);
+        for(mesh_t mesh:shape_meshes) if(mesh) mesh_release(mesh);
         material_release(material);
         material_release(carousel_mat);
         for(material_t mat:gpu_materials) if(mat) material_release(mat);
