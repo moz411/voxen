@@ -418,7 +418,19 @@ static void update_controller_palette() {
     carousel_base.position={left->pose.position.x+offset.x,
                             left->pose.position.y+offset.y,
                             left->pose.position.z+offset.z};
-    carousel_base.orientation=left->pose.orientation;
+    // Position follows the controller; readability follows the headset.
+    // Keep local Y upright and face the viewer instead of showing the panel
+    // edge-on when the controller points forward or down.
+    const pose_t* head=input_head();
+    if(head) {
+        const vec3 target={head->position.x,carousel_base.position.y,
+                           head->position.z};
+        const float dx=target.x-carousel_base.position.x;
+        const float dz=target.z-carousel_base.position.z;
+        if(dx*dx+dz*dz>0.0001f)
+            carousel_base.orientation=quat_lookat_up(
+                carousel_base.position,target,{0,1,0});
+    }
     palette=face_panel_pose(menu_page);
 }
 // Controller ray to UI-plane intersection, independent of StereoKit's
