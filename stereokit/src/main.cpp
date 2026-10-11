@@ -14,7 +14,7 @@ using namespace sk;
 sk_settings_t app_settings = {"Voxen StereoKit"};
 static pose_t palette = {{-0.25f, 0.0f, -0.55f}, quat_identity};
 static int menu_page = 0;
-static constexpr int page_count = 7;
+static constexpr int page_count = 8;
 static constexpr float menu_width = 0.17f;
 static constexpr float menu_height = 0.46f;
 static float carousel_angle = 0.0f;
@@ -45,6 +45,7 @@ static int lorenz_speed = 1; // 0 slow, 1 normal, 2 fast
 static int note_stride = 0;
 static int algorithm_mode = -1;
 static int gpu_preset = 0;
+static float lorenz_sigma=10.0f, lorenz_rho=28.0f, lorenz_beta=8.0f/3.0f;
 static shader_t voxel_shader = nullptr;
 static material_t gpu_materials[6] = {};
 static uint32_t brush_step = 0;
@@ -77,6 +78,9 @@ struct PaintedVoxel {
 static std::vector<PaintedVoxel> voxels;
 static std::vector<voxen::Artwork> artworks;
 static std::vector<voxen::ArtworkSnapshot<PaintedVoxel>> redo_artworks;
+struct PropertyEdit { uint64_t artwork_id; bool is_shader; int before; int after; };
+static std::vector<PropertyEdit> property_undo, property_redo;
+static bool applying_property_history=false;
 static uint64_t next_artwork_id = 1;
 static uint64_t selected_artwork_id = 0;
 static bool selection_mode = false;
@@ -85,6 +89,7 @@ static bool stroke_active = false;
 static voxen::Artwork pending_artwork{};
 // Begin a semantic artwork before generating any voxels.
 static void begin_artwork(vec3 origin, float extent = 0.0f) {
+    property_undo.clear(); property_redo.clear();
     if (stroke_active || voxels.size() >= 4096) return;
     pending_artwork = {};
     pending_artwork.id = next_artwork_id++;
@@ -199,8 +204,8 @@ static void paint_at(vec3 p) {
 // preserving the attractor's proportions instead of faking its butterfly shape.
 struct LorenzPoint { float x,y,z; };
 static LorenzPoint lorenz_velocity(const LorenzPoint& p) {
-    return {10.0f*(p.y-p.x),p.x*(28.0f-p.z)-p.y,
-            p.x*p.y-(8.0f/3.0f)*p.z};
+    return {lorenz_sigma*(p.y-p.x),p.x*(lorenz_rho-p.z)-p.y,
+            p.x*p.y-lorenz_beta*p.z};
 }
 static LorenzPoint lorenz_add(const LorenzPoint& a,const LorenzPoint& b,float scale) {
     return {a.x+b.x*scale,a.y+b.y*scale,a.z+b.z*scale};
@@ -393,12 +398,22 @@ static voxen::Artwork* selected_artwork() {
 }
 static void edit_selected_shape(int shape) {
     auto* a=selected_artwork(); if(!a) return;
+    if(a->shape==shape) return;
+    if(!applying_property_history) {
+        property_undo.push_back({a->id,false,a->shape,shape});
+        property_redo.clear();
+    }
     a->shape=shape;
     const size_t end=std::min(voxels.size(),size_t(a->first_voxel)+a->voxel_count);
     for(size_t i=a->first_voxel;i<end;++i) voxels[i].shape=shape;
 }
 static void edit_selected_shader(int shader) {
     auto* a=selected_artwork(); if(!a) return;
+    if(a->shader==shader) return;
+    if(!applying_property_history) {
+        property_undo.push_back({a->id,true,a->shader,shader});
+        property_redo.clear();
+    }
     a->shader=shader;
     const size_t end=std::min(voxels.size(),size_t(a->first_voxel)+a->voxel_count);
     for(size_t i=a->first_voxel;i<end;++i) voxels[i].gpu_preset=shader;
@@ -541,7 +556,30 @@ static void update_brush() {
 }
 
 
+static bool undo_property() {
+    if(property_undo.empty()) return false;
+    const auto edit=property_undo.back(); property_undo.pop_back();
+    selected_artwork_id=edit.artwork_id;
+    applying_property_history=true;
+    if(edit.is_shader) edit_selected_shader(edit.before);
+    else edit_selected_shape(edit.before);
+    applying_property_history=false;
+    property_redo.push_back(edit);
+    return true;
+}
+static bool redo_property() {
+    if(property_redo.empty()) return false;
+    const auto edit=property_redo.back(); property_redo.pop_back();
+    selected_artwork_id=edit.artwork_id;
+    applying_property_history=true;
+    if(edit.is_shader) edit_selected_shader(edit.after);
+    else edit_selected_shape(edit.after);
+    applying_property_history=false;
+    property_undo.push_back(edit);
+    return true;
+}
 static void undo_stroke() {
+    if(undo_property()) return;
     selected_artwork_id = 0;
     finish_artwork();
     if (artworks.empty()) return;
@@ -560,6 +598,7 @@ static void undo_stroke() {
     last_paint_valid = false;
 }
 static void redo_stroke() {
+    if(redo_property()) return;
     selected_artwork_id = 0;
     if (redo_artworks.empty()) return;
     auto snapshot = std::move(redo_artworks.back());
@@ -635,7 +674,7 @@ static void draw_face(int page) {
     const pose_t face=face_panel_pose(page);
     face_rect(face,0,0,panel_width,panel_height,
         {0.06f,0.13f,0.22f,0.80f},0.003f);
-    static const char* titles[]={"COLORS","SHAPES","SOUNDS","LORENZ","ALGORITHMS","SHADERS","EDIT"};
+    static const char* titles[]={"COLORS","SHAPES","SOUNDS","LORENZ","ALGORITHMS","SHADERS","EDIT","PARAMS"};
     face_text(face,titles[page],0,0.188f);
     if(page==0) {
         for(int i=0;i<16;++i) {
@@ -711,6 +750,34 @@ static void draw_face(int page) {
                 if(selection_mode) edit_selected_shader(i);
                 if(click_sound) sound_play(click_sound,menu_hit,0.35f);
             }
+        }
+    } else if(page==7) {
+        if(algorithm_mode==10) {
+            face_text(face,"LORENZ PARAMETERS",0,0.150f);
+            char value[64];
+            const char* names[]={"SIGMA","RHO","BETA"};
+            float* values[]={&lorenz_sigma,&lorenz_rho,&lorenz_beta};
+            const float steps[]={0.5f,1.0f,0.1f};
+            const float minima[]={0.1f,0.1f,0.1f};
+            const float maxima[]={40.0f,80.0f,10.0f};
+            for(int i=0;i<3;++i) {
+                const float y=0.09f-i*0.12f;
+                std::snprintf(value,sizeof(value),"%s %.2f",names[i],*values[i]);
+                face_text(face,value,0,y);
+                const bool minus=panel_hover(page,-0.040f,y-0.040f,0.07f,0.033f);
+                const bool plus=panel_hover(page,0.040f,y-0.040f,0.07f,0.033f);
+                face_rect(face,-0.040f,y-0.040f,0.070f,0.031f,
+                          minus?color128{0.2f,0.7f,0.8f,0.95f}:color128{0.1f,0.24f,0.35f,0.85f});
+                face_rect(face,0.040f,y-0.040f,0.070f,0.031f,
+                          plus?color128{0.2f,0.7f,0.8f,0.95f}:color128{0.1f,0.24f,0.35f,0.85f});
+                face_text(face,"-", -0.040f,y-0.040f);
+                face_text(face,"+", 0.040f,y-0.040f);
+                if(menu_click && (minus||plus))
+                    *values[i]=std::clamp(*values[i]+(plus?steps[i]:-steps[i]),minima[i],maxima[i]);
+            }
+        } else {
+            face_text(face,"SELECT LORENZ",0,0.060f);
+            face_text(face,"IN ALGORITHMS",0,0.020f);
         }
     } else if(page==6) {
         if(face_button(face,page,selection_mode?"SELECT: ON":"SELECT: OFF",
