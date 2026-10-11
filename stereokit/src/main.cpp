@@ -156,6 +156,67 @@ static void paint_at(vec3 p) {
        std::round(p.z/size)*size};
     add_voxel(p,size);
 }
+// First artwork in "Attracteurs étranges": the real Lorenz system.
+// RK4 integrates the classic (sigma=10, rho=28, beta=8/3) flow in phase space.
+// The resulting trajectory is uniformly fitted inside the trigger-defined cube,
+// preserving the attractor's proportions instead of faking its butterfly shape.
+struct LorenzPoint { float x,y,z; };
+static LorenzPoint lorenz_velocity(const LorenzPoint& p) {
+    return {10.0f*(p.y-p.x),p.x*(28.0f-p.z)-p.y,
+            p.x*p.y-(8.0f/3.0f)*p.z};
+}
+static LorenzPoint lorenz_add(const LorenzPoint& a,const LorenzPoint& b,float scale) {
+    return {a.x+b.x*scale,a.y+b.y*scale,a.z+b.z*scale};
+}
+static LorenzPoint lorenz_advance(const LorenzPoint& p,float dt) {
+    const auto k1=lorenz_velocity(p);
+    const auto k2=lorenz_velocity(lorenz_add(p,k1,dt*0.5f));
+    const auto k3=lorenz_velocity(lorenz_add(p,k2,dt*0.5f));
+    const auto k4=lorenz_velocity(lorenz_add(p,k3,dt));
+    return {p.x+dt*(k1.x+2*k2.x+2*k3.x+k4.x)/6.0f,
+            p.y+dt*(k1.y+2*k2.y+2*k3.y+k4.y)/6.0f,
+            p.z+dt*(k1.z+2*k2.z+2*k3.z+k4.z)/6.0f};
+}
+static void generate_lorenz(const vec3& center,float side) {
+    constexpr int warmup=1500;
+    constexpr int samples=2600;
+    constexpr float dt=0.008f;
+    LorenzPoint p={0.1f,0.0f,0.0f};
+    for(int i=0;i<warmup;++i) p=lorenz_advance(p,dt);
+    std::vector<LorenzPoint> path;
+    path.reserve(samples);
+    LorenzPoint low=p, high=p;
+    for(int i=0;i<samples;++i) {
+        p=lorenz_advance(p,dt);
+        path.push_back(p);
+        low={std::min(low.x,p.x),std::min(low.y,p.y),std::min(low.z,p.z)};
+        high={std::max(high.x,p.x),std::max(high.y,p.y),std::max(high.z,p.z)};
+    }
+    const float extent=std::max({high.x-low.x,high.y-low.y,high.z-low.z,0.001f});
+    const float scale=side*0.88f/extent;
+    const LorenzPoint mid={(low.x+high.x)*0.5f,(low.y+high.y)*0.5f,
+                           (low.z+high.z)*0.5f};
+    // X,Y are the butterfly's horizontal axes, Z maps to world-up.
+    // Small voxels keep the trajectory recognizable even for short gestures.
+    const float size=std::max(0.003f,side/70.0f);
+    vec3 prev{};
+    bool have_prev=false;
+    const int previous_sound=sound_mode;
+    sound_mode=0; // Avoid hundreds of simultaneous spatial notes at commit.
+    for(const auto& q:path) {
+        if(voxels.size()>=max_voxels) break;
+        const vec3 at={center.x+(q.x-mid.x)*scale,
+                       center.y+(q.z-mid.z)*scale,
+                       center.z+(q.y-mid.y)*scale};
+        if(have_prev && dist(at,prev)<size*0.85f) continue;
+        add_voxel(at,size);
+        prev=at;
+        have_prev=true;
+    }
+    sound_mode=previous_sound;
+    if(previous_sound>0 && tones[previous_sound-1])
+        sound_play(tones[previous_sound-1],center,0.22f);
+}
 static void commit_volume() {
     if(!volume_active) return;
     volume_active=false;
@@ -173,6 +234,12 @@ static void commit_volume() {
     // Capped at 1331 candidate samples and 4096 accepted voxels.
     if(voxels.size()>=max_voxels) return;
     stroke_starts.push_back(voxels.size());
+    if(algorithm_mode==10) {
+        generate_lorenz(center,side);
+        if(stroke_starts.back()==voxels.size()) stroke_starts.pop_back();
+        last_paint_valid=false;
+        return;
+    }
     for(int iz=0;iz<n && voxels.size()<max_voxels;++iz)
       for(int iy=0;iy<n && voxels.size()<max_voxels;++iy)
         for(int ix=0;ix<n && voxels.size()<max_voxels;++ix) {
@@ -419,9 +486,10 @@ static void draw_face(int page) {
         face_text(face,"SAVE / LOAD: SOON",0,0.06f);
     } else {
         static const char* algorithms[]={"SPHERE","JITTER","WAVE","HELIX",
-            "SHELL","LATTICE","MANDELBROT","JULIA","BRANCH","CORTEX"};
-        for(int i=0;i<10;++i)
-            if(face_button(face,page,algorithms[i],0.148f-i*0.036f,
+            "SHELL","LATTICE","MANDELBROT","JULIA","BRANCH","CORTEX",
+            "LORENZ"};
+        for(int i=0;i<11;++i)
+            if(face_button(face,page,algorithms[i],0.164f-i*0.033f,
                            algorithm_mode==i)) algorithm_mode=(algorithm_mode==i?-1:i);
     }
 }
