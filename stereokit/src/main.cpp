@@ -2,6 +2,7 @@
 #include <stereokit_ui.h>
 #include <openxr/openxr.h>
 #include "voxen_voxel.hlsl.h"
+#include "voxel_shapes.h"
 #include <cstdio>
 #include <vector>
 #include <cmath>
@@ -32,7 +33,7 @@ static bool stick_latched = false;
 static bool show_ui_ray = true;
 static float voxel_size = 0.04f;
 static int selected_shape = 0;
-static mesh_t sphere_mesh = nullptr;
+static std::array<mesh_t,voxen_shapes::count> shape_meshes{};
 static sound_t click_sound = nullptr;
 static sound_t tones[3] = {nullptr,nullptr,nullptr};
 static int sound_mode = 0; // 0 silence, 1 soft bell, 2 bright pulse, 3 bass
@@ -360,7 +361,7 @@ static void update_brush() {
     }
     if (std::fabs(right->stick.y) < 0.30f) shape_stick_latched = false;
     if (!shape_stick_latched && std::fabs(right->stick.y) > 0.70f) {
-        selected_shape = (selected_shape + (right->stick.y > 0 ? 1 : 1)) % 2;
+        selected_shape = (selected_shape + (right->stick.y > 0 ? 1 : voxen_shapes::count-1)) % voxen_shapes::count;
         shape_stick_latched = true;
     }
     const bool pressed = trigger_down
@@ -394,7 +395,7 @@ static void update_brush() {
         return;
     }
     // Live fixed-size, axis-aligned brush cursor.
-    render_add_mesh(selected_shape ? sphere_mesh : cube, material,
+    render_add_mesh(shape_meshes[selected_shape], material,
         matrix_ts(tip, {voxel_size, voxel_size, voxel_size}),
         color_hsv(hue, 1.0f, 1.0f, 1.0f));
     if (!painting || !pressed) { last_paint_valid = false; return; }
@@ -518,13 +519,25 @@ static void draw_face(int page) {
             }
         }
     } else if(page==1) {
-        if(face_button(face,page,"[ ] CUBE",0.13f,selected_shape==0))
-            selected_shape=0;
-        if(face_button(face,page,"( ) SPHERE",0.09f,selected_shape==1))
-            selected_shape=1;
+        for(int i=0;i<voxen_shapes::count;++i) {
+            const int col=i%2,row=i/2;
+            const float x=col==0?-0.041f:0.041f;
+            const float y=0.135f-row*0.051f;
+            const bool hover=panel_hover(page,x,y,0.076f,0.038f);
+            face_rect(face,x,y,0.075f,0.036f,
+                hover?color128{0.2f,0.8f,0.95f,0.95f}:
+                selected_shape==i?color128{0.18f,0.62f,0.45f,0.9f}:
+                color128{0.10f,0.24f,0.35f,0.85f});
+            face_text(face,voxen_shapes::labels[i],x,y);
+            if(hover && menu_click) {
+                selected_shape=i;
+                if(click_sound) sound_play(click_sound,menu_hit,0.35f);
+            }
+        }
+        face_text(face,"VOXEL ANIMATION",0,-0.075f);
         static const char* effects[]={"SOLID","BREATHE","RAINBOW","SHIMMER"};
         for(int i=0;i<4;++i)
-            if(face_button(face,page,effects[i],0.035f-i*0.04f,effect_mode==i))
+            if(face_button(face,page,effects[i],-0.110f-i*0.030f,effect_mode==i))
                 effect_mode=i;
     } else if(page==2) {
         static const char* sounds[]={"MUTE","BELL","PULSE","BASS"};
@@ -799,7 +812,7 @@ int voxen_stereokit_main() {
     if (!sk_init(app_settings)) return 1;
     edge_passthrough.initialize();
     cube = mesh_find(default_id_mesh_cube);
-    sphere_mesh = mesh_gen_sphere(1.0f,3);
+    shape_meshes = voxen_shapes::create(cube);
     material = material_copy(material_find(default_id_material));
     click_sound = sound_generate([](float t) -> float {
         const float envelope = std::exp(-42.0f*t);
@@ -856,7 +869,7 @@ int voxen_stereokit_main() {
             }
             const float side=voxel.size*animated_scale(voxel);
             material_t voxel_mat=gpu_materials[voxel.gpu_preset];
-            render_add_mesh(voxel.shape?sphere_mesh:cube,
+            render_add_mesh(shape_meshes[std::clamp(voxel.shape,0,voxen_shapes::count-1)],
                 voxel_mat?voxel_mat:material,
                 matrix_ts(voxel.position,{side,side,side}),
                 voxel_mat?voxel.tint:animated_tint(voxel));
@@ -874,8 +887,7 @@ int voxen_stereokit_main() {
             color_hsv(edge_hue, 1.0f, 1.0f, 1.0f));
     }, [] {
         edge_passthrough.shutdown();
-        mesh_release(cube);
-        mesh_release(sphere_mesh);
+        for(mesh_t mesh:shape_meshes) if(mesh) mesh_release(mesh);
         material_release(material);
         material_release(carousel_mat);
         for(material_t mat:gpu_materials) if(mat) material_release(mat);
