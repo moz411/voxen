@@ -347,7 +347,7 @@ static void commit_volume() {
                 x*4.1f+y*2.7f+z*5.3f+algorithm_mode));
             add_voxel(p,spacing*scale);
         }
-    if(stroke_starts.back()==voxels.size()) stroke_starts.pop_back();
+    finish_artwork();
     last_paint_valid=false;
 }
 static color128 animated_tint(const PaintedVoxel& v) {
@@ -408,6 +408,7 @@ static void update_brush() {
         last_paint_valid=false; trigger_down=false; return;
     }
     if(algorithm_mode>=0) {
+        finish_artwork();
         if(pressed) {
             if(!volume_active) { volume_start=tip; volume_active=true; }
             volume_end=tip;
@@ -459,7 +460,10 @@ static void undo_stroke() {
     auto artwork = artworks.back();
     artworks.pop_back();
     // All artworks are appended chronologically; the last one is a suffix.
-    if (artwork.first_voxel + artwork.voxel_count != voxels.size()) return;
+    if (artwork.first_voxel + artwork.voxel_count != voxels.size()) {
+        artworks.push_back(artwork);
+        return;
+    }
     voxen::ArtworkSnapshot<PaintedVoxel> snapshot;
     snapshot.artwork = artwork;
     snapshot.voxels.assign(voxels.begin()+artwork.first_voxel,voxels.end());
