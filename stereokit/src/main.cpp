@@ -12,7 +12,7 @@ using namespace sk;
 sk_settings_t app_settings = {"Voxen StereoKit"};
 static pose_t palette = {{-0.25f, 0.0f, -0.55f}, quat_identity};
 static int menu_page = 0;
-static constexpr int page_count = 5;
+static constexpr int page_count = 6;
 static constexpr float menu_width = 0.17f;
 static constexpr float menu_height = 0.46f;
 static float carousel_angle = 0.0f;
@@ -235,6 +235,47 @@ static void generate_lorenz(const vec3& center,float side) {
     if(previous_sound>0 && tones[previous_sound-1])
         sound_play(tones[previous_sound-1],center,0.22f);
 }
+// A planar fractal is sampled in its native complex plane, never extruded into
+// an arbitrary height field. The current preview is world-upright XY; a later
+// iteration can orient the canvas using the controller's release pose.
+static int complex_escape(float real, float imag, bool julia) {
+    float zr = julia ? real : 0.0f;
+    float zi = julia ? imag : 0.0f;
+    const float cr = julia ? -0.745f : real;
+    const float ci = julia ? 0.186f : imag;
+    constexpr int max_iterations = 64;
+    for (int i = 0; i < max_iterations; ++i) {
+        if (zr*zr + zi*zi > 4.0f) return i;
+        const float next_real = zr*zr - zi*zi + cr;
+        zi = 2.0f*zr*zi + ci;
+        zr = next_real;
+    }
+    return max_iterations;
+}
+static void generate_planar_fractal(const vec3& center, float side, bool julia) {
+    constexpr int resolution = 46;
+    const float spacing = side / resolution;
+    // One flat voxel layer with a maximum of 2116 candidates.
+    const float voxel_edge = spacing * 0.86f;
+    const int previous_sound = sound_mode;
+    sound_mode = 0;
+    for (int iy = 0; iy < resolution && voxels.size() < max_voxels; ++iy)
+        for (int ix = 0; ix < resolution && voxels.size() < max_voxels; ++ix) {
+            const float u = (ix + 0.5f) / resolution;
+            const float v = (iy + 0.5f) / resolution;
+            const float real = julia ? -1.5f + 3.0f*u : -2.25f + 3.0f*u;
+            const float imag = -1.5f + 3.0f*v;
+            // Keep interior and nearby high-iteration boundary for a legible
+            // silhouette; do not fill the entire exterior of the canvas.
+            if (complex_escape(real, imag, julia) < 24) continue;
+            add_voxel({center.x + (ix + 0.5f - resolution*0.5f)*spacing,
+                       center.y + (iy + 0.5f - resolution*0.5f)*spacing,
+                       center.z}, voxel_edge);
+        }
+    sound_mode = previous_sound;
+    if (previous_sound > 0 && tones[previous_sound-1])
+        sound_play(tones[previous_sound-1], center, 0.22f);
+}
 static void commit_volume() {
     if(!volume_active) return;
     volume_active=false;
@@ -252,6 +293,12 @@ static void commit_volume() {
     // Capped at 1331 candidate samples and 4096 accepted voxels.
     if(voxels.size()>=max_voxels) return;
     stroke_starts.push_back(voxels.size());
+    if(algorithm_mode==6 || algorithm_mode==7) {
+        generate_planar_fractal(center,side,algorithm_mode==7);
+        if(stroke_starts.back()==voxels.size()) stroke_starts.pop_back();
+        last_paint_valid=false;
+        return;
+    }
     if(algorithm_mode==10) {
         generate_lorenz(center,side);
         if(stroke_starts.back()==voxels.size()) stroke_starts.pop_back();
@@ -456,7 +503,7 @@ static void draw_face(int page) {
     const pose_t face=face_panel_pose(page);
     face_rect(face,0,0,panel_width,panel_height,
         {0.06f,0.13f,0.22f,0.80f},0.003f);
-    static const char* titles[]={"COLORS","SHAPES","SOUNDS","LORENZ","ALGORITHMS"};
+    static const char* titles[]={"COLORS","SHAPES","SOUNDS","LORENZ","ALGORITHMS","SHADERS"};
     face_text(face,titles[page],0,0.188f);
     if(page==0) {
         for(int i=0;i<16;++i) {
@@ -467,22 +514,6 @@ static void draw_face(int page) {
                 hover?0.038f:0.032f,color_hsv(i/16.0f,1,1,1));
             if(hover && menu_click) {
                 hue=i/16.0f;
-                if(click_sound) sound_play(click_sound,menu_hit,0.35f);
-            }
-        }
-        face_text(face,"GPU MATERIALS",0,-0.056f);
-        static const char* names[]={"MATTE","NEON","PLASMA","HOLO","LAVA","ICE"};
-        for(int i=0;i<6;++i) {
-            const float x=(i%2==0?-0.041f:0.041f);
-            const float y=-0.096f-(i/2)*0.045f;
-            const bool hover=panel_hover(page,x,y,0.074f,0.033f);
-            face_rect(face,x,y,0.074f,0.031f,
-                hover?color128{0.2f,0.8f,0.95f,0.95f}:
-                gpu_preset==i?color128{0.18f,0.62f,0.45f,0.9f}:
-                color128{0.10f,0.24f,0.35f,0.85f});
-            face_text(face,names[i],x,y);
-            if(hover && menu_click) {
-                gpu_preset=i;
                 if(click_sound) sound_play(click_sound,menu_hit,0.35f);
             }
         }
@@ -511,13 +542,30 @@ static void draw_face(int page) {
         for(int i=0;i<3;++i)
             if(face_button(face,page,speeds[i],-0.088f-i*0.043f,
                            lorenz_speed==i)) lorenz_speed=i;
-    } else {
+    } else if(page==4) {
         static const char* algorithms[]={"SPHERE","JITTER","WAVE","HELIX",
             "SHELL","LATTICE","MANDELBROT","JULIA","BRANCH","CORTEX",
             "LORENZ"};
         for(int i=0;i<11;++i)
             if(face_button(face,page,algorithms[i],0.164f-i*0.033f,
                            algorithm_mode==i)) algorithm_mode=(algorithm_mode==i?-1:i);
+    } else if(page==5) {
+        face_text(face,"GPU MATERIALS",0,0.153f);
+        static const char* names[]={"MATTE","NEON","PLASMA","HOLO","LAVA","ICE"};
+        for(int i=0;i<6;++i) {
+            const float x=(i%2==0?-0.041f:0.041f);
+            const float y=0.090f-(i/2)*0.058f;
+            const bool hover=panel_hover(page,x,y,0.074f,0.033f);
+            face_rect(face,x,y,0.074f,0.031f,
+                hover?color128{0.2f,0.8f,0.95f,0.95f}:
+                gpu_preset==i?color128{0.18f,0.62f,0.45f,0.9f}:
+                color128{0.10f,0.24f,0.35f,0.85f});
+            face_text(face,names[i],x,y);
+            if(hover && menu_click) {
+                gpu_preset=i;
+                if(click_sound) sound_play(click_sound,menu_hit,0.35f);
+            }
+        }
     }
 }
 static void update_controller_palette() {
