@@ -193,8 +193,11 @@ static vec3 panel_world(const pose_t& face,float x,float y,float z=0) {
 }
 static void face_rect(const pose_t& face,float x,float y,float w,float h,
                       color128 color,float z=-0.002f) {
+    // The cube face points along local -Z. Turn the visible quad to
+    // face the user, including background, buttons and color swatches.
+    const quat outward=quat_mul(face.orientation,quat_from_angles(0,180,0));
     render_add_mesh(cube,carousel_mat,matrix_trs(
-        panel_world(face,x,y,z),face.orientation,{w,h,0.002f}),color);
+        panel_world(face,x,y,z),outward,{w,h,0.002f}),color);
 }
 static void face_text(const pose_t& face,const char* label,float x,float y) {
     // Mesh face orientation and StereoKit text facing conventions differ.
@@ -493,6 +496,7 @@ int voxen_stereokit_main() {
     voxels.reserve(max_voxels);
     carousel_mat = material_copy(material_find(default_id_material));
     material_set_transparency(carousel_mat, transparency_blend);
+    material_set_cull(carousel_mat, cull_none);
     input_hand_visible(handed_left, false);
     input_hand_visible(handed_right, false);
     input_hand_solid(handed_left, false);
