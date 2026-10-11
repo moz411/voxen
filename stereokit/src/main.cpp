@@ -39,6 +39,7 @@ static int effect_mode = 0; // 0 solid, 1 breathe, 2 color wave, 3 shimmer
 static float animation_time = 0.0f;
 static int note_stride = 0;
 static int algorithm_mode = -1;
+static int material_preset = 0; // Matte, Neon, Plasma, Hologram, Lava, Ice
 static uint32_t brush_step = 0;
 static bool volume_active = false;
 static vec3 volume_start{};
@@ -59,6 +60,7 @@ struct PaintedVoxel {
     color128 tint;
     int shape;
     int effect;
+    int material_preset;
     float phase;
 };
 static std::vector<PaintedVoxel> voxels;
@@ -140,7 +142,7 @@ static void add_voxel(vec3 p,float size) {
     }
     redo_strokes.clear();
     const float phase=p.x*11+p.y*7+p.z*13;
-    voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,phase});
+    voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,material_preset,phase});
     if(sound_mode>0 && tones[sound_mode-1] && (++note_stride%8)==1)
         sound_play(tones[sound_mode-1],p,0.2f);
 }
@@ -168,15 +170,37 @@ static void commit_volume() {
     // Capped at 1331 candidate samples and 4096 accepted voxels.
     if(voxels.size()>=max_voxels) return;
     stroke_starts.push_back(voxels.size());
+    // Surface algorithms use exactly one voxel layer per (x,z) sample.
+    // Sphere / cortex / lattice etc. retain full volumetric sampling.
+    const bool surface=(algorithm_mode==6 || algorithm_mode==7 ||
+                        algorithm_mode==2 || algorithm_mode==4);
+    const int ny=surface?1:n;
     for(int iz=0;iz<n && voxels.size()<max_voxels;++iz)
-      for(int iy=0;iy<n && voxels.size()<max_voxels;++iy)
+      for(int iy=0;iy<ny && voxels.size()<max_voxels;++iy)
         for(int ix=0;ix<n && voxels.size()<max_voxels;++ix) {
             const float x=(ix+0.5f)/n*2-1;
-            const float y=(iy+0.5f)/n*2-1;
             const float z=(iz+0.5f)/n*2-1;
-            if(!algorithm_occupancy(algorithm_mode,x,y,z)) continue;
+            const float y=surface?0.0f:(iy+0.5f)/n*2-1;
+            float height=0.0f;
+            bool include=true;
+            if(algorithm_mode==6 || algorithm_mode==7) {
+                // 2D escape-time domain sampled on XZ, mapped to a
+                // single relief layer instead of filling the 3D cube.
+                const float e=fractal_escape(x*1.5f-(algorithm_mode==6?0.5f:0),
+                                             z*1.5f,algorithm_mode==7);
+                include=e>0.10f;
+                height=(e-0.5f)*side*0.70f;
+            } else if(algorithm_mode==2) {
+                height=std::sin(x*9+z*7)*side*0.18f;
+            } else if(algorithm_mode==4) {
+                height=std::sin(std::atan2(z,x)*3+std::sqrt(x*x+z*z)*9)
+                         *side*0.16f;
+            } else {
+                include=algorithm_occupancy(algorithm_mode,x,y,z);
+            }
+            if(!include) continue;
             const vec3 p={center.x+(ix+0.5f-n*0.5f)*spacing,
-                          center.y+(iy+0.5f-n*0.5f)*spacing,
+                          center.y+(surface?height:(iy+0.5f-n*0.5f)*spacing),
                           center.z+(iz+0.5f-n*0.5f)*spacing};
             const float scale=0.70f+0.28f*std::fabs(std::sin(
                 x*4.1f+y*2.7f+z*5.3f+algorithm_mode));
@@ -186,13 +210,41 @@ static void commit_volume() {
     last_paint_valid=false;
 }
 static color128 animated_tint(const PaintedVoxel& v) {
-    if (v.effect==2) {
-        const float h=std::fmod(animation_time*0.09f + v.phase*0.035f,1.0f);
-        return color_hsv(h<0?h+1:h,0.9f,1.0f,1.0f);
+    const float t=animation_time;
+    const float p=v.phase;
+    const float flicker=0.5f+0.5f*std::sin(t*4.0f+p);
+    // Material presets are procedural animated color/brightness approximations,
+    // not custom GPU shader programs. Each voxel stores the chosen preset.
+    switch(v.material_preset) {
+        case 1: { // Neon
+            const float k=0.75f+0.25f*flicker;
+            return {std::min(1.0f,v.tint.r*k+0.10f),
+                    std::min(1.0f,v.tint.g*k+0.10f),
+                    std::min(1.0f,v.tint.b*k+0.10f),1};
+        }
+        case 2: return color_hsv(std::fmod(t*0.10f+p*0.031f+1.0f,1.0f),
+                                  0.95f,1.0f,1.0f); // Plasma
+        case 3: { // Hologram
+            const float scan=0.6f+0.4f*std::fabs(std::sin(v.position.y*90-t*12));
+            return {0.08f*scan,0.85f*scan,1.0f*scan,1};
+        }
+        case 4: { // Lava
+            const float v0=0.45f+0.55f*std::sin(p*0.4f+t*3);
+            return {1.0f,0.12f+0.55f*v0,0.01f+0.05f*v0,1};
+        }
+        case 5: { // Ice
+            const float k=0.7f+0.3f*flicker;
+            return {0.25f*k,0.72f*k,1.0f*k,1};
+        }
+        default: break;
     }
-    if (v.effect==3) {
-        const float k=0.65f+0.35f*std::sin(animation_time*5.0f+v.phase);
-        return {v.tint.r*k,v.tint.g*k,v.tint.b*k,1.0f};
+    if(v.effect==2) {
+        const float h=std::fmod(t*0.09f+p*0.035f+1,1.0f);
+        return color_hsv(h,0.9f,1,1);
+    }
+    if(v.effect==3) {
+        const float k=0.65f+0.35f*std::sin(t*5+p);
+        return {v.tint.r*k,v.tint.g*k,v.tint.b*k,1};
     }
     return v.tint;
 }
@@ -380,6 +432,13 @@ static void draw_face(int page) {
                 if(click_sound) sound_play(click_sound,menu_hit,0.35f);
             }
         }
+        face_text(face,"MATERIALS",0,-0.065f);
+        static const char* materials[]={"MATTE","NEON","PLASMA",
+                                        "HOLOGRAM","LAVA","ICE"};
+        for(int i=0;i<6;++i)
+            if(face_button(face,page,materials[i],-0.100f-i*0.038f,
+                           material_preset==i))
+                material_preset=i;
     } else if(page==1) {
         if(face_button(face,page,"[ ] CUBE",0.13f,selected_shape==0))
             selected_shape=0;
