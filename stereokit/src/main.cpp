@@ -19,6 +19,9 @@ static float target_angle = 0.0f;
 static pose_t carousel_base = pose_identity;
 static bool menu_aiming = false;
 static bool menu_trigger_down = false;
+static bool menu_click = false;
+static bool menu_capture = false;
+static int menu_slider_capture = -1;
 static vec3 menu_hit{};
 static float menu_hit_x = 0.0f;
 static float menu_hit_y = 0.0f;
@@ -82,7 +85,7 @@ static void update_brush() {
         right->aim.position.z + fwd.z*brush_distance
     };
     // Do not paint through the UI when the right ray targets the palette.
-    if (menu_aiming) { last_paint_valid = false; trigger_down = false; return; }
+    if (menu_aiming || menu_capture) { last_paint_valid = false; trigger_down = false; return; }
     // Live fixed-size, axis-aligned brush cursor.
     render_add_mesh(cube, material,
         matrix_ts(tip, {voxel_size, voxel_size, voxel_size}),
@@ -179,10 +182,20 @@ static void update_controller_palette() {
 // near-hand widget interaction. Local top-left is the window pose.
 static void update_menu_ray() {
     menu_aiming = false;
+    menu_click = false;
     const controller_t* right = input_controller(handed_right);
     if (!right || !(right->tracked & button_state_active)) {
         menu_trigger_down = false;
+        menu_capture = false;
+        menu_slider_capture = -1;
         return;
+    }
+    const bool trigger = right->trigger > 0.65f;
+    const bool rising = trigger && !menu_trigger_down;
+    menu_trigger_down = trigger;
+    if (!trigger) {
+        menu_capture = false;
+        menu_slider_capture = -1;
     }
     const vec3 start = right->aim.position;
     const vec3 forward = aim_forward(right->aim.orientation);
@@ -201,6 +214,7 @@ static void update_menu_ray() {
     menu_aiming = true;
     menu_hit_x = x;
     menu_hit_y = y;
+    if (rising) { menu_click = true; menu_capture = true; }
     menu_hit = {start.x + forward.x*t,
                 start.y + forward.y*t,
                 start.z + forward.z*t};
@@ -221,6 +235,35 @@ static void draw_menu_ray() {
         line_add(menu_hit, marker_end, ray_color, ray_color, 0.004f);
     }
 }
+// Fixed layout: the ray and widgets share identical local rectangles.
+// Avoid relying on StereoKit's near-hand interaction for remote trigger clicks.
+static constexpr float control_x = 0.012f;
+static constexpr float control_w = 0.205f;
+static constexpr float control_h = 0.038f;
+static float control_y(int row) { return -0.073f - row * 0.052f; }
+static bool hit_row(int row) {
+    if (!menu_aiming) return false;
+    const float top = control_y(row);
+    return menu_hit_x >= control_x && menu_hit_x <= control_x + control_w &&
+           menu_hit_y <= top && menu_hit_y >= top-control_h;
+}
+static bool menu_button(const char* caption, int row) {
+    // Native near-field interaction stays usable; remote click is independent.
+    const bool near_click = ui_button_at(caption,
+        {control_x, control_y(row), 0}, {control_w, control_h});
+    return near_click || (menu_click && hit_row(row));
+}
+static void menu_slider(const char* caption, float& value, float lo, float hi,
+                        float step, int row) {
+    ui_hslider_at(caption, value, lo, hi, step,
+                  {control_x, control_y(row), 0}, {control_w, control_h});
+    if (menu_click && hit_row(row)) menu_slider_capture = row;
+    if (menu_slider_capture != row || !menu_trigger_down || !menu_aiming) return;
+    const float x = std::clamp((menu_hit_x - control_x) / control_w, 0.0f, 1.0f);
+    const float raw = lo + (hi-lo)*x;
+    value = std::clamp(lo + std::round((raw-lo)/step)*step, lo, hi);
+}
+
 // Own our own passthrough layer; StereoKit still owns OpenXR instance/session.
 // Failure is non-fatal: default alpha-blended passthrough remains available.
 struct EdgePassthrough {
@@ -323,40 +366,32 @@ int voxen_stereokit_main() {
         update_menu_ray();
         ui_window_begin("VOXEN | Palette", palette, {0.23f, 0},
                         ui_win_normal, ui_move_none);
-        ui_label("Left stick: rotate cube");
         if (menu_page == 0) {
-            ui_label("BRUSH - right trigger to paint");
-            ui_hslider("Size (m)", voxel_size, 0.015f, 0.15f, 0.005f);
-            ui_hslider("Hue", hue, 0.0f, 1.0f, 0.01f);
-            ui_hslider("Tip offset", brush_distance, 0.02f, 0.20f, 0.005f);
-            if (ui_button(painting ? "Brush: ON" : "Brush: OFF")) painting = !painting;
+            menu_slider("Voxel size", voxel_size, 0.015f, 0.15f, 0.005f, 0);
+            menu_slider("Color hue", hue, 0.0f, 1.0f, 0.01f, 1);
+            menu_slider("Tip offset", brush_distance, 0.02f, 0.20f, 0.005f, 2);
+            if (menu_button(painting ? "Brush: ON" : "Brush: OFF", 3)) painting = !painting;
         } else if (menu_page == 1) {
-            ui_label("SCENE");
-            if (ui_button("Undo stroke")) undo_stroke();
-            if (ui_button("Redo stroke")) redo_stroke();
-            if (ui_button("Clear voxels")) { voxels.clear(); stroke_starts.clear(); redo_strokes.clear(); last_paint_valid = false; }
-            char count[64];
-            std::snprintf(count, sizeof(count), "Voxels: %zu / %zu", voxels.size(), max_voxels);
-            ui_label(count);
-            if (ui_button(show_ui_ray ? "UI ray: ON" : "UI ray: OFF"))
+            if (menu_button("Undo stroke", 0)) undo_stroke();
+            if (menu_button("Redo stroke", 1)) redo_stroke();
+            if (menu_button("Clear voxels", 2)) {
+                voxels.clear(); stroke_starts.clear(); redo_strokes.clear();
+                last_paint_valid = false;
+            }
+            if (menu_button(show_ui_ray ? "UI ray: ON" : "UI ray: OFF", 3))
                 show_ui_ray = !show_ui_ray;
         } else if (menu_page == 2) {
-            ui_label("PASSTHROUGH / FX");
             if (edge_passthrough.available) {
-                if (ui_button(edges_enabled ? "Contours: ON" : "Contours: OFF"))
+                if (menu_button(edges_enabled ? "Contours: ON" : "Contours: OFF", 0))
                     edges_enabled = !edges_enabled;
-                if (edges_enabled) {
-                    ui_hslider("Camera", camera_opacity, 0.0f, 1.0f, 0.01f);
-                    ui_hslider("Edge hue", edge_hue, 0.0f, 1.0f, 0.01f);
-                    ui_hslider("Background hue", background_hue, 0.0f, 1.0f, 0.01f);
-                    ui_hslider("Background brightness", background_brightness, 0.0f, 1.0f, 0.01f);
-                }
+                menu_slider("Camera alpha", camera_opacity, 0.0f, 1.0f, 0.01f, 1);
+                menu_slider("Edge hue", edge_hue, 0.0f, 1.0f, 0.01f, 2);
+                menu_slider("Background light", background_brightness, 0.0f, 1.0f, 0.01f, 3);
             } else ui_label("Native contours unavailable");
         } else {
-            ui_label("VOXEN / INFO");
-            ui_label("Right trigger: paint voxels");
-            ui_label("Left stick: rotate palette");
-            ui_label("Four faces / four panels");
+            if (menu_button("Brush page", 0)) menu_page = 0;
+            if (menu_button("Scene page", 1)) menu_page = 1;
+            if (menu_button("FX page", 2)) menu_page = 2;
         }
         ui_window_end();
 
