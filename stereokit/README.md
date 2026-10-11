@@ -175,3 +175,23 @@ with a short generated sound. Sound/Scene actions remain placeholders.
 
 **Requires Quest 3 testing:** text facing direction, panel visibility, remote
 click hitboxes, and depth order. Do not merge until verified on headset.
+
+
+## Animated voxel painting and spatial notes — experimental
+
+The SHAPES face keeps Cube/Sphere and adds an FX button cycling four presets:
+SOLID, BREATHE, RAINBOW, SHIMMER. Each newly painted voxel retains its effect
+preset; older strokes are unaffected by later preset changes. BREATHE reduces
+mesh scale below the original collision/placement size, so it cannot overlap
+neighboring voxels. RAINBOW and SHIMMER animate the color passed to the
+StereoKit material at render time; **these are CPU-controlled effects, not yet
+custom GPU shader programs**. The fixed grid and stroke Undo/Redo remain.
+
+SOUNDS face now offers SILENT, BELL, PULSE and BASS. The three instruments are
+synthesized on initialization with StereoKit sound_generate and are played
+spatially at accepted voxel positions, throttled to at most one note per eight
+placed voxels. UI click sound is unchanged. Sound presets apply to the next
+painted voxels; no persistent audio sources or scene serialization yet.
+
+Build/test on Quest 3 before merging. This branch is intentionally isolated
+from main while we validate both audio routing and frame time with 4096 voxels.
