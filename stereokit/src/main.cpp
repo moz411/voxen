@@ -38,7 +38,7 @@ static sound_t tones[3] = {nullptr,nullptr,nullptr};
 static int sound_mode = 0; // 0 silence, 1 soft bell, 2 bright pulse, 3 bass
 static int effect_mode = 0; // 0 solid, 1 breathe, 2 color wave, 3 shimmer
 static float animation_time = 0.0f;
-static bool lorenz_animated = true;
+static int lorenz_playback = 1; // 0 static, 1 once, 2 loop
 static int lorenz_speed = 1; // 0 slow, 1 normal, 2 fast
 static int note_stride = 0;
 static int algorithm_mode = -1;
@@ -67,7 +67,10 @@ struct PaintedVoxel {
     int effect;
     int gpu_preset;
     float phase;
-    float reveal_at; // 0 = always visible; otherwise absolute animation time
+    float reveal_start; // Seconds since application start
+    float reveal_progress; // Normalized sample position, 0..1
+    float reveal_duration; // Zero = always visible
+    bool reveal_loop;
 };
 static std::vector<PaintedVoxel> voxels;
 static std::vector<size_t> stroke_starts;
@@ -148,7 +151,7 @@ static void add_voxel(vec3 p,float size) {
     }
     redo_strokes.clear();
     const float phase=p.x*11+p.y*7+p.z*13;
-    voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,gpu_preset,phase,0.0f});
+    voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,gpu_preset,phase,0.0f,0.0f,0.0f,false});
     if(sound_mode>0 && tones[sound_mode-1] && (++note_stride%8)==1)
         sound_play(tones[sound_mode-1],p,0.2f);
 }
@@ -217,9 +220,14 @@ static void generate_lorenz(const vec3& center,float side) {
         if(have_prev && dist(at,prev)<size*0.85f) continue;
         const size_t before=voxels.size();
         add_voxel(at,size);
-        if(voxels.size()>before && lorenz_animated)
-            voxels.back().reveal_at=start_time+duration*
-                (static_cast<float>(point_index)/static_cast<float>(samples));
+        if(voxels.size()>before && lorenz_playback!=0) {
+            auto& v=voxels.back();
+            v.reveal_start=start_time;
+            v.reveal_progress=static_cast<float>(point_index)/
+                               static_cast<float>(samples);
+            v.reveal_duration=duration;
+            v.reveal_loop=(lorenz_playback==2);
+        }
         prev=at;
         have_prev=true;
     }
@@ -494,14 +502,14 @@ static void draw_face(int page) {
                 sound_mode=i;
     } else if(page==3) {
         face_text(face,"LORENZ TIMELINE",0,0.153f);
-        if(face_button(face,page,"STATIC",0.100f,!lorenz_animated))
-            lorenz_animated=false;
-        if(face_button(face,page,"DRAW",0.060f,lorenz_animated))
-            lorenz_animated=true;
-        face_text(face,"NEXT LORENZ STROKE",0,0.015f);
+        static const char* modes[]={"STATIC","DRAW ONCE","LOOP"};
+        for(int i=0;i<3;++i)
+            if(face_button(face,page,modes[i],0.118f-i*0.043f,
+                           lorenz_playback==i)) lorenz_playback=i;
+        face_text(face,"NEXT LORENZ STROKE",0,-0.032f);
         static const char* speeds[]={"SLOW 20S","NORMAL 9S","FAST 4S"};
         for(int i=0;i<3;++i)
-            if(face_button(face,page,speeds[i],-0.046f-i*0.043f,
+            if(face_button(face,page,speeds[i],-0.088f-i*0.043f,
                            lorenz_speed==i)) lorenz_speed=i;
     } else {
         static const char* algorithms[]={"SPHERE","JITTER","WAVE","HELIX",
@@ -791,7 +799,13 @@ int voxen_stereokit_main() {
             if(gpu_materials[i]) material_set_float(gpu_materials[i],
                                                      "time",animation_time);
         for(const PaintedVoxel& voxel:voxels) {
-            if(voxel.reveal_at>animation_time) continue;
+            if(voxel.reveal_duration>0.0f) {
+                const float elapsed=std::max(0.0f,animation_time-voxel.reveal_start);
+                const float progress_time=voxel.reveal_loop
+                    ? std::fmod(elapsed,voxel.reveal_duration) : elapsed;
+                if(progress_time<voxel.reveal_progress*voxel.reveal_duration)
+                    continue;
+            }
             const float side=voxel.size*animated_scale(voxel);
             material_t voxel_mat=gpu_materials[voxel.gpu_preset];
             render_add_mesh(voxel.shape?sphere_mesh:cube,
