@@ -178,7 +178,9 @@ static void commit_volume() {
             const vec3 p={center.x+(ix+0.5f-n*0.5f)*spacing,
                           center.y+(iy+0.5f-n*0.5f)*spacing,
                           center.z+(iz+0.5f-n*0.5f)*spacing};
-            add_voxel(p,spacing*0.98f);
+            const float scale=0.70f+0.28f*std::fabs(std::sin(
+                x*4.1f+y*2.7f+z*5.3f+algorithm_mode));
+            add_voxel(p,spacing*scale);
         }
     if(stroke_starts.back()==voxels.size()) stroke_starts.pop_back();
     last_paint_valid=false;
@@ -207,6 +209,7 @@ static void update_brush() {
     if (!right || !(right->tracked & button_state_active)) {
         trigger_down = false;
         last_paint_valid = false;
+        volume_active = false;
         return;
     }
     // Right-stick horizontal: voxel size. Vertical: cycle shapes.
