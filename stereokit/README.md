@@ -148,3 +148,15 @@ need hands-on testing.
 
 This is an experimental iteration and still requires Quest 3 build/device
 validation for UI geometry, sound and interaction.
+
+## Unified four-face transform (Quest alignment experiment)
+
+All four panel poses are now derived from a single `face_panel_pose(page)`
+function. This defines the face rotation, top-right StereoKit window origin,
+and a consistent 2 mm clearance above the cube face. Window rendering,
+16-color swatch positions, and controller-ray intersections share these poses.
+No independent magic offsets remain between panel drawing and ray targeting.
+The cube stays upright; the left stick still rotates its four faces.
+
+Not yet built or Quest-validated: verify title alignment, colors flush against
+the panel, and right-trigger selection before merging into main.
