@@ -433,131 +433,38 @@ void XrSwapchainRenderer::createFramebuffers() {
 void XrSwapchainRenderer::updateControllerInteraction(
     const std::array<XrPosef, 2>& poses,
     const std::array<bool, 2>& tracked,
-    const std::array<bool, 2>& pressed,
-    const std::array<XrVector2f, 2>& thumbsticks,
-    bool paintMode) {
-    if (paintMode) {
-        // The brush tip sits 12cm in front of the controller's aim origin.
-        // Controller pose and eye poses are located in the same OpenXR LOCAL space.
-        for (std::size_t hand = 0; hand < 2; ++hand) {
-            if (!tracked[hand] || !pressed[hand]) {
-                strokeActive_[hand] = false;
-                continue;
-            }
-            const auto& p = poses[hand];
-            const auto& q = p.orientation;
-            const float dx = -2.0F*(q.x*q.z + q.w*q.y);
-            const float dy = -2.0F*(q.y*q.z - q.w*q.x);
-            const float dz = -(1.0F - 2.0F*(q.x*q.x + q.y*q.y));
-            const std::array<float, 3> tip{p.position.x + dx*0.12F,
-                                           p.position.y + dy*0.12F,
-                                           p.position.z + dz*0.12F};
-            voxelWorld_.stroke(strokeActive_[hand] ? lastBrushTips_[hand] : tip, tip);
-            lastBrushTips_[hand] = tip;
-            strokeActive_[hand] = true;
-        }
-        heldArtwork_ = {{-1, -1}};
-        hoveredArtwork_ = {{-1, -1}};
-        previousPress_ = pressed;
-        controllerTracked_ = tracked;
-        controllerPoses_ = poses;
-        return;
-    }
-    strokeActive_ = {};
-    const auto now = std::chrono::steady_clock::now();
-    const float dt = lastInteractionUpdate_.time_since_epoch().count() == 0
-        ? 0.0F : (std::clamp)(std::chrono::duration<float>(now - lastInteractionUpdate_).count(), 0.0F, 0.05F);
-    lastInteractionUpdate_ = now;
-    constexpr float stickSpeed = 0.75F;
-    constexpr float deadzone = 0.15F;
-    auto applyDeadzone = [deadzone](float value) {
-        const float magnitude = std::fabs(value);
-        return magnitude <= deadzone ? 0.0F
-            : std::copysign((magnitude - deadzone) / (1.0F - deadzone), value);
-    };
-    const auto& artworks = scene_.artworks();
-    controllerPoses_ = poses;
+    const std::array<bool, 2>& pressed) {
+    // Painting is always active. Each trigger independently emits voxels.
     controllerTracked_ = tracked;
-
-    for (std::size_t hand = 0; hand < 2; ++hand) {
-        hoveredArtwork_[hand] = -1;
-        if (!tracked[hand]) {
-            if (!pressed[hand]) heldArtwork_[hand] = -1;
-            previousPress_[hand] = pressed[hand];
+    controllerPoses_ = poses;
+    for (std::size_t hand = 0; hand < tracked.size(); ++hand) {
+        if (!tracked[hand] || !pressed[hand]) {
+            strokeActive_[hand] = false;
             continue;
         }
-        const auto& pose = poses[hand];
-        const auto& q = pose.orientation;
+        const auto& p = poses[hand];
+        const auto& q = p.orientation;
         const float dx = -2.0F * (q.x*q.z + q.w*q.y);
         const float dy = -2.0F * (q.y*q.z - q.w*q.x);
         const float dz = -(1.0F - 2.0F * (q.x*q.x + q.y*q.y));
-        const std::array<float, 3> origin{pose.position.x, pose.position.y, pose.position.z};
-
-        int nearest = -1;
-        float bestDistance = 10.0F;
-        for (int i = 0; i < 4; ++i) {
-            if (heldArtwork_[1-hand] == i) continue;
-            const auto& c = artworks[i].transform.position;
-            const float vx = c[0] - origin[0];
-            const float vy = c[1] - origin[1];
-            const float vz = c[2] - origin[2];
-            const float along = vx*dx + vy*dy + vz*dz;
-            if (along <= 0.05F || along > 5.0F) continue;
-            const float perpendicularSquared = (std::max)(0.0F, vx*vx + vy*vy + vz*vz - along*along);
-            // Inflate the artwork's invisible pick volume slightly for comfortable selection.
-            const float radius = artworks[i].transform.scale * (i == 0 ? 1.05F : 1.55F) + 0.08F;
-            if (perpendicularSquared <= radius*radius && along < bestDistance) {
-                bestDistance = along;
-                nearest = i;
-            }
-        }
-        hoveredArtwork_[hand] = nearest;
-        if (!pressed[hand]) {
-            heldArtwork_[hand] = -1;
-            previousPress_[hand] = false;
-            continue;
-        }
-        if (!previousPress_[hand]) {
-            heldArtwork_[hand] = nearest;
-            if (nearest >= 0) {
-                // Retain the point on the aim ray and the initial artwork offset.
-                // Rotation of the wrist now moves the artwork, not only translation
-                // of the entire controller.
-                const auto& c = scene_.artworks()[nearest].transform.position;
-                grabDistances_[hand] = (c[0]-origin[0])*dx +
-                                       (c[1]-origin[1])*dy +
-                                       (c[2]-origin[2])*dz;
-                grabOffsets_[hand][0] = c[0] - (origin[0] + dx*grabDistances_[hand]);
-                grabOffsets_[hand][1] = c[1] - (origin[1] + dy*grabDistances_[hand]);
-                grabOffsets_[hand][2] = c[2] - (origin[2] + dz*grabDistances_[hand]);
-                stickOffsets_[hand] = {};
+        const std::array<float, 3> tip{p.position.x + dx*0.12F,
+                                       p.position.y + dy*0.12F,
+                                       p.position.z + dz*0.12F};
+        const auto before = voxelWorld_.cells().size();
+        voxelWorld_.stroke(strokeActive_[hand] ? lastBrushTips_[hand] : tip, tip);
+        lastBrushTips_[hand] = tip;
+        strokeActive_[hand] = true;
+        const auto after = voxelWorld_.cells().size();
+        if (after != before) {
 #ifdef __ANDROID__
-                __android_log_print(ANDROID_LOG_INFO, "Voxen", "Grabbed artwork %d with hand %d", nearest, static_cast<int>(hand));
+            __android_log_print(ANDROID_LOG_INFO, "Voxen",
+                "Voxel painted hand=%d added=%zu total=%zu tip=(%.2f,%.2f,%.2f)",
+                static_cast<int>(hand), after-before, after, tip[0], tip[1], tip[2]);
 #else
-                std::printf("[Voxen] Grabbed artwork %d with hand %d\n", nearest, static_cast<int>(hand));
+            std::printf("[Voxen] Voxel painted hand=%d added=%zu total=%zu tip=(%.2f,%.2f,%.2f)\n",
+                static_cast<int>(hand), after-before, after, tip[0], tip[1], tip[2]);
 #endif
-            }
         }
-        if (heldArtwork_[hand] >= 0) {
-            // Y: dolly along the controller's aiming ray. X: move laterally
-            // in the horizontal world plane, relative to controller yaw.
-            const float sx = applyDeadzone(thumbsticks[hand].x);
-            const float sy = applyDeadzone(thumbsticks[hand].y);
-            grabDistances_[hand] = (std::clamp)(
-                grabDistances_[hand] + sy * stickSpeed * dt, 0.25F, 5.0F);
-            const float horizontalLength = std::sqrt(dx*dx + dz*dz);
-            const float rightX = horizontalLength > 0.001F ? -dz/horizontalLength : 1.0F;
-            const float rightZ = horizontalLength > 0.001F ? dx/horizontalLength : 0.0F;
-            stickOffsets_[hand][0] += rightX * sx * stickSpeed * dt;
-            stickOffsets_[hand][2] += rightZ * sx * stickSpeed * dt;
-            auto& c = scene_.artworks()[heldArtwork_[hand]].transform.position;
-            const float dir[3] = {dx, dy, dz};
-            for (int k = 0; k < 3; ++k) {
-                c[k] = origin[k] + dir[k]*grabDistances_[hand] +
-                       grabOffsets_[hand][k] + stickOffsets_[hand][k];
-            }
-        }
-        previousPress_[hand] = true;
     }
 }
 
