@@ -175,3 +175,87 @@ with a short generated sound. Sound/Scene actions remain placeholders.
 
 **Requires Quest 3 testing:** text facing direction, panel visibility, remote
 click hitboxes, and depth order. Do not merge until verified on headset.
+
+
+## Animated voxel painting and spatial notes — experimental
+
+The SHAPES face keeps Cube/Sphere and adds an FX button cycling four presets:
+SOLID, BREATHE, RAINBOW, SHIMMER. Each newly painted voxel retains its effect
+preset; older strokes are unaffected by later preset changes. BREATHE reduces
+mesh scale below the original collision/placement size, so it cannot overlap
+neighboring voxels. RAINBOW and SHIMMER animate the color passed to the
+StereoKit material at render time; **these are CPU-controlled effects, not yet
+custom GPU shader programs**. The fixed grid and stroke Undo/Redo remain.
+
+SOUNDS face now offers SILENT, BELL, PULSE and BASS. The three instruments are
+synthesized on initialization with StereoKit sound_generate and are played
+spatially at accepted voxel positions, throttled to at most one note per eight
+placed voxels. UI click sound is unchanged. Sound presets apply to the next
+painted voxels; no persistent audio sources or scene serialization yet.
+
+Build/test on Quest 3 before merging. This branch is intentionally isolated
+from main while we validate both audio routing and frame time with 4096 voxels.
+
+
+## Five-panel procedural painting experiment
+
+Branch `feature/algorithmic-brush-five-panels` (not yet Quest-tested):
+
+- The four-face tool cube becomes a **five-faced carousel** with 72 degree
+  left-stick steps and 46 cm panel height, twice the previous 23 cm.
+- Unlike the earlier world-upright carousel, the entire tool rotates with
+  left-controller orientation, including pitch and roll.
+- Text is reduced to 8.5 mm; buttons to 25 mm, with compact selected-state
+  highlighting. Sound and animation options are exposed individually, not
+  hidden behind a cycling toggle.
+- The fifth **ALGORITHMS** panel selects 10 brush-generation modes:
+  FREE, JITTER, WAVE, HELIX, SHELL, LATTICE, MANDELBROT, JULIA, BRANCH, CORTEX.
+  These are inexpensive *stylized procedural voxel placement samplers*.
+  MANDELBROT/JULIA use 16 iteration escape-time samples to perturb height and
+  voxel size; neither mode is a full fractal mesh generator. CORTEX is a
+  folded-field effect, not a medical reconstruction.
+- Every generated candidate is still tested against voxel AABBs to reject
+  overlaps. All dimensions currently scale uniformly per voxel; independent
+  X/Y/Z voxel scaling is future work.
+- The 5 surfaces are rendered individually in a pentagonal arrangement,
+  rather than inside a four-faced underlying mesh. Scene Save/Load remains
+  a placeholder.
+- Build with plain `cd android && ./gradlew assembleDebug` (StereoKit default).
+  No install step documented. Validate orientation, page picking, buttons and
+  performance on Quest 3 before merging.
+
+
+## Revised algorithmic gesture / square carousel
+
+- The carousel has four physical cube faces again. Five logical pages are
+  available: the ALGORITHMS page takes the place of COLORS on its physical face
+  when selected. Stick steps are 90 degrees, not five 72-degree wings.
+- An active algorithm can be deselected by clicking its highlighted row again.
+  With no algorithm selected (-1), the brush returns to normal freehand.
+- Algorithmic painting is gesture-based: pressing the right trigger marks the
+  first corner; moving the controller sizes a translucent world-aligned cube;
+  releasing the trigger generates a discrete 3D structure *inside* that cubic
+  volume, in one Undo stroke.
+- The cube is centered between gesture endpoints. Its edge is the maximum of
+  the three axis differences (with a minimum of three brush sizes), capped
+  at 0.8 m for Quest testing. The generator samples at most 11³ positions
+  and never exceeds 4096 total voxels.
+- The ten algorithms apply different volumetric occupancy fields: sphere,
+  jitter, wave, helix, shell, lattice, Mandelbrot and Julia height fields,
+  branching and stylized cortex folds. Voxel sizes vary per sample but stay
+  below lattice spacing; overlapping AABBs are rejected.
+- This is a first bounded prototype, not a full volumetric Mandelbrot set.
+- Build with `cd android && ./gradlew assembleDebug` (StereoKit is default).
+  Not yet compiled or Quest-validated; leave main untouched.
+
+
+### UI correction after Quest screenshot (single-face mode)
+
+The 46 cm high five-face geometry was visibly unusable in the Quest: the
+panels intersected and looked like a flower. The UI now displays **one**
+controller-mounted page at a time. The left stick navigates all five pages;
+only the selected page is rendered and ray-hit-tested. No translucent cube
+shell or inactive faces are drawn. It follows the left controller's full pose,
+with the tall panel center positioned 23.5 cm above the controller along its
+local Y axis. This is an intentionally simpler, testable replacement for the
+3D carousel while preserving all five page contents and the procedural brush.
