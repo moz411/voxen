@@ -131,3 +131,20 @@ Branch `feature/vr-palette-ray-controls`:
 Implementation uses custom ray hit testing instead of StereoKit hand proximity.
 Not yet built or validated on Quest; face alignment and swatch targeting still
 need hands-on testing.
+
+
+## UI alignment, continuous resizing, hover and click sound
+
+- Panel origins consistently offset to the right of each physical carousel face;
+  the remote ray and UI visuals use the same face transform.
+- Color swatches now use the same **local negative-X** orientation as the window,
+  correcting swatches floating far off the carousel.
+- Right stick X controls size continuously (1–12 cm); amount of deflection
+  controls speed. Right stick Y still cycles shapes.
+- Hovering color chips slightly enlarges them; hovering button rows shows a
+  cyan translucent highlight.
+- StereoKit synthesizes a short click tone and plays it when clicking a
+  palette chip or button (no bundled audio dependency).
+
+This is an experimental iteration and still requires Quest 3 build/device
+validation for UI geometry, sound and interaction.
