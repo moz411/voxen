@@ -279,8 +279,10 @@ static void draw_face(int page) {
     } else if(page==1) {
         if(face_button(face,page,"CUBE",0.051f)) selected_shape=0;
         if(face_button(face,page,"SPHERE",0.007f)) selected_shape=1;
-        if(face_button(face,page,"BREATHE",-0.037f)) effect_mode=1;
-        if(face_button(face,page,"RAINBOW",-0.080f)) effect_mode=2;
+        static const char* fx_labels[]={"FX: SOLID","FX: BREATHE",
+                                        "FX: RAINBOW","FX: SHIMMER"};
+        if(face_button(face,page,fx_labels[effect_mode],-0.050f))
+            effect_mode=(effect_mode+1)%4;
     } else if(page==2) {
         if(face_button(face,page,"SILENT",0.043f)) sound_mode=0;
         if(face_button(face,page,"BELL",0.000f)) sound_mode=1;
