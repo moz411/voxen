@@ -435,10 +435,20 @@ static void draw_face(int page) {
         face_text(face,"MATERIALS",0,-0.065f);
         static const char* materials[]={"MATTE","NEON","PLASMA",
                                         "HOLOGRAM","LAVA","ICE"};
-        for(int i=0;i<6;++i)
-            if(face_button(face,page,materials[i],-0.100f-i*0.038f,
-                           material_preset==i))
+        for(int i=0;i<6;++i) {
+            const float mx=(i%2==0?-0.041f:0.041f);
+            const float my=-0.104f-(i/2)*0.044f;
+            const bool hover=panel_hover(page,mx,my,0.074f,0.035f);
+            face_rect(face,mx,my,0.074f,0.032f,
+                hover?color128{0.18f,0.76f,0.90f,0.95f}:
+                material_preset==i?color128{0.20f,0.60f,0.43f,0.9f}:
+                color128{0.12f,0.25f,0.35f,0.85f});
+            face_text(face,materials[i],mx,my);
+            if(hover && menu_click) {
                 material_preset=i;
+                if(click_sound) sound_play(click_sound,menu_hit,0.35f);
+            }
+        }
     } else if(page==1) {
         if(face_button(face,page,"[ ] CUBE",0.13f,selected_shape==0))
             selected_shape=0;
