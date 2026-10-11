@@ -35,8 +35,8 @@ float4 ps(psIn input) : SV_TARGET {
     float3 c = input.tint.rgb;
     if (mode > 0.5 && mode < 1.5) { // neon grid
         float3 g = abs(frac(p * 9.0 + 0.5) - 0.5);
-        float line = 1.0 - smoothstep(0.035, 0.095, min(g.x, min(g.y,g.z)));
-        c = c * (0.45 + 1.15 * line) + line * 0.12;
+        float grid_line = 1.0 - smoothstep(0.035, 0.095, min(g.x, min(g.y,g.z)));
+        c = c * (0.45 + 1.15 * grid_line) + grid_line * 0.12;
     } else if (mode > 1.5 && mode < 2.5) { // plasma
         float v = sin(p.x*16+t*2)+sin(p.y*19-t*3)+sin(p.z*13+t*1.6);
         c = 0.55+0.45*cos(v*2.1+float3(0,2.1,4.2));
