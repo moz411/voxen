@@ -177,10 +177,12 @@ static constexpr float panel_height = 0.21f;
 static constexpr float panel_lift = 0.002f;
 
 static pose_t face_panel_pose(int page) {
+    // The original -Z face normals pointed INTO the cube. Rotate each
+    // panel 180 degrees while preserving its physical face position.
     const quat rotation = quat_mul(
         quat_mul(carousel_base.orientation,quat_from_angles(0,carousel_angle,0)),
-        quat_from_angles(0,-90.0f*page,0));
-    const vec3 offset=quat_mul_vec(rotation,{0,0,-menu_width*0.5f-0.003f});
+        quat_from_angles(0,180.0f-90.0f*page,0));
+    const vec3 offset=quat_mul_vec(rotation,{0,0,menu_width*0.5f+0.003f});
     return {{carousel_base.position.x+offset.x,
              carousel_base.position.y+offset.y,
              carousel_base.position.z+offset.z},rotation};
@@ -195,9 +197,8 @@ static void face_rect(const pose_t& face,float x,float y,float w,float h,
         panel_world(face,x,y,z),face.orientation,{w,h,0.002f}),color);
 }
 static void face_text(const pose_t& face,const char* label,float x,float y) {
-    const quat rotation=quat_mul(face.orientation,quat_from_angles(0,180,0));
-    text_add_at(label,matrix_trs(panel_world(face,x,y,-0.006f),
-        rotation,{1,1,1}),panel_text_style);
+    text_add_at(label,matrix_trs(panel_world(face,x,y,0.006f),
+        face.orientation,{1,1,1}),panel_text_style);
 }
 static bool panel_hover(int page,float x,float y,float w,float h) {
     return menu_aiming && hit_page==page &&
