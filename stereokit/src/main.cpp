@@ -14,7 +14,7 @@ using namespace sk;
 sk_settings_t app_settings = {"Voxen StereoKit"};
 static pose_t palette = {{-0.25f, 0.0f, -0.55f}, quat_identity};
 static int menu_page = 0;
-static constexpr int page_count = 8;
+static constexpr int page_count = 6;
 static constexpr float menu_width = 0.17f;
 static constexpr float menu_height = 0.46f;
 static float carousel_angle = 0.0f;
@@ -684,7 +684,7 @@ static void draw_face(int page) {
     const pose_t face=face_panel_pose(page);
     face_rect(face,0,0,panel_width,panel_height,
         {0.06f,0.13f,0.22f,0.80f},0.003f);
-    static const char* titles[]={"COLORS","SHAPES","SOUNDS","LORENZ","ALGORITHMS","SHADERS","EDIT","PARAMS"};
+    static const char* titles[]={"COLORS","SHAPES","ALGORITHMS","SHADERS","PARAMS","ANIMATIONS"};
     face_text(face,titles[page],0,0.188f);
     if(page==0) {
         for(int i=0;i<16;++i) {
@@ -715,40 +715,25 @@ static void draw_face(int page) {
                 if(click_sound) sound_play(click_sound,menu_hit,0.35f);
             }
         }
-        face_text(face,"VOXEL ANIMATION",0,-0.075f);
-        static const char* effects[]={"SOLID","BREATHE","RAINBOW","SHIMMER"};
-        for(int i=0;i<4;++i)
-            if(face_button(face,page,effects[i],-0.110f-i*0.030f,effect_mode==i))
-                effect_mode=i;
+        if(face_button(face,page,selection_mode?"AIM: ON":"AIM: OFF",-0.095f,selection_mode)) {
+            selection_mode=!selection_mode;
+            selection_trigger_latched=false;
+            if(!selection_mode) selected_artwork_id=0;
+        }
+        if(selection_mode && selected_artwork())
+            if(face_button(face,page,"DESELECT",-0.145f))
+                selected_artwork_id=0;
     } else if(page==2) {
-        static const char* sounds[]={"MUTE","BELL","PULSE","BASS"};
-        for(int i=0;i<4;++i)
-            if(face_button(face,page,sounds[i],0.12f-i*0.045f,sound_mode==i))
-                sound_mode=i;
-    } else if(page==3) {
-        face_text(face,"LORENZ TIMELINE",0,0.153f);
-        static const char* modes[]={"STATIC","DRAW ONCE","LOOP"};
-        for(int i=0;i<3;++i)
-            if(face_button(face,page,modes[i],0.118f-i*0.043f,
-                           lorenz_playback==i)) lorenz_playback=i;
-        face_text(face,"NEXT LORENZ STROKE",0,-0.032f);
-        static const char* speeds[]={"SLOW 20S","NORMAL 9S","FAST 4S"};
-        for(int i=0;i<3;++i)
-            if(face_button(face,page,speeds[i],-0.088f-i*0.043f,
-                           lorenz_speed==i)) lorenz_speed=i;
-    } else if(page==4) {
         static const char* algorithms[]={"LORENZ","ROSSLER","MANDELBROT",
                                          "JULIA","FIBONACCI"};
         static const int ids[]={10,11,6,7,12};
         for(int i=0;i<5;++i) {
             const int id=ids[i];
             if(face_button(face,page,algorithms[i],0.135f-i*0.060f,
-                           algorithm_mode==id)) {
+                           algorithm_mode==id))
                 algorithm_mode=(algorithm_mode==id?-1:id);
-                if(algorithm_mode>=0) menu_page=7;
-            }
         }
-    } else if(page==5) {
+    } else if(page==3) {
         face_text(face,"GPU MATERIALS",0,0.153f);
         static const char* names[]={"MATTE","NEON","PLASMA","HOLO","LAVA","ICE"};
         for(int i=0;i<6;++i) {
@@ -766,7 +751,7 @@ static void draw_face(int page) {
                 if(click_sound) sound_play(click_sound,menu_hit,0.35f);
             }
         }
-    } else if(page==7) {
+    } else if(page==4) {
         const char* title="SELECT A GENERATOR";
         const char* names[5]={};
         float* values[5]={};
@@ -803,39 +788,43 @@ static void draw_face(int page) {
         }
         face_text(face,title,0,0.165f);
         if(count==0) face_text(face,"CHOOSE IN ALGORITHMS",0,0.07f);
+        const bool is_lorenz=algorithm_mode==10;
         for(int i=0;i<count;++i) {
-            const float y=0.112f-i*0.073f;
+            const float y=is_lorenz?0.118f-i*0.067f:0.105f-i*0.067f;
             char value[64];
             std::snprintf(value,sizeof(value),"%s %.3f",names[i],*values[i]);
             face_text(face,value,0,y);
-            const float by=y-0.035f;
-            const bool minus=panel_hover(page,-0.040f,by,0.070f,0.030f);
-            const bool plus=panel_hover(page,0.040f,by,0.070f,0.030f);
-            face_rect(face,-0.040f,by,0.070f,0.029f,
+            const float by=y-(is_lorenz?0.028f:0.035f);
+            const float bh=is_lorenz?0.025f:0.030f;
+            const bool minus=panel_hover(page,-0.040f,by,0.070f,bh);
+            const bool plus=panel_hover(page,0.040f,by,0.070f,bh);
+            face_rect(face,-0.040f,by,0.070f,bh-0.001f,
                       minus?color128{0.2f,0.7f,0.8f,0.95f}:color128{0.1f,0.24f,0.35f,0.85f});
-            face_rect(face,0.040f,by,0.070f,0.029f,
+            face_rect(face,0.040f,by,0.070f,bh-0.001f,
                       plus?color128{0.2f,0.7f,0.8f,0.95f}:color128{0.1f,0.24f,0.35f,0.85f});
             face_text(face,"-", -0.040f,by);
             face_text(face,"+",0.040f,by);
             if(menu_click&&(minus||plus))
                 *values[i]=std::clamp(*values[i]+(plus?steps[i]:-steps[i]),minima[i],maxima[i]);
         }
-    } else if(page==6) {
-        if(face_button(face,page,selection_mode?"SELECT: ON":"SELECT: OFF",
-                       0.13f,selection_mode)) {
-            selection_mode=!selection_mode;
-            selection_trigger_latched=false;
-            if(!selection_mode) selected_artwork_id=0;
+        if(is_lorenz) {
+            static const char* modes[]={"STATIC","DRAW ONCE","LOOP"};
+            char playback_label[64];
+            std::snprintf(playback_label,sizeof(playback_label),"PLAY: %s",modes[lorenz_playback]);
+            if(face_button(face,page,playback_label,-0.104f))
+                lorenz_playback=(lorenz_playback+1)%3;
+            static const char* speeds[]={"SLOW 20S","NORMAL 9S","FAST 4S"};
+            char speed_label[64];
+            std::snprintf(speed_label,sizeof(speed_label),"SPEED: %s",speeds[lorenz_speed]);
+            if(face_button(face,page,speed_label,-0.162f))
+                lorenz_speed=(lorenz_speed+1)%3;
         }
-        if(selected_artwork()) {
-            face_text(face,"ARTWORK SELECTED",0,0.065f);
-            face_text(face,"SHAPES / SHADERS TO EDIT",0,0.015f);
-            if(face_button(face,page,"DESELECT",-0.065f))
-                selected_artwork_id=0;
-        } else {
-            face_text(face,"AIM + TRIGGER",0,0.060f);
-            face_text(face,"SELECT AN ARTWORK",0,0.025f);
-        }
+    } else if(page==5) {
+        face_text(face,"VOXEL ANIMATION",0,0.145f);
+        static const char* effects[]={"SOLID","BREATHE","RAINBOW","SHIMMER"};
+        for(int i=0;i<4;++i)
+            if(face_button(face,page,effects[i],0.085f-i*0.065f,effect_mode==i))
+                effect_mode=i;
     }
 }
 static void update_controller_palette() {
