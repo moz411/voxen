@@ -73,3 +73,17 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 **Unverified:** The changes have not been compiled or tested on Quest 3 in this
 environment. The established passthrough controls remain intact.
+
+
+## Carousel alignment and stroke undo experiment
+
+Branch `feature/palette-alignment-stroke-undo`:
+- Wider 34 cm translucent carousel, 47 cm high, 30 cm UI page centered on its front face.
+- Controller anchor raised, leaving the UI lower edge closer to the cube bottom.
+- Lighter opaque blue background (HSV value 0.33 instead of 0.12).
+- Undo now removes the entire latest trigger stroke, not just the last voxel.
+- Clear also resets the stroke history.
+
+The four menu pages are still switched dynamically on a front-facing UI surface;
+they are not four simultaneously mounted UI panels. The placement and height
+are unverified on-device and may require further calibration.
