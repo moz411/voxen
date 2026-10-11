@@ -153,9 +153,18 @@ static void update_controller_palette() {
     carousel_base.position = {left->pose.position.x + offset.x,
                               left->pose.position.y + offset.y,
                               left->pose.position.z + offset.z};
+    // Only yaw toward the headset. World Y stays upright even if the
+    // controller rolls/pitches or the user's head is above the carousel.
     const pose_t* head = input_head();
-    if (head) carousel_base.orientation =
-        quat_lookat(carousel_base.position, head->position);
+    if (head) {
+        vec3 target = {head->position.x, carousel_base.position.y,
+                       head->position.z};
+        const float dx = target.x - carousel_base.position.x;
+        const float dz = target.z - carousel_base.position.z;
+        if (dx*dx + dz*dz > 0.0001f)
+            carousel_base.orientation = quat_lookat_up(
+                carousel_base.position, target, {0, 1, 0});
+    }
 
     // Rotate the transparent four-sided carousel, smoothly and independently
     // from the controller's six-degree-of-freedom position.
@@ -168,11 +177,12 @@ static void update_controller_palette() {
                    {menu_width, menu_height, menu_width}),
         {0.20f, 0.65f, 0.85f, 0.12f});
 
-    // StereoKit window pose is the upper-left corner, not the center.
-    // Center a 30 cm-wide page on the front face of the 34 cm cube.
-    // Reserve vertical room for the dynamically sized page's controls.
+    // StereoKit's window layout extends toward local -X from its
+    // anchor. Anchor at the RIGHT edge so the 23 cm window is centered
+    // on the 24 cm face; previous -X offset shifted the entire UI left.
+    // Keep UI normal independent of the decorative carousel spin.
     const vec3 anchor = quat_mul_vec(carousel_base.orientation,
-        {-0.115f, menu_height*0.5f - 0.008f, -menu_width*0.5f - 0.012f});
+        {0.115f, menu_height*0.5f - 0.008f, -menu_width*0.5f - 0.012f});
     palette.position = {carousel_base.position.x + anchor.x,
                         carousel_base.position.y + anchor.y,
                         carousel_base.position.z + anchor.z};
