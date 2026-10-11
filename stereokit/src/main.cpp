@@ -14,7 +14,7 @@ using namespace sk;
 sk_settings_t app_settings = {"Voxen StereoKit"};
 static pose_t palette = {{-0.25f, 0.0f, -0.55f}, quat_identity};
 static int menu_page = 0;
-static constexpr int page_count = 6;
+static constexpr int page_count = 7;
 static constexpr float menu_width = 0.17f;
 static constexpr float menu_height = 0.46f;
 static float carousel_angle = 0.0f;
@@ -78,6 +78,9 @@ static std::vector<PaintedVoxel> voxels;
 static std::vector<voxen::Artwork> artworks;
 static std::vector<voxen::ArtworkSnapshot<PaintedVoxel>> redo_artworks;
 static uint64_t next_artwork_id = 1;
+static uint64_t selected_artwork_id = 0;
+static bool selection_mode = false;
+static bool selection_trigger_latched = false;
 static bool stroke_active = false;
 static voxen::Artwork pending_artwork{};
 // Begin a semantic artwork before generating any voxels.
@@ -369,6 +372,79 @@ static float animated_scale(const PaintedVoxel& v) {
             std::sin(animation_time*3.5f+v.phase));
     return 1.0f;
 }
+struct ArtworkBounds { vec3 lo,hi; };
+static ArtworkBounds artwork_bounds(const voxen::Artwork& a) {
+    ArtworkBounds b{{1e9f,1e9f,1e9f},{-1e9f,-1e9f,-1e9f}};
+    const size_t end=std::min(voxels.size(),size_t(a.first_voxel)+a.voxel_count);
+    for(size_t i=a.first_voxel;i<end;++i) {
+        const auto& v=voxels[i]; const float h=v.size*0.5f;
+        b.lo.x=std::min(b.lo.x,v.position.x-h); b.hi.x=std::max(b.hi.x,v.position.x+h);
+        b.lo.y=std::min(b.lo.y,v.position.y-h); b.hi.y=std::max(b.hi.y,v.position.y+h);
+        b.lo.z=std::min(b.lo.z,v.position.z-h); b.hi.z=std::max(b.hi.z,v.position.z+h);
+    }
+    constexpr float pad=0.012f;
+    b.lo={b.lo.x-pad,b.lo.y-pad,b.lo.z-pad};
+    b.hi={b.hi.x+pad,b.hi.y+pad,b.hi.z+pad};
+    return b;
+}
+static voxen::Artwork* selected_artwork() {
+    for(auto& a:artworks) if(a.id==selected_artwork_id) return &a;
+    return nullptr;
+}
+static void edit_selected_shape(int shape) {
+    auto* a=selected_artwork(); if(!a) return;
+    a->shape=shape;
+    const size_t end=std::min(voxels.size(),size_t(a->first_voxel)+a->voxel_count);
+    for(size_t i=a->first_voxel;i<end;++i) voxels[i].shape=shape;
+}
+static void edit_selected_shader(int shader) {
+    auto* a=selected_artwork(); if(!a) return;
+    a->shader=shader;
+    const size_t end=std::min(voxels.size(),size_t(a->first_voxel)+a->voxel_count);
+    for(size_t i=a->first_voxel;i<end;++i) voxels[i].gpu_preset=shader;
+}
+static bool ray_aabb(vec3 origin,vec3 direction,const ArtworkBounds& b,float& hit) {
+    float near=0.0f,far=4.0f;
+    const float o[3]={origin.x,origin.y,origin.z};
+    const float d[3]={direction.x,direction.y,direction.z};
+    const float lo[3]={b.lo.x,b.lo.y,b.lo.z};
+    const float hi[3]={b.hi.x,b.hi.y,b.hi.z};
+    for(int k=0;k<3;++k) {
+        if(std::fabs(d[k])<1e-6f) {
+            if(o[k]<lo[k] || o[k]>hi[k]) return false;
+        } else {
+            float t0=(lo[k]-o[k])/d[k],t1=(hi[k]-o[k])/d[k];
+            if(t0>t1) std::swap(t0,t1);
+            near=std::max(near,t0); far=std::min(far,t1);
+            if(near>far) return false;
+        }
+    }
+    hit=near; return true;
+}
+static void select_from_ray(vec3 origin,vec3 direction) {
+    float nearest=4.0f;
+    selected_artwork_id=0;
+    for(const auto& a:artworks) {
+        if(!a.voxel_count) continue;
+        float t=0;
+        if(ray_aabb(origin,direction,artwork_bounds(a),t) && t<=nearest) {
+            nearest=t; selected_artwork_id=a.id;
+        }
+    }
+}
+static void draw_selected_outline() {
+    const auto* a=selected_artwork(); if(!a) return;
+    const auto b=artwork_bounds(*a);
+    const color32 tint{75,255,190,230};
+    const vec3 p[8]={
+        {b.lo.x,b.lo.y,b.lo.z},{b.hi.x,b.lo.y,b.lo.z},
+        {b.hi.x,b.hi.y,b.lo.z},{b.lo.x,b.hi.y,b.lo.z},
+        {b.lo.x,b.lo.y,b.hi.z},{b.hi.x,b.lo.y,b.hi.z},
+        {b.hi.x,b.hi.y,b.hi.z},{b.lo.x,b.hi.y,b.hi.z}};
+    constexpr int edges[12][2]={{0,1},{1,2},{2,3},{3,0},
+       {4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}};
+    for(const auto& e:edges) line_add(p[e[0]],p[e[1]],tint,tint,0.0015f);
+}
 static void update_brush() {
     const controller_t* right = input_controller(handed_right);
     if (!right || !(right->tracked & button_state_active)) {
@@ -390,6 +466,7 @@ static void update_brush() {
     if (std::fabs(right->stick.y) < 0.30f) shape_stick_latched = false;
     if (!shape_stick_latched && std::fabs(right->stick.y) > 0.70f) {
         selected_shape = (selected_shape + (right->stick.y > 0 ? 1 : voxen_shapes::count-1)) % voxen_shapes::count;
+        if(selection_mode) edit_selected_shape(selected_shape);
         shape_stick_latched = true;
     }
     const bool pressed = trigger_down
@@ -407,6 +484,16 @@ static void update_brush() {
         finish_artwork();
         last_paint_valid=false; trigger_down=false; return;
     }
+    if(selection_mode) {
+        finish_artwork();
+        volume_active=false;
+        last_paint_valid=false;
+        if(pressed && !selection_trigger_latched)
+            select_from_ray(right->aim.position,fwd);
+        selection_trigger_latched=pressed;
+        return;
+    }
+    selection_trigger_latched=false;
     if(algorithm_mode>=0) {
         finish_artwork();
         if(pressed) {
@@ -455,6 +542,7 @@ static void update_brush() {
 
 
 static void undo_stroke() {
+    selected_artwork_id = 0;
     finish_artwork();
     if (artworks.empty()) return;
     auto artwork = artworks.back();
@@ -472,6 +560,7 @@ static void undo_stroke() {
     last_paint_valid = false;
 }
 static void redo_stroke() {
+    selected_artwork_id = 0;
     if (redo_artworks.empty()) return;
     auto snapshot = std::move(redo_artworks.back());
     redo_artworks.pop_back();
@@ -546,7 +635,7 @@ static void draw_face(int page) {
     const pose_t face=face_panel_pose(page);
     face_rect(face,0,0,panel_width,panel_height,
         {0.06f,0.13f,0.22f,0.80f},0.003f);
-    static const char* titles[]={"COLORS","SHAPES","SOUNDS","LORENZ","ALGORITHMS","SHADERS"};
+    static const char* titles[]={"COLORS","SHAPES","SOUNDS","LORENZ","ALGORITHMS","SHADERS","EDIT"};
     face_text(face,titles[page],0,0.188f);
     if(page==0) {
         for(int i=0;i<16;++i) {
@@ -573,6 +662,7 @@ static void draw_face(int page) {
             face_text(face,voxen_shapes::labels[i],x,y);
             if(hover && menu_click) {
                 selected_shape=i;
+                if(selection_mode) edit_selected_shape(i);
                 if(click_sound) sound_play(click_sound,menu_hit,0.35f);
             }
         }
@@ -618,8 +708,25 @@ static void draw_face(int page) {
             face_text(face,names[i],x,y);
             if(hover && menu_click) {
                 gpu_preset=i;
+                if(selection_mode) edit_selected_shader(i);
                 if(click_sound) sound_play(click_sound,menu_hit,0.35f);
             }
+        }
+    } else if(page==6) {
+        if(face_button(face,page,selection_mode?"SELECT: ON":"SELECT: OFF",
+                       0.13f,selection_mode)) {
+            selection_mode=!selection_mode;
+            selection_trigger_latched=false;
+            if(!selection_mode) selected_artwork_id=0;
+        }
+        if(selected_artwork()) {
+            face_text(face,"ARTWORK SELECTED",0,0.065f);
+            face_text(face,"SHAPES / SHADERS TO EDIT",0,0.015f);
+            if(face_button(face,page,"DESELECT",-0.065f))
+                selected_artwork_id=0;
+        } else {
+            face_text(face,"AIM + TRIGGER",0,0.060f);
+            face_text(face,"SELECT AN ARTWORK",0,0.025f);
         }
     }
 }
@@ -917,6 +1024,7 @@ int voxen_stereokit_main() {
                 voxel_mat?voxel.tint:animated_tint(voxel));
         }
         update_brush();
+        draw_selected_outline();
         draw_menu_ray();
         if (edges_enabled && edge_passthrough.available) {
             render_enable_skytex(false);
