@@ -554,30 +554,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             0, sizeof(constants), &constants);
         vkCmdDraw(commandBuffer_, 36, 1, 0, 0);
     }
-    // Draw the visible controller rays last; depth testing hides them behind artwork.
-    vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, laserPipeline_);
-    for (std::size_t hand = 0; hand < controllerTracked_.size(); ++hand) {
-        if (!controllerTracked_[hand]) continue;
-        float length = 2.5F;
-        const int target = hoveredArtwork_[hand];
-        if (target >= 0) {
-            const auto& q = controllerPoses_[hand].orientation;
-            const float dx = -2.0F * (q.x*q.z + q.w*q.y);
-            const float dy = -2.0F * (q.y*q.z - q.w*q.x);
-            const float dz = -(1.0F - 2.0F * (q.x*q.x + q.y*q.y));
-            const auto& c = scene_.artworks()[target].transform.position;
-            length = std::clamp(
-                (c[0]-controllerPoses_[hand].position.x)*dx +
-                (c[1]-controllerPoses_[hand].position.y)*dy +
-                (c[2]-controllerPoses_[hand].position.z)*dz, 0.1F, 2.5F);
-        }
-        const Mat4 beamMvp = multiply(projView, laserMatrix(controllerPoses_[hand], length));
-        ProceduralPushConstants constants{beamMvp, {seconds, 1.0F, 1.0F, 0.0F}};
-        vkCmdPushConstants(commandBuffer_, pipelineLayout_,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            0, sizeof(constants), &constants);
-        vkCmdDraw(commandBuffer_, 36, 1, 0, 0);
-    }
+    // Controller rays intentionally hidden in painting mode.
+    // OpenBrush-style selection will be implemented separately.
     vkCmdEndRenderPass(commandBuffer_);
     checkVk(vkEndCommandBuffer(commandBuffer_), "vkEndCommandBuffer");
     VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO}; submit.commandBufferCount=1; submit.pCommandBuffers=&commandBuffer_;
