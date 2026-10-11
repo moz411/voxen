@@ -413,8 +413,9 @@ static void update_controller_palette() {
         menu_page=(menu_page+direction+page_count)%page_count;
         stick_latched=true;
     }
-    // Center the tall face above the controller, along its local Y axis.
-    const vec3 offset=quat_mul_vec(left->pose.orientation,{0,0.235f,-0.025f});
+    // Keep the tall panel anchored near the controller instead of projecting
+    // its center 23.5 cm away. Orientation still faces the headset.
+    const vec3 offset=quat_mul_vec(left->pose.orientation,{0,0.09f,-0.025f});
     carousel_base.position={left->pose.position.x+offset.x,
                             left->pose.position.y+offset.y,
                             left->pose.position.z+offset.z};
