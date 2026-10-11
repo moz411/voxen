@@ -1,6 +1,7 @@
 #include <stereokit.h>
 #include <stereokit_ui.h>
 #include <openxr/openxr.h>
+#include "voxen_voxel.hlsl.h"
 #include <cstdio>
 #include <vector>
 #include <cmath>
@@ -39,6 +40,9 @@ static int effect_mode = 0; // 0 solid, 1 breathe, 2 color wave, 3 shimmer
 static float animation_time = 0.0f;
 static int note_stride = 0;
 static int algorithm_mode = -1;
+static int gpu_preset = 0;
+static shader_t voxel_shader = nullptr;
+static material_t gpu_materials[6] = {};
 static uint32_t brush_step = 0;
 static bool volume_active = false;
 static vec3 volume_start{};
@@ -59,6 +63,7 @@ struct PaintedVoxel {
     color128 tint;
     int shape;
     int effect;
+    int gpu_preset;
     float phase;
 };
 static std::vector<PaintedVoxel> voxels;
@@ -140,7 +145,7 @@ static void add_voxel(vec3 p,float size) {
     }
     redo_strokes.clear();
     const float phase=p.x*11+p.y*7+p.z*13;
-    voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,phase});
+    voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,gpu_preset,phase});
     if(sound_mode>0 && tones[sound_mode-1] && (++note_stride%8)==1)
         sound_play(tones[sound_mode-1],p,0.2f);
 }
@@ -377,6 +382,22 @@ static void draw_face(int page) {
                 hover?0.038f:0.032f,color_hsv(i/16.0f,1,1,1));
             if(hover && menu_click) {
                 hue=i/16.0f;
+                if(click_sound) sound_play(click_sound,menu_hit,0.35f);
+            }
+        }
+        face_text(face,"GPU MATERIALS",0,-0.056f);
+        static const char* names[]={"MATTE","NEON","PLASMA","HOLO","LAVA","ICE"};
+        for(int i=0;i<6;++i) {
+            const float x=(i%2==0?-0.041f:0.041f);
+            const float y=-0.096f-(i/2)*0.045f;
+            const bool hover=panel_hover(page,x,y,0.074f,0.033f);
+            face_rect(face,x,y,0.074f,0.031f,
+                hover?color128{0.2f,0.8f,0.95f,0.95f}:
+                gpu_preset==i?color128{0.18f,0.62f,0.45f,0.9f}:
+                color128{0.10f,0.24f,0.35f,0.85f});
+            face_text(face,names[i],x,y);
+            if(hover && menu_click) {
+                gpu_preset=i;
                 if(click_sound) sound_play(click_sound,menu_hit,0.35f);
             }
         }
@@ -652,6 +673,14 @@ int voxen_stereokit_main() {
     tones[2]=sound_generate([](float t)->float {
         return 0.30f*std::exp(-9.0f*t)*std::sin(6.2831853f*165*t);
     },0.35f);
+    voxel_shader=shader_create_mem((void*)sks_voxen_voxel_hlsl,
+                                  sizeof(sks_voxen_voxel_hlsl));
+    if(voxel_shader) {
+        for(int i=0;i<6;++i) {
+            gpu_materials[i]=material_create(voxel_shader);
+            if(gpu_materials[i]) material_set_float(gpu_materials[i],"mode",(float)i);
+        }
+    } else std::printf("[Voxen] GPU voxel shader unavailable; using default material\\n");
     voxels.reserve(max_voxels);
     carousel_mat = material_copy(material_find(default_id_material));
     material_set_transparency(carousel_mat, transparency_blend);
@@ -671,11 +700,16 @@ int voxen_stereokit_main() {
         draw_face(menu_page);
 
         animation_time += time_stepf();
-        for (const PaintedVoxel& voxel : voxels) {
-            const float side = voxel.size*animated_scale(voxel);
-            render_add_mesh(voxel.shape ? sphere_mesh : cube, material,
-                matrix_ts(voxel.position, {side,side,side}),
-                animated_tint(voxel));
+        for(int i=0;i<6;++i)
+            if(gpu_materials[i]) material_set_float(gpu_materials[i],
+                                                     "time",animation_time);
+        for(const PaintedVoxel& voxel:voxels) {
+            const float side=voxel.size*animated_scale(voxel);
+            material_t voxel_mat=gpu_materials[voxel.gpu_preset];
+            render_add_mesh(voxel.shape?sphere_mesh:cube,
+                voxel_mat?voxel_mat:material,
+                matrix_ts(voxel.position,{side,side,side}),
+                voxel_mat?voxel.tint:animated_tint(voxel));
         }
         update_brush();
         draw_menu_ray();
@@ -694,6 +728,8 @@ int voxen_stereokit_main() {
         mesh_release(sphere_mesh);
         material_release(material);
         material_release(carousel_mat);
+        for(material_t mat:gpu_materials) if(mat) material_release(mat);
+        if(voxel_shader) shader_release(voxel_shader);
         if (click_sound) sound_release(click_sound);
         for (sound_t tone: tones) if(tone) sound_release(tone);
     });
