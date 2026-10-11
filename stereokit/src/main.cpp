@@ -315,16 +315,15 @@ static constexpr float panel_width = 0.16f;
 static constexpr float panel_height = 0.43f;
 
 
-static pose_t face_panel_pose(int page) {
-    // The original -Z face normals pointed INTO the cube. Rotate each
-    // panel 180 degrees while preserving its physical face position.
-    const quat rotation = quat_mul(
-        quat_mul(carousel_base.orientation,quat_from_angles(0,carousel_angle,0)),
-        quat_from_angles(0,180.0f-90.0f*(page%4),0));
-    const vec3 offset=quat_mul_vec(rotation,{0,0,menu_width*0.5f+0.003f});
-    return {{carousel_base.position.x+offset.x,
-             carousel_base.position.y+offset.y,
-             carousel_base.position.z+offset.z},rotation};
+// A single controller-mounted face. Logical pages replace each other in
+// place; never arrange five 46cm surfaces around a 17cm cube.
+static pose_t face_panel_pose(int /*page*/) {
+    const quat rotation=quat_mul(carousel_base.orientation,
+                                  quat_from_angles(0,180.0f,0));
+    const vec3 outward=quat_mul_vec(rotation,{0,0,0.005f});
+    return {{carousel_base.position.x+outward.x,
+             carousel_base.position.y+outward.y,
+             carousel_base.position.z+outward.z},rotation};
 }
 static vec3 panel_world(const pose_t& face,float x,float y,float z=0) {
     const vec3 o=quat_mul_vec(face.orientation,{x,y,z});
@@ -406,34 +405,21 @@ static void draw_face(int page) {
     }
 }
 static void update_controller_palette() {
-    const controller_t* left = input_controller(handed_left);
-    if (!left || !(left->tracked & button_state_active)) return;
-    if (std::fabs(left->stick.x) < 0.35f) stick_latched = false;
-    if (!stick_latched && std::fabs(left->stick.x) > 0.7f) {
-        const int direction = left->stick.x > 0 ? 1 : -1;
-        menu_page = (menu_page + direction + page_count) % page_count;
-        target_angle += direction * 90.0f;
-        stick_latched = true;
+    const controller_t* left=input_controller(handed_left);
+    if(!left || !(left->tracked & button_state_active)) return;
+    if(std::fabs(left->stick.x)<0.35f) stick_latched=false;
+    if(!stick_latched && std::fabs(left->stick.x)>0.7f) {
+        const int direction=left->stick.x>0?1:-1;
+        menu_page=(menu_page+direction+page_count)%page_count;
+        stick_latched=true;
     }
-    const vec3 local_offset = {0.0f, 0.06f, -0.025f};
-    const vec3 offset = quat_mul_vec(left->pose.orientation, local_offset);
-    carousel_base.position = {left->pose.position.x + offset.x,
-                              left->pose.position.y + offset.y,
-                              left->pose.position.z + offset.z};
-    /* Orientation follows the left controller, including pitch/roll.
-       This intentionally replaces the former floor-upright behavior. */
-    carousel_base.orientation = left->pose.orientation;
-    // Rotate the four-sided carousel around controller-local Y
-    // from the controller's six-degree-of-freedom position.
-    const float delta = target_angle - carousel_angle;
-    carousel_angle += delta * std::min(1.0f, time_stepf() * 12.0f);
-    // Five logical pages, but only four physical faces on a compact cube.
-    const quat spin=quat_from_angles(0,carousel_angle,0);
-    render_add_mesh(cube,carousel_mat,matrix_trs(carousel_base.position,
-        quat_mul(carousel_base.orientation,spin),
-        {menu_width,menu_height,menu_width}),{0.2f,0.65f,0.85f,0.12f});
-
-    palette = face_panel_pose(menu_page);
+    // Center the tall face above the controller, along its local Y axis.
+    const vec3 offset=quat_mul_vec(left->pose.orientation,{0,0.235f,-0.025f});
+    carousel_base.position={left->pose.position.x+offset.x,
+                            left->pose.position.y+offset.y,
+                            left->pose.position.z+offset.z};
+    carousel_base.orientation=left->pose.orientation;
+    palette=face_panel_pose(menu_page);
 }
 // Controller ray to UI-plane intersection, independent of StereoKit's
 // near-hand widget interaction. Local top-left is the window pose.
@@ -460,7 +446,7 @@ static void update_menu_ray() {
     float closest = 2.0f;
     // Intersect each face in its own local coordinates. This uses exactly
     // the same transforms as each rendered StereoKit panel.
-    for (int page=0; page<page_count; ++page) {
+    for (int page=menu_page; page<=menu_page; ++page) {
         const pose_t face = face_panel_pose(page);
         const quat inverse = quat_inverse(face.orientation);
         const vec3 face_origin = face.position;
@@ -665,12 +651,8 @@ int voxen_stereokit_main() {
         update_controller_palette();
         update_left_buttons();
         update_menu_ray();
-        // Page 4 replaces page 0 on the same physical face; no fifth wing.
-        for(int page=0;page<page_count;++page) {
-            if(page==0 && menu_page==4) continue;
-            if(page==4 && menu_page!=4) continue;
-            draw_face(page);
-        }
+        // Never render overlapping inactive pages.
+        draw_face(menu_page);
 
         animation_time += time_stepf();
         for (const PaintedVoxel& voxel : voxels) {
