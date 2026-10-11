@@ -609,12 +609,11 @@ struct EdgePassthrough {
             XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB};
         composition.flags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
         composition.layerHandle = layer;
-        // StereoKit's projection (voxels + UI) is at sort order 0.
-        // The edge-only passthrough layer must be composited AFTER it,
-        // so real-world contours are superimposed on painted voxels.
-        constexpr int32_t edge_overlay_order=1000;
+        // Put passthrough edges BEHIND StereoKit's projection layer.
+        // Foreground voxels/panels then occlude camera contours.
+        constexpr int32_t edge_background_order=-100;
         backend_openxr_composition_layer(
-            &composition,sizeof(composition),edge_overlay_order);
+            &composition,sizeof(composition),edge_background_order);
     }
 
     void shutdown() {
@@ -683,7 +682,7 @@ int voxen_stereokit_main() {
         if (edges_enabled && edge_passthrough.available) {
             render_enable_skytex(false);
             render_set_clear_color(
-                color_hsv(background_hue, 1.0f, background_brightness, 1.0f));
+                color_hsv(background_hue, 1.0f, background_brightness, 0.18f));
         } else {
             render_set_clear_color({0, 0, 0, 0});
         }
