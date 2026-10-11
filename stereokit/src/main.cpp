@@ -12,6 +12,7 @@ static material_t material = nullptr;
 
 int voxen_stereokit_main() {
     app_settings.display_preference = display_mode_mixedreality;
+    app_settings.blend_preference = display_blend_any_transparent;
     if (!sk_init(app_settings)) return 1;
     cube = mesh_find(default_id_mesh_cube);
     material = material_find(default_id_material);
