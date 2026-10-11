@@ -39,9 +39,7 @@ public:
     void shutdown() noexcept;
     void updateControllerInteraction(const std::array<XrPosef, 2>& poses,
                                      const std::array<bool, 2>& tracked,
-                                     const std::array<bool, 2>& pressed,
-                                     const std::array<XrVector2f, 2>& thumbsticks,
-                                     bool paintMode);
+                                     const std::array<bool, 2>& pressed);
 
     // Acquires, clears and releases both eye images, then fills projection views.
     void render(
