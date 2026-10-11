@@ -101,3 +101,17 @@ the trigger continues painting. X = undo stroke, Y = redo stroke.
 This manual ray bridge is intentionally independent of StereoKit's near-hand
 button interactions. Layout calibration and controller behavior still need
 validation on Quest 3 before merging.
+
+
+## Four-face tools experiment
+
+- Four separate StereoKit windows are mounted on the rotating cube's face transforms.
+- Left stick cycles through Colors, Shapes, Sounds, Scenes; panel rigid poses rotate with the cube.
+- Smaller carousel: 17 cm wide, 23 cm high, placed close to the left hand.
+- Right stick vertical increases/decreases the next voxel's edge length by 1 cm (1-12 cm).
+- New voxel positions are snapped to a size-dependent grid; an AABB overlap check rejects occupied positions. Identical-size consecutive voxels touch without intersecting. Mixed sizes are overlap-safe but are not guaranteed gap-free at every transition.
+- Shapes: Cube and Sphere selectable. Tetrahedron not yet implemented.
+- Colors: Red, Yellow, Cyan and Purple first-pass buttons.
+- Sound and Scene panels are visible placeholders; no fabricated Save/Load or audio action.
+- X/Y remain stroke Undo/Redo. Controller ray/trigger actions are still experimental.
+- Quest device compilation and face alignment not yet verified.
