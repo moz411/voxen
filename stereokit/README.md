@@ -300,3 +300,20 @@ The fourth controller page, formerly the placeholder SCENES panel, is now **LORE
 Choose **STATIC** or **DRAW** and a reveal duration of **SLOW 20S**, **NORMAL 9S**, or **FAST 4S** before creating the next Lorenz sculpture. DRAW computes the complete Lorenz trajectory immediately, but stamps each generated voxel with a future reveal time. Each frame renders only the samples whose reveal time has elapsed. The existing GPU material and animation continue to work; the completed sculpture remains displayed. Undo/Redo retain the stamped voxel data. No new geometry is generated per frame.
 
 This replaces the unused scene placeholder while we develop the first work in the *Attracteurs étranges* collection. Timing only affects newly created Lorenz strokes; existing sculptures are not restarted by switching the mode. Not compiled or Quest-tested yet.
+
+
+### Lorenz playback: LOOP
+
+LORENZ panel now has three exclusive playback modes for **new** sculptures:
+**STATIC**, **DRAW ONCE**, and **LOOP**, with SLOW/NORMAL/FAST durations.
+LOOP reveals the precomputed Lorenz trajectory again from the beginning at the
+end of each interval; no new voxels are allocated and geometry is not
+reintegrated per frame. Each voxel retains its sculpture-specific playback
+start, normalized trajectory progress, duration, and looping flag, so Undo/Redo
+and multiple independent Lorenz sculptures remain supported.
+
+StereoKit's `AnimMode.Loop` documented at
+https://stereokit.net/Pages/StereoKit/AnimMode.html is for model animation
+clips (`Model.PlayAnim`). Voxen's procedural per-voxel reveal is therefore
+implemented with its own time/fmod calculation rather than `AnimMode`.
+This change is not yet built or headset-tested.
