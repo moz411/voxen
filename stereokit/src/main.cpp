@@ -46,6 +46,11 @@ static int note_stride = 0;
 static int algorithm_mode = -1;
 static int gpu_preset = 0;
 static float lorenz_sigma=10.0f, lorenz_rho=28.0f, lorenz_beta=8.0f/3.0f;
+static float fractal_zoom=1.0f, fractal_center_x=0.0f, fractal_center_y=0.0f;
+static float julia_real=-0.745f, julia_imag=0.186f;
+static int fractal_iterations=64;
+static float rossler_a=0.2f, rossler_b=0.2f, rossler_c=5.7f;
+static float fibonacci_turns=5.0f, fibonacci_spacing=1.0f;
 static shader_t voxel_shader = nullptr;
 static material_t gpu_materials[6] = {};
 static uint32_t brush_step = 0;
@@ -135,47 +140,6 @@ static vec3 aim_forward(quat q) {
             -(1-2*(q.x*q.x+q.y*q.y))};
 }
 
-static float fractal_escape(float real,float imag,bool julia) {
-    float zr=julia?real:0.0f, zi=julia?imag:0.0f;
-    const float cr=julia?-0.745f:real, ci=julia?0.186f:imag;
-    int iter=0;
-    for(;iter<16 && zr*zr+zi*zi<16.0f;iter++) {
-        const float nr=zr*zr-zi*zi+cr;
-        zi=2.0f*zr*zi+ci;
-        zr=nr;
-    }
-    return static_cast<float>(iter)/16.0f;
-}
-// Each trigger gesture defines one world-axis-aligned cube. Generate a
-// bounded set of discrete voxels inside it on release, as a single undo stroke.
-// Algorithm -1 is normal freehand. Coordinates are normalized to the cube.
-static bool algorithm_occupancy(int mode,float x,float y,float z) {
-    const float r=std::sqrt(x*x+y*y+z*z);
-    const float angle=std::atan2(z,x);
-    switch(mode) {
-        case 0: return r<0.75f; // Cortex-like nested folds
-        case 1: return std::sin(x*19)*std::cos(y*17)*std::sin(z*21)>0.24f;
-        case 2: return std::fabs(y-0.40f*std::sin(x*9+z*7))<0.16f;
-        case 3: return std::fabs(std::sqrt(x*x+z*z)-0.55f)<0.20f &&
-                       std::fabs(y-0.6f*std::sin(angle*2.0f))<0.24f;
-        case 4: return std::fabs(r-(0.40f+0.25f*std::sin(angle*3+y*6)))<0.15f;
-        case 5: return (std::fabs(x)<0.13f || std::fabs(y)<0.13f ||
-                        std::fabs(z)<0.13f);
-        case 6: {
-            const float v=fractal_escape(x*1.5f-0.5f,z*1.5f,false);
-            return std::fabs(y-(v*1.5f-0.75f))<0.18f;
-        }
-        case 7: {
-            const float v=fractal_escape(x*1.5f,z*1.5f,true);
-            return std::fabs(y-(v*1.5f-0.75f))<0.18f;
-        }
-        case 8: return std::fabs(x-0.45f*std::sin(y*7))<0.2f ||
-                       std::fabs(z-0.45f*std::cos(y*8))<0.2f;
-        case 9: return std::fabs(std::sin(x*10+std::sin(z*7))+
-                                 std::cos(y*11+std::sin(x*8)))<0.30f;
-        default: return false;
-    }
-}
 static void add_voxel(vec3 p,float size) {
     if(voxels.size()>=max_voxels) return;
     // Keep the same collision checks as normal painting.
@@ -277,9 +241,9 @@ static void generate_lorenz(const vec3& center,float side) {
 static int complex_escape(float real, float imag, bool julia) {
     float zr = julia ? real : 0.0f;
     float zi = julia ? imag : 0.0f;
-    const float cr = julia ? -0.745f : real;
-    const float ci = julia ? 0.186f : imag;
-    constexpr int max_iterations = 64;
+    const float cr = julia ? julia_real : real;
+    const float ci = julia ? julia_imag : imag;
+    const int max_iterations = fractal_iterations;
     for (int i = 0; i < max_iterations; ++i) {
         if (zr*zr + zi*zi > 4.0f) return i;
         const float next_real = zr*zr - zi*zi + cr;
@@ -299,11 +263,12 @@ static void generate_planar_fractal(const vec3& center, float side, bool julia) 
         for (int ix = 0; ix < resolution && voxels.size() < max_voxels; ++ix) {
             const float u = (ix + 0.5f) / resolution;
             const float v = (iy + 0.5f) / resolution;
-            const float real = julia ? -1.5f + 3.0f*u : -2.25f + 3.0f*u;
-            const float imag = -1.5f + 3.0f*v;
+            const float real = (julia ? 0.0f : -0.75f) + fractal_center_x
+                               + (u-0.5f)*3.0f/fractal_zoom;
+            const float imag = fractal_center_y + (v-0.5f)*3.0f/fractal_zoom;
             // Keep interior and nearby high-iteration boundary for a legible
             // silhouette; do not fill the entire exterior of the canvas.
-            if (complex_escape(real, imag, julia) < 24) continue;
+            if (complex_escape(real, imag, julia) < fractal_iterations*3/8) continue;
             add_voxel({center.x + (ix + 0.5f - resolution*0.5f)*spacing,
                        center.y + (iy + 0.5f - resolution*0.5f)*spacing,
                        center.z}, voxel_edge);
@@ -311,6 +276,72 @@ static void generate_planar_fractal(const vec3& center, float side, bool julia) 
     sound_mode = previous_sound;
     if (previous_sound > 0 && tones[previous_sound-1])
         sound_play(tones[previous_sound-1], center, 0.22f);
+}
+// Rossler ODE integrated with RK4, using the same bounded representation
+// strategy as Lorenz.
+struct RPoint { float x,y,z; };
+static RPoint rossler_velocity(RPoint p) {
+    return {-p.y-p.z,p.x+rossler_a*p.y,
+            rossler_b+p.z*(p.x-rossler_c)};
+}
+static RPoint rossler_step(RPoint p,float dt) {
+    auto add=[](RPoint a,RPoint b,float k) -> RPoint {
+        return {a.x+k*b.x,a.y+k*b.y,a.z+k*b.z};
+    };
+    const auto k1=rossler_velocity(p),k2=rossler_velocity(add(p,k1,dt*0.5f));
+    const auto k3=rossler_velocity(add(p,k2,dt*0.5f));
+    const auto k4=rossler_velocity(add(p,k3,dt));
+    return {p.x+dt*(k1.x+2*k2.x+2*k3.x+k4.x)/6.0f,
+            p.y+dt*(k1.y+2*k2.y+2*k3.y+k4.y)/6.0f,
+            p.z+dt*(k1.z+2*k2.z+2*k3.z+k4.z)/6.0f};
+}
+static void generate_rossler(vec3 center,float side) {
+    constexpr int warmup=1000,samples=2600;
+    constexpr float dt=0.025f;
+    RPoint p{1,0,0};
+    for(int i=0;i<warmup;++i)p=rossler_step(p,dt);
+    std::vector<RPoint> points; points.reserve(samples);
+    RPoint low=p,high=p;
+    for(int i=0;i<samples;++i) {
+        p=rossler_step(p,dt);
+        if(!std::isfinite(p.x)||!std::isfinite(p.y)||!std::isfinite(p.z))break;
+        points.push_back(p);
+        low={std::min(low.x,p.x),std::min(low.y,p.y),std::min(low.z,p.z)};
+        high={std::max(high.x,p.x),std::max(high.y,p.y),std::max(high.z,p.z)};
+    }
+    if(points.empty())return;
+    const float extent=std::max({high.x-low.x,high.y-low.y,high.z-low.z,0.001f});
+    const float scale=side*0.88f/extent,edge=std::max(0.003f,side/70.0f);
+    const vec3 mid{(low.x+high.x)*0.5f,(low.z+high.z)*0.5f,
+                   (low.y+high.y)*0.5f};
+    const int old_sound=sound_mode; sound_mode=0;
+    for(const auto& q:points) {
+        if(voxels.size()>=max_voxels)break;
+        add_voxel({center.x+q.x*scale-mid.x*scale,
+                   center.y+q.z*scale-mid.y*scale,
+                   center.z+q.y*scale-mid.z*scale},edge);
+    }
+    sound_mode=old_sound;
+}
+static void generate_fibonacci(vec3 center,float side) {
+    // Logarithmic golden spiral in a vertical XY plane.
+    constexpr float pi=3.14159265358979323846f;
+    constexpr float golden=1.61803398875f;
+    const int samples=1500;
+    const float turns=fibonacci_turns;
+    const float max_theta=2*pi*turns;
+    const float growth=std::log(golden)/(pi*0.5f);
+    const float max_radius=std::exp(growth*max_theta);
+    const float edge=std::max(0.003f,side/100.0f);
+    const int old_sound=sound_mode; sound_mode=0;
+    for(int i=0;i<samples&&voxels.size()<max_voxels;++i) {
+        const float theta=max_theta*i/(samples-1);
+        const float radius=0.45f*side*fibonacci_spacing*
+                           std::exp(growth*theta)/max_radius;
+        add_voxel({center.x+radius*std::cos(theta),
+                   center.y+radius*std::sin(theta),center.z},edge);
+    }
+    sound_mode=old_sound;
 }
 static void commit_volume() {
     if(!volume_active) return;
@@ -324,37 +355,16 @@ static void commit_volume() {
     // Require at least a small physical volume even on a tap.
     const float side=std::clamp(std::max({dx,dy,dz,voxel_size*3.0f}),
                                 voxel_size*3.0f,0.8f);
-    const int n=std::clamp(static_cast<int>(side/voxel_size),3,11);
-    const float spacing=side/n;
-    // Capped at 1331 candidate samples and 4096 accepted voxels.
     if(voxels.size()>=max_voxels) return;
     begin_artwork(center,side);
-    if(algorithm_mode==6 || algorithm_mode==7) {
-        generate_planar_fractal(center,side,algorithm_mode==7);
-        finish_artwork();
-        last_paint_valid=false;
-        return;
+    switch(algorithm_mode) {
+        case 6: generate_planar_fractal(center,side,false); break;
+        case 7: generate_planar_fractal(center,side,true); break;
+        case 10: generate_lorenz(center,side); break;
+        case 11: generate_rossler(center,side); break;
+        case 12: generate_fibonacci(center,side); break;
+        default: break;
     }
-    if(algorithm_mode==10) {
-        generate_lorenz(center,side);
-        finish_artwork();
-        last_paint_valid=false;
-        return;
-    }
-    for(int iz=0;iz<n && voxels.size()<max_voxels;++iz)
-      for(int iy=0;iy<n && voxels.size()<max_voxels;++iy)
-        for(int ix=0;ix<n && voxels.size()<max_voxels;++ix) {
-            const float x=(ix+0.5f)/n*2-1;
-            const float y=(iy+0.5f)/n*2-1;
-            const float z=(iz+0.5f)/n*2-1;
-            if(!algorithm_occupancy(algorithm_mode,x,y,z)) continue;
-            const vec3 p={center.x+(ix+0.5f-n*0.5f)*spacing,
-                          center.y+(iy+0.5f-n*0.5f)*spacing,
-                          center.z+(iz+0.5f-n*0.5f)*spacing};
-            const float scale=0.70f+0.28f*std::fabs(std::sin(
-                x*4.1f+y*2.7f+z*5.3f+algorithm_mode));
-            add_voxel(p,spacing*scale);
-        }
     finish_artwork();
     last_paint_valid=false;
 }
@@ -727,12 +737,17 @@ static void draw_face(int page) {
             if(face_button(face,page,speeds[i],-0.088f-i*0.043f,
                            lorenz_speed==i)) lorenz_speed=i;
     } else if(page==4) {
-        static const char* algorithms[]={"SPHERE","JITTER","WAVE","HELIX",
-            "SHELL","LATTICE","MANDELBROT","JULIA","BRANCH","CORTEX",
-            "LORENZ"};
-        for(int i=0;i<11;++i)
-            if(face_button(face,page,algorithms[i],0.164f-i*0.033f,
-                           algorithm_mode==i)) algorithm_mode=(algorithm_mode==i?-1:i);
+        static const char* algorithms[]={"LORENZ","ROSSLER","MANDELBROT",
+                                         "JULIA","FIBONACCI"};
+        static const int ids[]={10,11,6,7,12};
+        for(int i=0;i<5;++i) {
+            const int id=ids[i];
+            if(face_button(face,page,algorithms[i],0.135f-i*0.060f,
+                           algorithm_mode==id)) {
+                algorithm_mode=(algorithm_mode==id?-1:id);
+                if(algorithm_mode>=0) menu_page=7;
+            }
+        }
     } else if(page==5) {
         face_text(face,"GPU MATERIALS",0,0.153f);
         static const char* names[]={"MATTE","NEON","PLASMA","HOLO","LAVA","ICE"};
@@ -752,32 +767,58 @@ static void draw_face(int page) {
             }
         }
     } else if(page==7) {
+        const char* title="SELECT A GENERATOR";
+        const char* names[5]={};
+        float* values[5]={};
+        float steps[5]={}, minima[5]={}, maxima[5]={};
+        int count=0;
+        auto add=[&](const char* name,float& value,float step,float lo,float hi) {
+            names[count]=name; values[count]=&value;
+            steps[count]=step; minima[count]=lo; maxima[count]=hi;
+            ++count;
+        };
         if(algorithm_mode==10) {
-            face_text(face,"LORENZ PARAMETERS",0,0.150f);
-            char value[64];
-            const char* names[]={"SIGMA","RHO","BETA"};
-            float* values[]={&lorenz_sigma,&lorenz_rho,&lorenz_beta};
-            const float steps[]={0.5f,1.0f,0.1f};
-            const float minima[]={0.1f,0.1f,0.1f};
-            const float maxima[]={40.0f,80.0f,10.0f};
-            for(int i=0;i<3;++i) {
-                const float y=0.09f-i*0.12f;
-                std::snprintf(value,sizeof(value),"%s %.2f",names[i],*values[i]);
-                face_text(face,value,0,y);
-                const bool minus=panel_hover(page,-0.040f,y-0.040f,0.07f,0.033f);
-                const bool plus=panel_hover(page,0.040f,y-0.040f,0.07f,0.033f);
-                face_rect(face,-0.040f,y-0.040f,0.070f,0.031f,
-                          minus?color128{0.2f,0.7f,0.8f,0.95f}:color128{0.1f,0.24f,0.35f,0.85f});
-                face_rect(face,0.040f,y-0.040f,0.070f,0.031f,
-                          plus?color128{0.2f,0.7f,0.8f,0.95f}:color128{0.1f,0.24f,0.35f,0.85f});
-                face_text(face,"-", -0.040f,y-0.040f);
-                face_text(face,"+", 0.040f,y-0.040f);
-                if(menu_click && (minus||plus))
-                    *values[i]=std::clamp(*values[i]+(plus?steps[i]:-steps[i]),minima[i],maxima[i]);
+            title="LORENZ";
+            add("SIGMA",lorenz_sigma,0.5f,0.1f,40.0f);
+            add("RHO",lorenz_rho,1.0f,0.1f,80.0f);
+            add("BETA",lorenz_beta,0.1f,0.1f,10.0f);
+        } else if(algorithm_mode==11) {
+            title="ROSSLER";
+            add("A",rossler_a,0.05f,0.01f,1.0f);
+            add("B",rossler_b,0.05f,0.01f,1.0f);
+            add("C",rossler_c,0.5f,2.0f,12.0f);
+        } else if(algorithm_mode==6 || algorithm_mode==7) {
+            title=algorithm_mode==6?"MANDELBROT":"JULIA";
+            add("ZOOM",fractal_zoom,0.5f,0.5f,12.0f);
+            add("CENTER X",fractal_center_x,0.1f,-2.0f,2.0f);
+            add("CENTER Y",fractal_center_y,0.1f,-2.0f,2.0f);
+            if(algorithm_mode==7) {
+                add("C REAL",julia_real,0.025f,-1.5f,1.5f);
+                add("C IMAG",julia_imag,0.025f,-1.5f,1.5f);
             }
-        } else {
-            face_text(face,"SELECT LORENZ",0,0.060f);
-            face_text(face,"IN ALGORITHMS",0,0.020f);
+        } else if(algorithm_mode==12) {
+            title="FIBONACCI";
+            add("TURNS",fibonacci_turns,1.0f,1.0f,12.0f);
+            add("SPACING",fibonacci_spacing,0.1f,0.3f,1.0f);
+        }
+        face_text(face,title,0,0.165f);
+        if(count==0) face_text(face,"CHOOSE IN ALGORITHMS",0,0.07f);
+        for(int i=0;i<count;++i) {
+            const float y=0.112f-i*0.073f;
+            char value[64];
+            std::snprintf(value,sizeof(value),"%s %.3f",names[i],*values[i]);
+            face_text(face,value,0,y);
+            const float by=y-0.035f;
+            const bool minus=panel_hover(page,-0.040f,by,0.070f,0.030f);
+            const bool plus=panel_hover(page,0.040f,by,0.070f,0.030f);
+            face_rect(face,-0.040f,by,0.070f,0.029f,
+                      minus?color128{0.2f,0.7f,0.8f,0.95f}:color128{0.1f,0.24f,0.35f,0.85f});
+            face_rect(face,0.040f,by,0.070f,0.029f,
+                      plus?color128{0.2f,0.7f,0.8f,0.95f}:color128{0.1f,0.24f,0.35f,0.85f});
+            face_text(face,"-", -0.040f,by);
+            face_text(face,"+",0.040f,by);
+            if(menu_click&&(minus||plus))
+                *values[i]=std::clamp(*values[i]+(plus?steps[i]:-steps[i]),minima[i],maxima[i]);
         }
     } else if(page==6) {
         if(face_button(face,page,selection_mode?"SELECT: ON":"SELECT: OFF",
