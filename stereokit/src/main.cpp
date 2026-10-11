@@ -2,6 +2,9 @@
 #include <stereokit_ui.h>
 #include <openxr/openxr.h>
 #include <cstdio>
+#include <vector>
+#include <cmath>
+#include <algorithm>
 
 using namespace sk;
 
@@ -17,6 +20,73 @@ static float background_hue = 0.0f;
 static float background_brightness = 0.0f;
 static mesh_t cube = nullptr;
 static material_t material = nullptr;
+struct PaintedVoxel { vec3 position; float size; color128 tint; };
+static std::vector<PaintedVoxel> voxels;
+static constexpr size_t max_voxels = 4096;
+static bool trigger_down = false;
+static bool last_paint_valid = false;
+static vec3 last_paint{};
+static float brush_distance = 0.075f;
+static float trigger_threshold = 0.65f;
+
+static float dist(vec3 a, vec3 b) {
+    const float dx = a.x-b.x, dy = a.y-b.y, dz = a.z-b.z;
+    return std::sqrt(dx*dx+dy*dy+dz*dz);
+}
+static vec3 interpolate(vec3 a, vec3 b, float t) {
+    return {a.x+(b.x-a.x)*t, a.y+(b.y-a.y)*t, a.z+(b.z-a.z)*t};
+}
+// OpenXR/StereoKit aim is oriented along local -Z.
+static vec3 aim_forward(quat q) {
+    return {-2*(q.x*q.z+q.w*q.y),
+            -2*(q.y*q.z-q.w*q.x),
+            -(1-2*(q.x*q.x+q.y*q.y))};
+}
+static void paint_at(vec3 position) {
+    if (voxels.size() >= max_voxels) return;
+    voxels.push_back({position, voxel_size,
+        color_hsv(hue, 1.0f, 1.0f, 1.0f)});
+}
+static void update_brush() {
+    const controller_t* right = input_controller(handed_right);
+    if (!right || !(right->tracked & button_state_active)) {
+        trigger_down = false;
+        last_paint_valid = false;
+        return;
+    }
+    const bool pressed = trigger_down
+        ? right->trigger > 0.45f : right->trigger > trigger_threshold;
+    trigger_down = pressed;
+    const vec3 fwd = aim_forward(right->aim.orientation);
+    const vec3 tip = {
+        right->aim.position.x + fwd.x*brush_distance,
+        right->aim.position.y + fwd.y*brush_distance,
+        right->aim.position.z + fwd.z*brush_distance
+    };
+    // Live fixed-size, axis-aligned brush cursor.
+    render_add_mesh(cube, material,
+        matrix_ts(tip, {voxel_size, voxel_size, voxel_size}),
+        color_hsv(hue, 1.0f, 1.0f, 1.0f));
+    if (!painting || !pressed) { last_paint_valid = false; return; }
+
+    if (!last_paint_valid) {
+        paint_at(tip);
+        last_paint = tip;
+        last_paint_valid = true;
+        return;
+    }
+    const float spacing = std::max(0.008f, voxel_size * 0.75f);
+    const float d = dist(last_paint, tip);
+    // Interpolate along controller motion, but bound per-frame work.
+    const int steps = std::min(64, static_cast<int>(d / spacing));
+    if (steps > 0) {
+        const vec3 start = last_paint;
+        for (int i=1; i<=steps && voxels.size()<max_voxels; ++i)
+            paint_at(interpolate(start, tip, static_cast<float>(i)/steps));
+        last_paint = tip;
+    }
+}
+
 
 // Own our own passthrough layer; StereoKit still owns OpenXR instance/session.
 // Failure is non-fatal: default alpha-blended passthrough remains available.
@@ -104,13 +174,21 @@ int voxen_stereokit_main() {
     if (!sk_init(app_settings)) return 1;
     edge_passthrough.initialize();
     cube = mesh_find(default_id_mesh_cube);
-    material = material_find(default_id_material);
+    material = material_copy(material_find(default_id_material));
+    voxels.reserve(max_voxels);
     sk_run([] {
         ui_window_begin("VOXEN | Palette", palette, {0.30f, 0});
-        ui_label("Voxel brush - prototype");
+        ui_label("Right trigger: paint in air");
+        ui_label("Fixed axis-aligned voxels");
         ui_hslider("Size (m)", voxel_size, 0.015f, 0.15f, 0.005f);
         ui_hslider("Hue", hue, 0.0f, 1.0f, 0.01f);
         if (ui_button(painting ? "Brush: ON" : "Brush: OFF")) painting = !painting;
+        ui_hslider("Tip offset (m)", brush_distance, 0.02f, 0.20f, 0.005f);
+        if (ui_button("Undo last voxel") && !voxels.empty()) voxels.pop_back();
+        if (ui_button("Clear voxels")) { voxels.clear(); last_paint_valid = false; }
+        char count[64];
+        std::snprintf(count, sizeof(count), "Voxels: %zu / %zu", voxels.size(), max_voxels);
+        ui_label(count);
         if (edge_passthrough.available) {
             if (ui_button(edges_enabled ? "Contours: ON" : "Contours: OFF"))
                 edges_enabled = !edges_enabled;
@@ -128,9 +206,11 @@ int voxen_stereokit_main() {
         }
         ui_window_end();
 
-        if (painting)
-            mesh_draw(cube, material, matrix_ts({0, 0, -0.8f},
-                {voxel_size, voxel_size, voxel_size}));
+        for (const PaintedVoxel& voxel : voxels)
+            render_add_mesh(cube, material,
+                matrix_ts(voxel.position, {voxel.size, voxel.size, voxel.size}),
+                voxel.tint);
+        update_brush();
         if (edges_enabled && edge_passthrough.available) {
             render_enable_skytex(false);
             render_set_clear_color(
