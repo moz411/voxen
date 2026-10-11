@@ -208,7 +208,8 @@ static void generate_lorenz(const vec3& center,float side) {
     const float duration=lorenz_speed==0?20.0f:(lorenz_speed==2?4.0f:9.0f);
     const float start_time=animation_time;
     sound_mode=0; // Avoid hundreds of simultaneous spatial notes at commit.
-    for(const auto& q:path) {
+    for(size_t point_index=0;point_index<path.size();++point_index) {
+        const auto& q=path[point_index];
         if(voxels.size()>=max_voxels) break;
         const vec3 at={center.x+(q.x-mid.x)*scale,
                        center.y+(q.z-mid.z)*scale,
@@ -218,7 +219,7 @@ static void generate_lorenz(const vec3& center,float side) {
         add_voxel(at,size);
         if(voxels.size()>before && lorenz_animated)
             voxels.back().reveal_at=start_time+duration*
-                (static_cast<float>(&q-&path[0])/static_cast<float>(samples));
+                (static_cast<float>(point_index)/static_cast<float>(samples));
         prev=at;
         have_prev=true;
     }
@@ -447,7 +448,7 @@ static void draw_face(int page) {
     const pose_t face=face_panel_pose(page);
     face_rect(face,0,0,panel_width,panel_height,
         {0.06f,0.13f,0.22f,0.80f},0.003f);
-    static const char* titles[]={"COLORS","SHAPES","SOUNDS","SCENES","ALGORITHMS"};
+    static const char* titles[]={"COLORS","SHAPES","SOUNDS","LORENZ","ALGORITHMS"};
     face_text(face,titles[page],0,0.188f);
     if(page==0) {
         for(int i=0;i<16;++i) {
