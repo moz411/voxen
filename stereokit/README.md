@@ -259,3 +259,17 @@ shell or inactive faces are drawn. It follows the left controller's full pose,
 with the tall panel center positioned 23.5 cm above the controller along its
 local Y axis. This is an intentionally simpler, testable replacement for the
 3D carousel while preserving all five page contents and the procedural brush.
+
+
+## GPU voxel shaders — experimental StereoKit pipeline
+
+Branch `feature/stereokit-gpu-voxel-shaders`, based on `main`.
+- `stereokit/shaders/voxen_voxel.hlsl` is a real HLSL vertex/fragment shader compiled by StereoKit's `skshaderc_compile_headers` during CMake configuration/build into embedded shader data.
+- Vertex stage passes **voxel-local coordinates** from the mesh to the fragment stage and applies StereoKit's instanced world and stereo view-projection matrices.
+- Fragment stage implements six GPU surface looks: MATTE, NEON local grid, PLASMA waves, HOLO scanlines, LAVA flow and ICE cracks.
+- COLORS panel selects materials in a 2x3 grid under the 16 color swatches; each new voxel stores its material index. Six StereoKit material instances share the shader; the time uniform is updated once per frame on each material.
+- If shader initialization fails, rendering falls back to the previous default material. Existing scenes/undo/voxel geometry are not migrated.
+- This experiment is independent from the separate `feature/surface-fractals-material-presets` branch.
+- **No build or Quest validation performed**. Shader compiler integration, GLES shader variants, winding and performance must be validated on device before merging.
+
+Build: `cd android && ./gradlew assembleDebug`. No APK installation command included.
