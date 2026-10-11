@@ -415,10 +415,12 @@ static void update_controller_palette() {
     }
     // Keep the tall panel anchored near the controller instead of projecting
     // its center 23.5 cm away. Orientation still faces the headset.
-    const vec3 offset=quat_mul_vec(left->pose.orientation,{0,0.09f,-0.025f});
-    carousel_base.position={left->pose.position.x+offset.x,
-                            left->pose.position.y+offset.y,
-                            left->pose.position.z+offset.z};
+    // The panel remains upright and faces the viewer. Anchor its bottom
+    // edge at controller height in world space, irrespective of wrist tilt.
+    // panel_height is 0.43m; the center must sit half that above the hand.
+    carousel_base.position={left->pose.position.x,
+                            left->pose.position.y+panel_height*0.5f,
+                            left->pose.position.z};
     // Position follows the controller; readability follows the headset.
     // Keep local Y upright and face the viewer instead of showing the panel
     // edge-on when the controller points forward or down.
@@ -607,10 +609,12 @@ struct EdgePassthrough {
             XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB};
         composition.flags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
         composition.layerHandle = layer;
-        // Behind the stereoscopic projection and UI.
-        // Place edges above the opaque StereoKit background.
-        // Composite the contours above the opaque color background.
-        backend_openxr_composition_layer(&composition, sizeof(composition), 100);
+        // StereoKit's projection (voxels + UI) is at sort order 0.
+        // The edge-only passthrough layer must be composited AFTER it,
+        // so real-world contours are superimposed on painted voxels.
+        constexpr int32_t edge_overlay_order=1000;
+        backend_openxr_composition_layer(
+            &composition,sizeof(composition),edge_overlay_order);
     }
 
     void shutdown() {
