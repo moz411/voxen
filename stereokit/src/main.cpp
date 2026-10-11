@@ -51,6 +51,9 @@ static int generator_sound = 0;
 static int note_stride = 0;
 static int algorithm_mode = -1;
 static int gpu_preset = 0;
+static bool shader_tuning = false;
+struct ShaderTuning { float speed=1, scale=1, intensity=1, color_shift=0, audio_reactivity=0; };
+static ShaderTuning shader_tunings[12]{};
 static float lorenz_sigma=10.0f, lorenz_rho=28.0f, lorenz_beta=8.0f/3.0f;
 static float fractal_zoom=1.0f, fractal_center_x=0.0f, fractal_center_y=0.0f;
 static float julia_real=-0.745f, julia_imag=0.186f;
@@ -825,24 +828,55 @@ static void draw_face(int page) {
             }
         }
     } else if(page==3) {
-        face_text(face,"GPU MATERIALS",0,0.163f);
-        static const char* names[shader_count]={
-            "MATTE","NEON","PLASMA","HOLO","LAVA","ICE",
-            "AURORA","PULSE","CIRCUIT","MARBLE","NEBULA","GLITCH"};
-        for(int i=0;i<shader_count;++i) {
-            const float x=(i%2==0?-0.041f:0.041f);
-            const float y=0.127f-(i/2)*0.060f;
-            const bool hover=panel_hover(page,x,y,0.074f,0.041f);
-            face_rect(face,x,y,0.074f,0.038f,
-                hover?color128{0.2f,0.8f,0.95f,0.95f}:
-                gpu_preset==i?color128{0.18f,0.62f,0.45f,0.9f}:
-                color128{0.10f,0.24f,0.35f,0.85f});
-            face_text(face,names[i],x,y);
-            if(hover && menu_click) {
-                gpu_preset=i;
-                if(selection_mode) edit_selected_shader(i);
-                if(click_sound) sound_play(click_sound,menu_hit,0.35f);
+        if(face_button(face,page,shader_tuning?"PRESETS":"TUNE",0.158f))
+            shader_tuning=!shader_tuning;
+        if(!shader_tuning) {
+            static const char* names[shader_count]={
+                "MATTE","NEON","PLASMA","HOLO","LAVA","ICE",
+                "AURORA","PULSE","CIRCUIT","MARBLE","NEBULA","GLITCH"};
+            for(int i=0;i<shader_count;++i) {
+                const float x=(i%2==0?-0.041f:0.041f);
+                const float y=0.105f-(i/2)*0.056f;
+                const bool hover=panel_hover(page,x,y,0.074f,0.041f);
+                face_rect(face,x,y,0.074f,0.038f,
+                    hover?color128{0.2f,0.8f,0.95f,0.95f}:
+                    gpu_preset==i?color128{0.18f,0.62f,0.45f,0.9f}:
+                    color128{0.10f,0.24f,0.35f,0.85f});
+                face_text(face,names[i],x,y);
+                if(hover && menu_click) {
+                    gpu_preset=i;
+                    if(selection_mode) edit_selected_shader(i);
+                    if(click_sound) sound_play(click_sound,menu_hit,0.35f);
+                }
             }
+        } else {
+            ShaderTuning& cfg=shader_tunings[gpu_preset];
+            const char* names[]={"SPEED","SCALE","INTENSITY","COLOR SHIFT","AUDIO REACT"};
+            float* values[]={&cfg.speed,&cfg.scale,&cfg.intensity,
+                             &cfg.color_shift,&cfg.audio_reactivity};
+            const float steps[]={0.2f,0.25f,0.2f,0.1f,0.1f};
+            const float minimum[]={0.0f,0.25f,0.0f,0.0f,0.0f};
+            const float maximum[]={4.0f,5.0f,3.0f,1.0f,2.0f};
+            for(int i=0;i<5;++i) {
+                const float y=0.112f-i*0.061f;
+                char caption[64];
+                std::snprintf(caption,sizeof(caption),"%s %.2f",names[i],*values[i]);
+                face_text(face,caption,0,y);
+                const float by=y-0.023f;
+                const bool minus=panel_hover(page,-0.040f,by,0.070f,0.027f);
+                const bool plus=panel_hover(page,0.040f,by,0.070f,0.027f);
+                face_rect(face,-0.040f,by,0.070f,0.026f,
+                    minus?color128{0.2f,0.7f,0.8f,0.95f}:color128{0.1f,0.24f,0.35f,0.85f});
+                face_rect(face,0.040f,by,0.070f,0.026f,
+                    plus?color128{0.2f,0.7f,0.8f,0.95f}:color128{0.1f,0.24f,0.35f,0.85f});
+                face_text(face,"-",-0.040f,by);
+                face_text(face,"+",0.040f,by);
+                if(menu_click&&(minus||plus))
+                    *values[i]=std::clamp(*values[i]+(plus?steps[i]:-steps[i]),
+                                          minimum[i],maximum[i]);
+            }
+            if(face_button(face,page,"RESET SHADER",-0.195f))
+                cfg=ShaderTuning{};
         }
     } else if(page==4) {
         const char* title="SELECT A GENERATOR";
@@ -1199,7 +1233,9 @@ int voxen_stereokit_main() {
     if(voxel_shader) {
         for(int i=0;i<shader_count;++i) {
             gpu_materials[i]=material_create(voxel_shader);
-            if(gpu_materials[i]) material_set_float(gpu_materials[i],"mode",(float)i);
+            if(gpu_materials[i]) {
+                material_set_float(gpu_materials[i],"mode",(float)i);
+            }
         }
     } else std::printf("[Voxen] GPU voxel shader unavailable; using default material\\n");
     voxels.reserve(max_voxels);
@@ -1222,9 +1258,16 @@ int voxen_stereokit_main() {
         else draw_face(menu_page);
 
         animation_time += time_stepf();
-        for(int i=0;i<shader_count;++i)
-            if(gpu_materials[i]) material_set_float(gpu_materials[i],
-                                                     "time",animation_time);
+        for(int i=0;i<shader_count;++i) {
+            if(!gpu_materials[i]) continue;
+            const ShaderTuning& cfg=shader_tunings[i];
+            material_set_float(gpu_materials[i],"time",animation_time);
+            material_set_float(gpu_materials[i],"speed",cfg.speed);
+            material_set_float(gpu_materials[i],"scale",cfg.scale);
+            material_set_float(gpu_materials[i],"intensity",cfg.intensity);
+            material_set_float(gpu_materials[i],"color_shift",cfg.color_shift);
+            material_set_float(gpu_materials[i],"audio_reactivity",cfg.audio_reactivity);
+        }
         for(const PaintedVoxel& voxel:voxels) {
             if(voxel.reveal_duration>0.0f) {
                 const float elapsed=std::max(0.0f,animation_time-voxel.reveal_start);
