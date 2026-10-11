@@ -87,3 +87,17 @@ Branch `feature/palette-alignment-stroke-undo`:
 The four menu pages are still switched dynamically on a front-facing UI surface;
 they are not four simultaneously mounted UI panels. The placement and height
 are unverified on-device and may require further calibration.
+
+
+## Right-controller ray interaction
+
+The experimental panel now uses explicit row rectangles shared by the visible
+StereoKit widgets and the right-controller ray intersection. Point the ray at a
+button and press the right trigger once to activate it; press and hold on a
+slider and move laterally to adjust. While the ray targets the panel, or while
+a panel gesture is captured, voxel painting is suppressed. Outside the panel,
+the trigger continues painting. X = undo stroke, Y = redo stroke.
+
+This manual ray bridge is intentionally independent of StereoKit's near-hand
+button interactions. Layout calibration and controller behavior still need
+validation on Quest 3 before merging.
