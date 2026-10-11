@@ -247,3 +247,15 @@ Branch `feature/algorithmic-brush-five-panels` (not yet Quest-tested):
 - This is a first bounded prototype, not a full volumetric Mandelbrot set.
 - Build with `cd android && ./gradlew assembleDebug` (StereoKit is default).
   Not yet compiled or Quest-validated; leave main untouched.
+
+
+### UI correction after Quest screenshot (single-face mode)
+
+The 46 cm high five-face geometry was visibly unusable in the Quest: the
+panels intersected and looked like a flower. The UI now displays **one**
+controller-mounted page at a time. The left stick navigates all five pages;
+only the selected page is rendered and ray-hit-tested. No translucent cube
+shell or inactive faces are drawn. It follows the left controller's full pose,
+with the tall panel center positioned 23.5 cm above the controller along its
+local Y axis. This is an intentionally simpler, testable replacement for the
+3D carousel while preserving all five page contents and the procedural brush.
