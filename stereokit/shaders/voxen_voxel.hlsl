@@ -2,9 +2,19 @@
 //--color:color = 1,1,1,1
 //--time = 0
 //--mode = 0
+//--speed = 1
+//--scale = 1
+//--intensity = 1
+//--color_shift = 0
+//--audio_reactivity = 0
 float4 color;
 float time;
 float mode;
+float speed;
+float scale;
+float intensity;
+float color_shift;
+float audio_reactivity;
 struct vsIn {
     float4 pos : SV_Position;
     float3 norm : NORMAL0;
@@ -30,8 +40,8 @@ psIn vs(vsIn input, uint id : SV_InstanceID) {
     return o;
 }
 float4 ps(psIn input) : SV_TARGET {
-    float3 p = input.local;
-    float t = time;
+    float3 p = input.local * max(scale,0.1);
+    float t = time * speed;
     float3 c = input.tint.rgb;
     if (mode > 0.5 && mode < 1.5) { // neon grid
         float3 g = abs(frac(p * 9.0 + 0.5) - 0.5);
@@ -81,5 +91,13 @@ float4 ps(psIn input) : SV_TARGET {
             (0.55+0.45*abs(channel));
     }
     float light = 0.55 + 0.45*saturate(dot(normalize(input.normal),normalize(float3(0.35,0.8,-0.4))));
-    return float4(saturate(c*light),input.tint.a);
+    // Synthetic rhythmic modulation (no microphone or audio FFT yet).
+    float beat = 0.5 + 0.5*sin(time*6.2831853*2.0);
+    float gain = 1.0 + audio_reactivity*(beat-0.5);
+    float3 shifted = float3(
+        dot(c,float3(0.299,0.587,0.114)),
+        dot(c,float3(0.114,0.299,0.587)),
+        dot(c,float3(0.587,0.114,0.299)));
+    c = lerp(c,shifted,saturate(color_shift));
+    return float4(saturate(c*light*intensity*gain),input.tint.a);
 }
