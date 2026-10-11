@@ -223,3 +223,27 @@ Branch `feature/algorithmic-brush-five-panels` (not yet Quest-tested):
 - Build with plain `cd android && ./gradlew assembleDebug` (StereoKit default).
   No install step documented. Validate orientation, page picking, buttons and
   performance on Quest 3 before merging.
+
+
+## Revised algorithmic gesture / square carousel
+
+- The carousel has four physical cube faces again. Five logical pages are
+  available: the ALGORITHMS page takes the place of COLORS on its physical face
+  when selected. Stick steps are 90 degrees, not five 72-degree wings.
+- An active algorithm can be deselected by clicking its highlighted row again.
+  With no algorithm selected (-1), the brush returns to normal freehand.
+- Algorithmic painting is gesture-based: pressing the right trigger marks the
+  first corner; moving the controller sizes a translucent world-aligned cube;
+  releasing the trigger generates a discrete 3D structure *inside* that cubic
+  volume, in one Undo stroke.
+- The cube is centered between gesture endpoints. Its edge is the maximum of
+  the three axis differences (with a minimum of three brush sizes), capped
+  at 0.8 m for Quest testing. The generator samples at most 11³ positions
+  and never exceeds 4096 total voxels.
+- The ten algorithms apply different volumetric occupancy fields: sphere,
+  jitter, wave, helix, shell, lattice, Mandelbrot and Julia height fields,
+  branching and stylized cortex folds. Voxel sizes vary per sample but stay
+  below lattice spacing; overlapping AABBs are rejected.
+- This is a first bounded prototype, not a full volumetric Mandelbrot set.
+- Build with `cd android && ./gradlew assembleDebug` (StereoKit is default).
+  Not yet compiled or Quest-validated; leave main untouched.
