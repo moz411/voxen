@@ -246,7 +246,7 @@ static void update_menu_ray() {
         const quat face_rot = quat_mul(world_rot,
             quat_from_angles(0, -page*90.0f, 0));
         const vec3 face_offset = quat_mul_vec(face_rot,
-            {0.08f, menu_height*0.5f-0.006f,
+            {0.095f, menu_height*0.5f-0.006f,
              -menu_width*0.5f-0.005f});
         const vec3 face_origin = {
             carousel_base.position.x + face_offset.x,
@@ -282,7 +282,6 @@ static void draw_menu_ray() {
     const controller_t* right = input_controller(handed_right);
     if (!right || !(right->tracked & button_state_active)) return;
     const vec3 start = right->aim.position;
-    const vec3 fwd = aim_forward(right->aim.orientation);
     const vec3 end = menu_hit;
     const color32 ray_color = menu_aiming ? color32{80,255,190,220}
                                           : color32{110,215,255,140};
@@ -430,7 +429,7 @@ int voxen_stereokit_main() {
             const quat face_rot = quat_mul(world_rotation,
                 quat_from_angles(0, -page*90.0f, 0));
             const vec3 face_offset = quat_mul_vec(face_rot,
-                {0.08f, menu_height*0.5f-0.006f,
+                {0.095f, menu_height*0.5f-0.006f,
                  -menu_width*0.5f-0.005f});
             pose_t face_pose = {{
                 carousel_base.position.x+face_offset.x,
