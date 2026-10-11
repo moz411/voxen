@@ -197,8 +197,11 @@ static void face_rect(const pose_t& face,float x,float y,float w,float h,
         panel_world(face,x,y,z),face.orientation,{w,h,0.002f}),color);
 }
 static void face_text(const pose_t& face,const char* label,float x,float y) {
-    text_add_at(label,matrix_trs(panel_world(face,x,y,0.006f),
-        face.orientation,{1,1,1}),panel_text_style);
+    // Mesh face orientation and StereoKit text facing conventions differ.
+    // Rotate text 180 degrees around local Y to avoid mirrored labels.
+    const quat text_rotation=quat_mul(face.orientation,quat_from_angles(0,180,0));
+    text_add_at(label,matrix_trs(panel_world(face,x,y,-0.006f),
+        text_rotation,{1,1,1}),panel_text_style);
 }
 static bool panel_hover(int page,float x,float y,float w,float h) {
     return menu_aiming && hit_page==page &&
