@@ -273,3 +273,22 @@ Branch `feature/stereokit-gpu-voxel-shaders`, based on `main`.
 - **No build or Quest validation performed**. Shader compiler integration, GLES shader variants, winding and performance must be validated on device before merging.
 
 Build: `cd android && ./gradlew assembleDebug`. No APK installation command included.
+
+## Attracteurs étranges — oeuvre 01 : Lorenz
+
+This experimental branch adds **LORENZ** as the eleventh entry in the ALGORITHMS page.
+The French exhibition title is **Attracteurs étranges**.
+
+Unlike the earlier stylized occupancy algorithms, this uses the actual Lorenz
+ordinary differential equations (sigma = 10, rho = 28, beta = 8/3), integrated
+with fourth-order Runge–Kutta, dt = 0.008. We discard 1,500 initial warmup
+steps, then sample 2,600 states, fit the trajectory uniformly into the cube
+defined by trigger press/release, and place small voxels along that 3D curve.
+The sculpture remains a single Undo stroke and uses the selected GPU material.
+To avoid overwhelming the headset, the generator respects the existing total
+voxel cap and emits at most one spatial note on completion.
+
+This first stage uses fixed Lorenz parameters, with no per-parameter UI yet.
+A future iteration can expose sigma/rho/beta, multiple starting states and
+time-dependent drawing. This branch is **not yet built or Quest-tested**.
+Build with `cd android && ./gradlew assembleDebug`.
