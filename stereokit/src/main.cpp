@@ -215,7 +215,11 @@ struct EdgePassthrough {
         composition.layerHandle = layer;
         // Behind the stereoscopic projection and UI.
         // Place edges above the opaque StereoKit background.
-        backend_openxr_composition_layer(&composition, sizeof(composition), 100);
+        // With a fully visible camera, composite behind the UI/projection.
+        // When camera is hidden, keep the edge-only effect over the
+        // solid background as before.
+        const int sort_order = camera_alpha >= 0.999f ? -100 : 100;
+        backend_openxr_composition_layer(&composition, sizeof(composition), sort_order);
     }
 
     void shutdown() {
@@ -292,7 +296,7 @@ int voxen_stereokit_main() {
                 voxel.tint);
         update_brush();
         draw_menu_ray();
-        if (edges_enabled && edge_passthrough.available) {
+        if (edges_enabled && edge_passthrough.available && camera_opacity < 0.999f) {
             render_enable_skytex(false);
             render_set_clear_color(
                 color_hsv(background_hue, 1.0f, background_brightness, 1.0f));
