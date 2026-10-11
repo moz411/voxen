@@ -33,6 +33,11 @@ static float voxel_size = 0.04f;
 static int selected_shape = 0;
 static mesh_t sphere_mesh = nullptr;
 static sound_t click_sound = nullptr;
+static sound_t tones[3] = {nullptr,nullptr,nullptr};
+static int sound_mode = 0; // 0 silence, 1 soft bell, 2 bright pulse, 3 bass
+static int effect_mode = 0; // 0 solid, 1 breathe, 2 color wave, 3 shimmer
+static float animation_time = 0.0f;
+static int note_stride = 0;
 static float size_velocity = 0.0f;
 static float hue = 0.45f;
 static bool painting = true;
@@ -43,7 +48,14 @@ static float background_hue = 0.64f;
 static float background_brightness = 0.33f;
 static mesh_t cube = nullptr;
 static material_t material = nullptr;
-struct PaintedVoxel { vec3 position; float size; color128 tint; int shape; };
+struct PaintedVoxel {
+    vec3 position;
+    float size;
+    color128 tint;
+    int shape;
+    int effect;
+    float phase;
+};
 static std::vector<PaintedVoxel> voxels;
 static std::vector<size_t> stroke_starts;
 static std::vector<std::vector<PaintedVoxel>> redo_strokes;
@@ -83,7 +95,32 @@ static void paint_at(vec3 position) {
             std::fabs(v.position.z-position.z) < min_gap) return;
     }
     redo_strokes.clear();
-    voxels.push_back({position, size, color_hsv(hue,1,1,1), selected_shape});
+    const float phase = position.x*11.0f + position.y*7.0f + position.z*13.0f;
+    voxels.push_back({position, size, color_hsv(hue,1,1,1), selected_shape,
+                      effect_mode, phase});
+    // Spatial note at each accepted new stroke and every eighth voxel.
+    if (sound_mode>0 && tones[sound_mode-1] &&
+        (++note_stride % 8)==1)
+        sound_play(tones[sound_mode-1],position,0.20f);
+}
+static color128 animated_tint(const PaintedVoxel& v) {
+    if (v.effect==2) {
+        const float h=std::fmod(animation_time*0.09f + v.phase*0.035f,1.0f);
+        return color_hsv(h<0?h+1:h,0.9f,1.0f,1.0f);
+    }
+    if (v.effect==3) {
+        const float k=0.65f+0.35f*std::sin(animation_time*5.0f+v.phase);
+        return {v.tint.r*k,v.tint.g*k,v.tint.b*k,1.0f};
+    }
+    return v.tint;
+}
+static float animated_scale(const PaintedVoxel& v) {
+    // Keep the original grid collision geometry. Visual size never exceeds
+    // the collision/placement size, so neighboring cubes don't intersect.
+    if (v.effect==1)
+        return 0.82f+0.18f*(0.5f+0.5f*
+            std::sin(animation_time*3.5f+v.phase));
+    return 1.0f;
 }
 static void update_brush() {
     const controller_t* right = input_controller(handed_right);
@@ -240,10 +277,15 @@ static void draw_face(int page) {
             }
         }
     } else if(page==1) {
-        if(face_button(face,page,"CUBE",0.035f)) selected_shape=0;
-        if(face_button(face,page,"SPHERE",-0.025f)) selected_shape=1;
+        if(face_button(face,page,"CUBE",0.051f)) selected_shape=0;
+        if(face_button(face,page,"SPHERE",0.007f)) selected_shape=1;
+        if(face_button(face,page,"BREATHE",-0.037f)) effect_mode=1;
+        if(face_button(face,page,"RAINBOW",-0.080f)) effect_mode=2;
     } else if(page==2) {
-        face_text(face,"AUDIO: SOON",0,0.015f);
+        if(face_button(face,page,"SILENT",0.043f)) sound_mode=0;
+        if(face_button(face,page,"BELL",0.000f)) sound_mode=1;
+        if(face_button(face,page,"PULSE",-0.043f)) sound_mode=2;
+        if(face_button(face,page,"BASS",-0.086f)) sound_mode=3;
     } else {
         face_text(face,"SAVE/LOAD: SOON",0,0.015f);
     }
@@ -493,6 +535,17 @@ int voxen_stereokit_main() {
         const float envelope = std::exp(-42.0f*t);
         return 0.28f*envelope*std::sin(6.2831853f*880.0f*t);
     }, 0.09f);
+    // Tiny synthesized spatial sounds: no asset bundles or audio downloads.
+    tones[0]=sound_generate([](float t)->float {
+        return 0.32f*std::exp(-8.0f*t)*
+            (std::sin(6.2831853f*660*t)+0.35f*std::sin(6.2831853f*1320*t));
+    },0.40f);
+    tones[1]=sound_generate([](float t)->float {
+        return 0.30f*std::exp(-18.0f*t)*std::sin(6.2831853f*990*t);
+    },0.18f);
+    tones[2]=sound_generate([](float t)->float {
+        return 0.30f*std::exp(-9.0f*t)*std::sin(6.2831853f*165*t);
+    },0.35f);
     voxels.reserve(max_voxels);
     carousel_mat = material_copy(material_find(default_id_material));
     material_set_transparency(carousel_mat, transparency_blend);
@@ -510,10 +563,13 @@ int voxen_stereokit_main() {
         update_menu_ray();
         for(int page=0;page<page_count;++page) draw_face(page);
 
-        for (const PaintedVoxel& voxel : voxels)
+        animation_time += time_stepf();
+        for (const PaintedVoxel& voxel : voxels) {
+            const float side = voxel.size*animated_scale(voxel);
             render_add_mesh(voxel.shape ? sphere_mesh : cube, material,
-                matrix_ts(voxel.position, {voxel.size, voxel.size, voxel.size}),
-                voxel.tint);
+                matrix_ts(voxel.position, {side,side,side}),
+                animated_tint(voxel));
+        }
         update_brush();
         draw_menu_ray();
         if (edges_enabled && edge_passthrough.available) {
@@ -532,6 +588,7 @@ int voxen_stereokit_main() {
         material_release(material);
         material_release(carousel_mat);
         if (click_sound) sound_release(click_sound);
+        for (sound_t tone: tones) if(tone) sound_release(tone);
     });
     return 0;
 }
