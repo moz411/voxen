@@ -49,7 +49,10 @@ static constexpr size_t max_voxels = 4096;
 static bool trigger_down = false;
 static bool last_paint_valid = false;
 static vec3 last_paint{};
-static float brush_distance = 0.075f;
+static float brush_distance = 0.025f;
+static bool shape_stick_latched = false;
+static bool size_stick_latched = false;
+static int hit_page = -1;
 static float trigger_threshold = 0.65f;
 
 static float dist(vec3 a, vec3 b) {
@@ -87,11 +90,17 @@ static void update_brush() {
         last_paint_valid = false;
         return;
     }
-    stick_repeat -= time_stepf();
-    if (std::fabs(right->stick.y) > 0.65f && stick_repeat <= 0) {
-        voxel_size = std::clamp(voxel_size + (right->stick.y > 0 ? 0.01f : -0.01f),
-                                0.01f, 0.12f);
-        stick_repeat = 0.20f;
+    // Right-stick horizontal: voxel size. Vertical: cycle shapes.
+    if (std::fabs(right->stick.x) < 0.30f) size_stick_latched = false;
+    if (!size_stick_latched && std::fabs(right->stick.x) > 0.70f) {
+        voxel_size = std::clamp(voxel_size +
+                (right->stick.x > 0 ? 0.01f : -0.01f), 0.01f, 0.12f);
+        size_stick_latched = true;
+    }
+    if (std::fabs(right->stick.y) < 0.30f) shape_stick_latched = false;
+    if (!shape_stick_latched && std::fabs(right->stick.y) > 0.70f) {
+        selected_shape = (selected_shape + (right->stick.y > 0 ? 1 : 1)) % 2;
+        shape_stick_latched = true;
     }
     const bool pressed = trigger_down
         ? right->trigger > 0.45f : right->trigger > trigger_threshold;
@@ -210,6 +219,7 @@ static void update_controller_palette() {
 // near-hand widget interaction. Local top-left is the window pose.
 static void update_menu_ray() {
     menu_aiming = false;
+    hit_page = -1;
     menu_click = false;
     const controller_t* right = input_controller(handed_right);
     if (!right || !(right->tracked & button_state_active)) {
@@ -227,34 +237,53 @@ static void update_menu_ray() {
     }
     const vec3 start = right->aim.position;
     const vec3 forward = aim_forward(right->aim.orientation);
-    const quat inverse = quat_inverse(palette.orientation);
-    const vec3 relative = {start.x - palette.position.x,
-                           start.y - palette.position.y,
-                           start.z - palette.position.z};
-    const vec3 origin_local = quat_mul_vec(inverse, relative);
-    const vec3 direction_local = quat_mul_vec(inverse, forward);
-    if (std::fabs(direction_local.z) < 0.0001f) return;
-    const float t = -origin_local.z / direction_local.z;
-    if (t <= 0.0f || t > 2.0f) return;
-    const float x = origin_local.x + t * direction_local.x;
-    const float y = origin_local.y + t * direction_local.y;
-    if (x < -0.005f || x > 0.16f || y > 0.005f || y < -0.23f) return;
-    menu_aiming = true;
-    menu_hit_x = x;
-    menu_hit_y = y;
-    if (rising) { menu_click = true; menu_capture = true; }
-    menu_hit = {start.x + forward.x*t,
-                start.y + forward.y*t,
-                start.z + forward.z*t};
+    float closest = 2.0f;
+    // Intersect each face in its own local coordinates. This uses exactly
+    // the same transforms as each rendered StereoKit panel.
+    const quat world_rot = quat_mul(carousel_base.orientation,
+        quat_from_angles(0, carousel_angle, 0));
+    for (int page=0; page<page_count; ++page) {
+        const quat face_rot = quat_mul(world_rot,
+            quat_from_angles(0, -page*90.0f, 0));
+        const vec3 face_offset = quat_mul_vec(face_rot,
+            {0.08f, menu_height*0.5f-0.006f,
+             -menu_width*0.5f-0.005f});
+        const vec3 face_origin = {
+            carousel_base.position.x + face_offset.x,
+            carousel_base.position.y + face_offset.y,
+            carousel_base.position.z + face_offset.z};
+        const quat inverse = quat_inverse(face_rot);
+        const vec3 relative = {start.x-face_origin.x,
+                               start.y-face_origin.y,
+                               start.z-face_origin.z};
+        const vec3 o = quat_mul_vec(inverse, relative);
+        const vec3 d = quat_mul_vec(inverse, forward);
+        if (std::fabs(d.z) < 0.0001f) continue;
+        const float t = -o.z / d.z;
+        if (t <= 0.0f || t >= closest) continue;
+        const float x = o.x + t*d.x, y = o.y + t*d.y;
+        // StereoKit's window extends LEFT from the right-edge anchor.
+        if (x < -0.16f || x > 0.008f || y > 0.01f || y < -0.23f) continue;
+        closest = t;
+        hit_page = page;
+        menu_aiming = true;
+        menu_hit_x = -x; // positive logical left-to-right panel position
+        menu_hit_y = y;
+        menu_hit = {start.x+forward.x*t, start.y+forward.y*t,
+                    start.z+forward.z*t};
+    }
+    if (rising && menu_aiming) {
+        menu_click = true;
+        menu_capture = true;
+    }
 }
 static void draw_menu_ray() {
-    if (!show_ui_ray) return;
+    if (!show_ui_ray || !menu_aiming) return;
     const controller_t* right = input_controller(handed_right);
     if (!right || !(right->tracked & button_state_active)) return;
     const vec3 start = right->aim.position;
     const vec3 fwd = aim_forward(right->aim.orientation);
-    const vec3 end = menu_aiming ? menu_hit :
-        vec3{start.x + fwd.x*1.3f, start.y + fwd.y*1.3f, start.z + fwd.z*1.3f};
+    const vec3 end = menu_hit;
     const color32 ray_color = menu_aiming ? color32{80,255,190,220}
                                           : color32{110,215,255,140};
     line_add(start, end, ray_color, ray_color, 0.0015f);
@@ -413,12 +442,29 @@ int voxen_stereokit_main() {
                             face_pose, {0.16f,0}, ui_win_normal, ui_move_none);
             // Remote click is accepted only on the active facing page.
             const bool ray_was_click = menu_click;
-            if (page != menu_page) menu_click = false;
+            if (page != hit_page) menu_click = false;
         if (page == 0) {
-            if (menu_button("Red",0)) hue = 0.0f;
-            if (menu_button("Yellow",1)) hue = 0.16f;
-            if (menu_button("Cyan",2)) hue = 0.5f;
-            if (menu_button("Purple",3)) hue = 0.77f;
+            // 16-color HSV palette: four rows, four swatches per row.
+            // Colored swatches are rendered on the actual face, and clicking
+            // uses the ray's face-local coordinates, not proximity hands.
+            for (int i=0;i<16;i++) {
+                const int col=i%4, row=i/4;
+                const float sw=0.034f, sh=0.034f;
+                const float lx = 0.014f + col*0.035f;
+                const float ly = -0.052f-row*0.038f;
+                const color128 tint=color_hsv(i/16.0f,1.0f,1.0f,1.0f);
+                const vec3 local={-lx-0.016f, ly-0.015f, -0.012f};
+                const vec3 off=quat_mul_vec(face_rot,local);
+                const vec3 world={
+                    face_pose.position.x+off.x,
+                    face_pose.position.y+off.y,
+                    face_pose.position.z+off.z};
+                render_add_mesh(cube,material,matrix_trs(world,face_rot,
+                    {sw,sh,0.002f}),tint);
+                if (page==hit_page && menu_click &&
+                    menu_hit_x>=lx && menu_hit_x<lx+sw &&
+                    menu_hit_y<=ly && menu_hit_y>ly-sh) hue=i/16.0f;
+            }
         } else if (page == 1) {
             if (menu_button("Cube",0)) selected_shape = 0;
             if (menu_button("Sphere",1)) selected_shape = 1;
