@@ -38,8 +38,11 @@ static int sound_mode = 0; // 0 silence, 1 soft bell, 2 bright pulse, 3 bass
 static int effect_mode = 0; // 0 solid, 1 breathe, 2 color wave, 3 shimmer
 static float animation_time = 0.0f;
 static int note_stride = 0;
-static int algorithm_mode = 0;
+static int algorithm_mode = -1;
 static uint32_t brush_step = 0;
+static bool volume_active = false;
+static vec3 volume_start{};
+static vec3 volume_end{};
 
 static float hue = 0.45f;
 static bool painting = true;
@@ -96,68 +99,89 @@ static float fractal_escape(float real,float imag,bool julia) {
     }
     return static_cast<float>(iter)/16.0f;
 }
-// Every algorithm modulates the brush sample in real 3D space. No shader
-// substitution: each accepted voxel retains its generated coordinates/size.
-static void procedural_sample(vec3& p,float& size) {
-    const float t=static_cast<float>(brush_step++);
-    const float a=t*0.42f, r=voxel_size;
-    switch(algorithm_mode) {
-        case 1: // Organic jitter
-            p.x+=std::sin(t*12.9898f)*r*0.8f;
-            p.y+=std::sin(t*7.31f)*r*0.8f;
-            p.z+=std::cos(t*4.93f)*r*0.8f; break;
-        case 2: // Wave
-            p.y+=std::sin(t*0.35f)*r*3.0f; break;
-        case 3: // Helix
-            p.x+=std::cos(a)*r*2.0f;
-            p.z+=std::sin(a)*r*2.0f; break;
-        case 4: // Shell
-            p.x+=std::sin(a)*std::cos(a*0.29f)*r*3;
-            p.y+=std::sin(a*0.29f)*r*3;
-            p.z+=std::cos(a)*std::cos(a*0.29f)*r*3; break;
-        case 5: // 3D lattice: regular expanding steps
-            p.x+=static_cast<float>(static_cast<int>(brush_step%3)-1)*r*2;
-            p.y+=static_cast<float>(static_cast<int>((brush_step/3)%3)-1)*r*2;
-            break;
-        case 6: // Mandelbrot height-field, sampled near moving brush
-        case 7: { // Julia
-            const float u=std::sin(t*0.11f)*1.6f-0.5f;
-            const float v=std::cos(t*0.13f)*1.2f;
-            const float escape=fractal_escape(u,v,algorithm_mode==7);
-            p.y+=(escape-0.5f)*r*7.0f;
-            size*=0.55f+escape*0.45f; break;
+// Each trigger gesture defines one world-axis-aligned cube. Generate a
+// bounded set of discrete voxels inside it on release, as a single undo stroke.
+// Algorithm -1 is normal freehand. Coordinates are normalized to the cube.
+static bool algorithm_occupancy(int mode,float x,float y,float z) {
+    const float r=std::sqrt(x*x+y*y+z*z);
+    const float angle=std::atan2(z,x);
+    switch(mode) {
+        case 0: return r<0.75f; // Cortex-like nested folds
+        case 1: return std::sin(x*19)*std::cos(y*17)*std::sin(z*21)>0.24f;
+        case 2: return std::fabs(y-0.40f*std::sin(x*9+z*7))<0.16f;
+        case 3: return std::fabs(std::sqrt(x*x+z*z)-0.55f)<0.20f &&
+                       std::fabs(y-0.6f*std::sin(angle*2.0f))<0.24f;
+        case 4: return std::fabs(r-(0.40f+0.25f*std::sin(angle*3+y*6)))<0.15f;
+        case 5: return (std::fabs(x)<0.13f || std::fabs(y)<0.13f ||
+                        std::fabs(z)<0.13f);
+        case 6: {
+            const float v=fractal_escape(x*1.5f-0.5f,z*1.5f,false);
+            return std::fabs(y-(v*1.5f-0.75f))<0.18f;
         }
-        case 8: // Branching around the gesture
-            p.x+=std::sin(t*2.39996f)*r*3;
-            p.y+=std::cos(t*1.272f)*r*2;
-            p.z+=std::cos(t*2.39996f)*r*3; break;
-        case 9: // Cortex-like folded field (stylized, not brain anatomy)
-            p.x+=std::sin(p.y*22.0f+std::sin(p.z*31.0f))*r*2;
-            p.z+=std::sin(p.x*28.0f+std::cos(p.y*26.0f))*r*2;
-            size*=0.7f+0.3f*std::fabs(std::sin(a)); break;
-        default: break;
+        case 7: {
+            const float v=fractal_escape(x*1.5f,z*1.5f,true);
+            return std::fabs(y-(v*1.5f-0.75f))<0.18f;
+        }
+        case 8: return std::fabs(x-0.45f*std::sin(y*7))<0.2f ||
+                       std::fabs(z-0.45f*std::cos(y*8))<0.2f;
+        case 9: return std::fabs(std::sin(x*10+std::sin(z*7))+
+                                 std::cos(y*11+std::sin(x*8)))<0.30f;
+        default: return false;
     }
-    size=std::clamp(size,0.008f,0.12f);
 }
-static void paint_at(vec3 position) {
-    if (voxels.size() >= max_voxels) return;
-    float size=voxel_size;
-    procedural_sample(position,size);
-    position={std::round(position.x/size)*size,
-              std::round(position.y/size)*size,
-              std::round(position.z/size)*size};
+static void add_voxel(vec3 p,float size) {
+    if(voxels.size()>=max_voxels) return;
+    // Keep the same collision checks as normal painting.
     for(const auto& v:voxels) {
-        const float distance=(v.size+size)*0.5f-0.0001f;
-        if(std::fabs(v.position.x-position.x)<distance &&
-           std::fabs(v.position.y-position.y)<distance &&
-           std::fabs(v.position.z-position.z)<distance) return;
+        const float gap=(v.size+size)*0.5f-0.0001f;
+        if(std::fabs(v.position.x-p.x)<gap &&
+           std::fabs(v.position.y-p.y)<gap &&
+           std::fabs(v.position.z-p.z)<gap) return;
     }
     redo_strokes.clear();
-    const float phase=position.x*11+position.y*7+position.z*13;
-    voxels.push_back({position,size,color_hsv(hue,1,1,1),selected_shape,
-                      effect_mode,phase});
+    const float phase=p.x*11+p.y*7+p.z*13;
+    voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,phase});
     if(sound_mode>0 && tones[sound_mode-1] && (++note_stride%8)==1)
-        sound_play(tones[sound_mode-1],position,0.20f);
+        sound_play(tones[sound_mode-1],p,0.2f);
+}
+static void paint_at(vec3 p) {
+    if(voxels.size()>=max_voxels) return;
+    const float size=voxel_size;
+    p={std::round(p.x/size)*size,std::round(p.y/size)*size,
+       std::round(p.z/size)*size};
+    add_voxel(p,size);
+}
+static void commit_volume() {
+    if(!volume_active) return;
+    volume_active=false;
+    const vec3 center={(volume_start.x+volume_end.x)*0.5f,
+                       (volume_start.y+volume_end.y)*0.5f,
+                       (volume_start.z+volume_end.z)*0.5f};
+    const float dx=std::fabs(volume_end.x-volume_start.x);
+    const float dy=std::fabs(volume_end.y-volume_start.y);
+    const float dz=std::fabs(volume_end.z-volume_start.z);
+    // Require at least a small physical volume even on a tap.
+    const float side=std::clamp(std::max({dx,dy,dz,voxel_size*3.0f}),
+                                voxel_size*3.0f,0.8f);
+    const int n=std::clamp(static_cast<int>(side/voxel_size),3,20);
+    const float spacing=side/n;
+    // Capped at 8000 candidate samples and 4096 accepted voxels.
+    if(voxels.size()>=max_voxels) return;
+    stroke_starts.push_back(voxels.size());
+    for(int iz=0;iz<n && voxels.size()<max_voxels;++iz)
+      for(int iy=0;iy<n && voxels.size()<max_voxels;++iy)
+        for(int ix=0;ix<n && voxels.size()<max_voxels;++ix) {
+            const float x=(ix+0.5f)/n*2-1;
+            const float y=(iy+0.5f)/n*2-1;
+            const float z=(iz+0.5f)/n*2-1;
+            if(!algorithm_occupancy(algorithm_mode,x,y,z)) continue;
+            const vec3 p={center.x+(ix+0.5f-n*0.5f)*spacing,
+                          center.y+(iy+0.5f-n*0.5f)*spacing,
+                          center.z+(iz+0.5f-n*0.5f)*spacing};
+            add_voxel(p,spacing*0.98f);
+        }
+    if(stroke_starts.back()==voxels.size()) stroke_starts.pop_back();
+    last_paint_valid=false;
 }
 static color128 animated_tint(const PaintedVoxel& v) {
     if (v.effect==2) {
@@ -208,8 +232,27 @@ static void update_brush() {
         right->aim.position.y + fwd.y*brush_distance,
         right->aim.position.z + fwd.z*brush_distance
     };
-    // Do not paint through the UI when the right ray targets the palette.
-    if (menu_aiming || menu_capture) { last_paint_valid = false; trigger_down = false; return; }
+    // UI owns the trigger while aiming at a panel.
+    if(menu_aiming || menu_capture) {
+        if(volume_active) volume_active=false;
+        last_paint_valid=false; trigger_down=false; return;
+    }
+    if(algorithm_mode>=0) {
+        if(pressed) {
+            if(!volume_active) { volume_start=tip; volume_active=true; }
+            volume_end=tip;
+            const vec3 middle={(volume_start.x+tip.x)*0.5f,
+                               (volume_start.y+tip.y)*0.5f,
+                               (volume_start.z+tip.z)*0.5f};
+            const float side=std::max({std::fabs(tip.x-volume_start.x),
+                std::fabs(tip.y-volume_start.y),std::fabs(tip.z-volume_start.z),
+                voxel_size*3.0f});
+            render_add_mesh(cube,carousel_mat,matrix_ts(middle,{side,side,side}),
+                            {0.2f,0.9f,0.8f,0.16f});
+        } else if(volume_active) commit_volume();
+        last_paint_valid=false;
+        return;
+    }
     // Live fixed-size, axis-aligned brush cursor.
     render_add_mesh(selected_shape ? sphere_mesh : cube, material,
         matrix_ts(tip, {voxel_size, voxel_size, voxel_size}),
@@ -356,7 +399,7 @@ static void draw_face(int page) {
             "SHELL","LATTICE","MANDELBROT","JULIA","BRANCH","CORTEX"};
         for(int i=0;i<10;++i)
             if(face_button(face,page,algorithms[i],0.148f-i*0.036f,
-                           algorithm_mode==i)) algorithm_mode=i;
+                           algorithm_mode==i)) algorithm_mode=(algorithm_mode==i?-1:i);
     }
 }
 static void update_controller_palette() {
