@@ -163,9 +163,9 @@ static void commit_volume() {
     // Require at least a small physical volume even on a tap.
     const float side=std::clamp(std::max({dx,dy,dz,voxel_size*3.0f}),
                                 voxel_size*3.0f,0.8f);
-    const int n=std::clamp(static_cast<int>(side/voxel_size),3,20);
+    const int n=std::clamp(static_cast<int>(side/voxel_size),3,11);
     const float spacing=side/n;
-    // Capped at 8000 candidate samples and 4096 accepted voxels.
+    // Capped at 1331 candidate samples and 4096 accepted voxels.
     if(voxels.size()>=max_voxels) return;
     stroke_starts.push_back(voxels.size());
     for(int iz=0;iz<n && voxels.size()<max_voxels;++iz)
@@ -317,7 +317,7 @@ static pose_t face_panel_pose(int page) {
     // panel 180 degrees while preserving its physical face position.
     const quat rotation = quat_mul(
         quat_mul(carousel_base.orientation,quat_from_angles(0,carousel_angle,0)),
-        quat_from_angles(0,180.0f-(360.0f/page_count)*page,0));
+        quat_from_angles(0,180.0f-90.0f*(page%4),0));
     const vec3 offset=quat_mul_vec(rotation,{0,0,menu_width*0.5f+0.003f});
     return {{carousel_base.position.x+offset.x,
              carousel_base.position.y+offset.y,
@@ -395,7 +395,7 @@ static void draw_face(int page) {
     } else if(page==3) {
         face_text(face,"SAVE / LOAD: SOON",0,0.06f);
     } else {
-        static const char* algorithms[]={"FREE","JITTER","WAVE","HELIX",
+        static const char* algorithms[]={"SPHERE","JITTER","WAVE","HELIX",
             "SHELL","LATTICE","MANDELBROT","JULIA","BRANCH","CORTEX"};
         for(int i=0;i<10;++i)
             if(face_button(face,page,algorithms[i],0.148f-i*0.036f,
@@ -409,7 +409,7 @@ static void update_controller_palette() {
     if (!stick_latched && std::fabs(left->stick.x) > 0.7f) {
         const int direction = left->stick.x > 0 ? 1 : -1;
         menu_page = (menu_page + direction + page_count) % page_count;
-        target_angle += direction * (360.0f/page_count);
+        target_angle += direction * 90.0f;
         stick_latched = true;
     }
     const vec3 local_offset = {0.0f, 0.06f, -0.025f};
@@ -424,8 +424,10 @@ static void update_controller_palette() {
     // from the controller's six-degree-of-freedom position.
     const float delta = target_angle - carousel_angle;
     carousel_angle += delta * std::min(1.0f, time_stepf() * 12.0f);
-    // Five panels make a pentagonal tool wheel, not a four-sided cube.
-    // Each face is rendered by draw_face() with its own transform.
+    // Five logical pages, but only four physical faces on a compact cube.
+    render_add_mesh(cube,carousel_mat,matrix_trs(carousel_base.position,
+        quat_mul(carousel_base.orientation,spin),
+        {menu_width,menu_height,menu_width}),{0.2f,0.65f,0.85f,0.12f});
 
     palette = face_panel_pose(menu_page);
 }
@@ -659,7 +661,12 @@ int voxen_stereokit_main() {
         update_controller_palette();
         update_left_buttons();
         update_menu_ray();
-        for(int page=0;page<page_count;++page) draw_face(page);
+        // Page 4 replaces page 0 on the same physical face; no fifth wing.
+        for(int page=0;page<page_count;++page) {
+            if(page==0 && menu_page==4) continue;
+            if(page==4 && menu_page!=4) continue;
+            draw_face(page);
+        }
 
         animation_time += time_stepf();
         for (const PaintedVoxel& voxel : voxels) {
