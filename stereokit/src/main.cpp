@@ -11,9 +11,9 @@ using namespace sk;
 sk_settings_t app_settings = {"Voxen StereoKit"};
 static pose_t palette = {{-0.25f, 0.0f, -0.55f}, quat_identity};
 static int menu_page = 0;
-static constexpr int page_count = 4;
+static constexpr int page_count = 5;
 static constexpr float menu_width = 0.17f;
-static constexpr float menu_height = 0.23f;
+static constexpr float menu_height = 0.46f;
 static float carousel_angle = 0.0f;
 static float target_angle = 0.0f;
 static pose_t carousel_base = pose_identity;
@@ -38,6 +38,8 @@ static int sound_mode = 0; // 0 silence, 1 soft bell, 2 bright pulse, 3 bass
 static int effect_mode = 0; // 0 solid, 1 breathe, 2 color wave, 3 shimmer
 static float animation_time = 0.0f;
 static int note_stride = 0;
+static int algorithm_mode = 0;
+static uint32_t brush_step = 0;
 static float size_velocity = 0.0f;
 static float hue = 0.45f;
 static bool painting = true;
@@ -82,25 +84,79 @@ static vec3 aim_forward(quat q) {
             -2*(q.y*q.z-q.w*q.x),
             -(1-2*(q.x*q.x+q.y*q.y))};
 }
+
+static float fractal_escape(float real,float imag,bool julia) {
+    float zr=julia?real:0.0f, zi=julia?imag:0.0f;
+    const float cr=julia?-0.745f:real, ci=julia?0.186f:imag;
+    int iter=0;
+    for(;iter<16 && zr*zr+zi*zi<16.0f;iter++) {
+        const float nr=zr*zr-zi*zi+cr;
+        zi=2.0f*zr*zi+ci;
+        zr=nr;
+    }
+    return static_cast<float>(iter)/16.0f;
+}
+// Every algorithm modulates the brush sample in real 3D space. No shader
+// substitution: each accepted voxel retains its generated coordinates/size.
+static void procedural_sample(vec3& p,float& size) {
+    const float t=static_cast<float>(brush_step++);
+    const float a=t*0.42f, r=voxel_size;
+    switch(algorithm_mode) {
+        case 1: // Organic jitter
+            p.x+=std::sin(t*12.9898f)*r*0.8f;
+            p.y+=std::sin(t*7.31f)*r*0.8f;
+            p.z+=std::cos(t*4.93f)*r*0.8f; break;
+        case 2: // Wave
+            p.y+=std::sin(t*0.35f)*r*3.0f; break;
+        case 3: // Helix
+            p.x+=std::cos(a)*r*2.0f;
+            p.z+=std::sin(a)*r*2.0f; break;
+        case 4: // Shell
+            p.x+=std::sin(a)*std::cos(a*0.29f)*r*3;
+            p.y+=std::sin(a*0.29f)*r*3;
+            p.z+=std::cos(a)*std::cos(a*0.29f)*r*3; break;
+        case 5: // 3D lattice: regular expanding steps
+            p.x+=static_cast<float>(static_cast<int>(brush_step%3)-1)*r*2;
+            p.y+=static_cast<float>(static_cast<int>((brush_step/3)%3)-1)*r*2;
+            break;
+        case 6: // Mandelbrot height-field, sampled near moving brush
+        case 7: { // Julia
+            const float u=std::sin(t*0.11f)*1.6f-0.5f;
+            const float v=std::cos(t*0.13f)*1.2f;
+            const float escape=fractal_escape(u,v,algorithm_mode==7);
+            p.y+=(escape-0.5f)*r*7.0f;
+            size*=0.55f+escape*0.45f; break;
+        }
+        case 8: // Branching around the gesture
+            p.x+=std::sin(t*2.39996f)*r*3;
+            p.y+=std::cos(t*1.272f)*r*2;
+            p.z+=std::cos(t*2.39996f)*r*3; break;
+        case 9: // Cortex-like folded field (stylized, not brain anatomy)
+            p.x+=std::sin(p.y*22.0f+std::sin(p.z*31.0f))*r*2;
+            p.z+=std::sin(p.x*28.0f+std::cos(p.y*26.0f))*r*2;
+            size*=0.7f+0.3f*std::fabs(std::sin(a)); break;
+        default: break;
+    }
+    size=std::clamp(size,0.008f,0.12f);
+}
 static void paint_at(vec3 position) {
     if (voxels.size() >= max_voxels) return;
-    const float size = voxel_size;
-    position = {std::round(position.x/size)*size,
-                std::round(position.y/size)*size,
-                std::round(position.z/size)*size};
-    for (const auto& v : voxels) {
-        const float min_gap = (v.size + size)*0.5f - 0.0001f;
-        if (std::fabs(v.position.x-position.x) < min_gap &&
-            std::fabs(v.position.y-position.y) < min_gap &&
-            std::fabs(v.position.z-position.z) < min_gap) return;
+    float size=voxel_size;
+    procedural_sample(position,size);
+    position={std::round(position.x/size)*size,
+              std::round(position.y/size)*size,
+              std::round(position.z/size)*size};
+    for(const auto& v:voxels) {
+        const float distance=(v.size+size)*0.5f-0.0001f;
+        if(std::fabs(v.position.x-position.x)<distance &&
+           std::fabs(v.position.y-position.y)<distance &&
+           std::fabs(v.position.z-position.z)<distance) return;
     }
     redo_strokes.clear();
-    const float phase = position.x*11.0f + position.y*7.0f + position.z*13.0f;
-    voxels.push_back({position, size, color_hsv(hue,1,1,1), selected_shape,
-                      effect_mode, phase});
-    // Spatial note at each accepted new stroke and every eighth voxel.
-    if (sound_mode>0 && tones[sound_mode-1] &&
-        (++note_stride % 8)==1)
+    const float phase=position.x*11+position.y*7+position.z*13;
+    voxels.push_back({position,size,color_hsv(hue,1,1,1),selected_shape,
+                      effect_mode,phase});
+    if(sound_mode>0 && tones[sound_mode-1] && (++note_stride%8)==1)
         sound_play(tones[sound_mode-1],position,0.20f);
 }
 static color128 animated_tint(const PaintedVoxel& v) {
@@ -210,7 +266,7 @@ static void update_left_buttons() {
 // surface in each face's local frame; the window starts at its upper-right.
 // No per-page or ray-specific fudge offsets.
 static constexpr float panel_width = 0.16f;
-static constexpr float panel_height = 0.21f;
+static constexpr float panel_height = 0.43f;
 static constexpr float panel_lift = 0.002f;
 
 static pose_t face_panel_pose(int page) {
@@ -218,7 +274,7 @@ static pose_t face_panel_pose(int page) {
     // panel 180 degrees while preserving its physical face position.
     const quat rotation = quat_mul(
         quat_mul(carousel_base.orientation,quat_from_angles(0,carousel_angle,0)),
-        quat_from_angles(0,180.0f-90.0f*page,0));
+        quat_from_angles(0,180.0f-(360.0f/page_count)*page,0));
     const vec3 offset=quat_mul_vec(rotation,{0,0,menu_width*0.5f+0.003f});
     return {{carousel_base.position.x+offset.x,
              carousel_base.position.y+offset.y,
@@ -248,26 +304,29 @@ static bool panel_hover(int page,float x,float y,float w,float h) {
        std::fabs(menu_hit_x-x)<w*0.5f &&
        std::fabs(menu_hit_y-y)<h*0.5f;
 }
-static bool face_button(const pose_t& face,int page,const char* label,float y) {
-    const bool hover=panel_hover(page,0,y,0.135f,0.042f);
-    face_rect(face,0,y,0.135f,0.038f,
-        hover?color128{0.15f,0.75f,0.9f,0.9f}:
-              color128{0.12f,0.25f,0.35f,0.85f});
+static bool face_button(const pose_t& face,int page,const char* label,
+                        float y,bool selected=false) {
+    const bool hover=panel_hover(page,0,y,0.137f,0.026f);
+    face_rect(face,0,y,0.137f,0.025f,
+        hover ? color128{0.18f,0.75f,0.9f,0.9f} :
+        selected ? color128{0.18f,0.6f,0.4f,0.8f} :
+        color128{0.12f,0.25f,0.35f,0.85f});
     face_text(face,label,0,y);
     if(hover && menu_click && click_sound)
         sound_play(click_sound,menu_hit,0.35f);
     return hover && menu_click;
 }
+
 static void draw_face(int page) {
     const pose_t face=face_panel_pose(page);
     face_rect(face,0,0,panel_width,panel_height,
         {0.06f,0.13f,0.22f,0.80f},0.003f);
-    static const char* titles[]={"COLORS","SHAPES","SOUNDS","SCENES"};
-    face_text(face,titles[page],0,0.085f);
+    static const char* titles[]={"COLORS","SHAPES","SOUNDS","SCENES","ALGORITHMS"};
+    face_text(face,titles[page],0,0.188f);
     if(page==0) {
         for(int i=0;i<16;++i) {
             const float x=-0.057f+(i%4)*0.038f;
-            const float y=0.041f-(i/4)*0.038f;
+            const float y=0.119f-(i/4)*0.042f;
             const bool hover=panel_hover(page,x,y,0.034f,0.034f);
             face_rect(face,x,y,hover?0.038f:0.032f,
                 hover?0.038f:0.032f,color_hsv(i/16.0f,1,1,1));
@@ -277,19 +336,27 @@ static void draw_face(int page) {
             }
         }
     } else if(page==1) {
-        if(face_button(face,page,"CUBE",0.051f)) selected_shape=0;
-        if(face_button(face,page,"SPHERE",0.007f)) selected_shape=1;
-        static const char* fx_labels[]={"FX: SOLID","FX: BREATHE",
-                                        "FX: RAINBOW","FX: SHIMMER"};
-        if(face_button(face,page,fx_labels[effect_mode],-0.050f))
-            effect_mode=(effect_mode+1)%4;
+        if(face_button(face,page,"[ ] CUBE",0.13f,selected_shape==0))
+            selected_shape=0;
+        if(face_button(face,page,"( ) SPHERE",0.09f,selected_shape==1))
+            selected_shape=1;
+        static const char* effects[]={"SOLID","BREATHE","RAINBOW","SHIMMER"};
+        for(int i=0;i<4;++i)
+            if(face_button(face,page,effects[i],0.035f-i*0.04f,effect_mode==i))
+                effect_mode=i;
     } else if(page==2) {
-        if(face_button(face,page,"SILENT",0.043f)) sound_mode=0;
-        if(face_button(face,page,"BELL",0.000f)) sound_mode=1;
-        if(face_button(face,page,"PULSE",-0.043f)) sound_mode=2;
-        if(face_button(face,page,"BASS",-0.086f)) sound_mode=3;
+        static const char* sounds[]={"MUTE","BELL","PULSE","BASS"};
+        for(int i=0;i<4;++i)
+            if(face_button(face,page,sounds[i],0.12f-i*0.045f,sound_mode==i))
+                sound_mode=i;
+    } else if(page==3) {
+        face_text(face,"SAVE / LOAD: SOON",0,0.06f);
     } else {
-        face_text(face,"SAVE/LOAD: SOON",0,0.015f);
+        static const char* algorithms[]={"FREE","JITTER","WAVE","HELIX",
+            "SHELL","LATTICE","MANDELBROT","JULIA","BRANCH","CORTEX"};
+        for(int i=0;i<10;++i)
+            if(face_button(face,page,algorithms[i],0.148f-i*0.036f,
+                           algorithm_mode==i)) algorithm_mode=i;
     }
 }
 static void update_controller_palette() {
@@ -299,7 +366,7 @@ static void update_controller_palette() {
     if (!stick_latched && std::fabs(left->stick.x) > 0.7f) {
         const int direction = left->stick.x > 0 ? 1 : -1;
         menu_page = (menu_page + direction + page_count) % page_count;
-        target_angle += direction * 90.0f;
+        target_angle += direction * (360.0f/page_count);
         stick_latched = true;
     }
     const vec3 local_offset = {0.0f, 0.06f, -0.025f};
@@ -307,9 +374,10 @@ static void update_controller_palette() {
     carousel_base.position = {left->pose.position.x + offset.x,
                               left->pose.position.y + offset.y,
                               left->pose.position.z + offset.z};
-    // Only yaw toward the headset. World Y stays upright even if the
-    // controller rolls/pitches or the user's head is above the carousel.
-    const pose_t* head = input_head();
+    /* Orientation follows the left controller, including pitch/roll.
+       This intentionally replaces the former floor-upright behavior. */
+    carousel_base.orientation = left->pose.orientation;
+    /* const pose_t* head = input_head();
     if (head) {
         vec3 target = {head->position.x, carousel_base.position.y,
                        head->position.z};
@@ -320,16 +388,15 @@ static void update_controller_palette() {
                 carousel_base.position, target, {0, 1, 0});
     }
 
-    // Rotate the transparent four-sided carousel, smoothly and independently
+    */
+    // Rotate the five-sided carousel around controller-local Y
     // from the controller's six-degree-of-freedom position.
     const float delta = target_angle - carousel_angle;
     carousel_angle += delta * std::min(1.0f, time_stepf() * 12.0f);
     const quat spin = quat_from_angles(0, carousel_angle, 0);
     const quat orientation = quat_mul(carousel_base.orientation, spin);
-    render_add_mesh(cube, carousel_mat,
-        matrix_trs(carousel_base.position, orientation,
-                   {menu_width, menu_height, menu_width}),
-        {0.20f, 0.65f, 0.85f, 0.12f});
+    // Five panels make a pentagonal tool wheel, not a four-sided cube.
+    // Each face is rendered by draw_face() with its own transform.
 
     palette = face_panel_pose(menu_page);
 }
@@ -557,7 +624,7 @@ int voxen_stereokit_main() {
     input_hand_solid(handed_left, false);
     input_hand_solid(handed_right, false);
     ui_enable_far_interact(false);
-    panel_text_style=text_make_style(font_find(default_id_font),0.012f,
+    panel_text_style=text_make_style(font_find(default_id_font),0.0085f,
         {0.95f,0.98f,1,1});
     sk_run([] {
         update_controller_palette();
