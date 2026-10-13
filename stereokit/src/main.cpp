@@ -421,6 +421,77 @@ static void generate_chaotic(int mode,vec3 center,float side) {
     sound_mode=previous_sound;
 }
 
+
+static float dla_density=0.65f;
+static float gyroid_frequency=3.0f, gyroid_thickness=0.18f;
+static uint32_t growth_rng=0x9e3779b9u;
+static uint32_t growth_random() {
+    growth_rng^=growth_rng<<13; growth_rng^=growth_rng>>17;
+    growth_rng^=growth_rng<<5; return growth_rng;
+}
+// Bounded lattice DLA: random walkers attach to the existing six-connected cluster.
+static void generate_dla(vec3 center,float side) {
+    constexpr int N=23, cells=N*N*N;
+    std::vector<uint8_t> occupied(cells,0);
+    auto index=[](int x,int y,int z){return (z*N+y)*N+x;};
+    auto inside=[](int x,int y,int z){return x>=1&&y>=1&&z>=1&&x<N-1&&y<N-1&&z<N-1;};
+    const int mid=N/2;
+    occupied[index(mid,mid,mid)]=1;
+    const float spacing=side*0.90f/(N-1);
+    const int old_sound=sound_mode; sound_mode=0;
+    auto emit=[&](int x,int y,int z){
+        add_voxel({center.x+(x-mid)*spacing,center.y+(y-mid)*spacing,
+                   center.z+(z-mid)*spacing},spacing*0.78f);
+    };
+    emit(mid,mid,mid);
+    const int target=std::min(2200,int(500+1800*dla_density));
+    const int dirs[6][3]={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+    int grown=1;
+    for(int walker=0;walker<target*14 && grown<target && voxels.size()<max_voxels;++walker) {
+        int x=1+int(growth_random()%(N-2));
+        int y=1+int(growth_random()%(N-2));
+        int z=1+int(growth_random()%(N-2));
+        for(int step=0;step<260;++step) {
+            if(occupied[index(x,y,z)]) break;
+            bool neighbor=false;
+            for(const auto& d:dirs)
+                if(inside(x+d[0],y+d[1],z+d[2]) &&
+                   occupied[index(x+d[0],y+d[1],z+d[2])]) {neighbor=true;break;}
+            if(neighbor) {
+                occupied[index(x,y,z)]=1;
+                emit(x,y,z);
+                ++grown;
+                break;
+            }
+            const auto& d=dirs[growth_random()%6];
+            const int nx=x+d[0],ny=y+d[1],nz=z+d[2];
+            if(inside(nx,ny,nz)){x=nx;y=ny;z=nz;}
+        }
+    }
+    sound_mode=old_sound;
+}
+// Gyroid implicit surface: sin(x)cos(y)+sin(y)cos(z)+sin(z)cos(x)=0.
+static void generate_gyroid(vec3 center,float side) {
+    constexpr int N=25;
+    const float spacing=side*0.90f/(N-1);
+    const float pi=3.14159265358979323846f;
+    const int old_sound=sound_mode; sound_mode=0;
+    for(int z=0;z<N && voxels.size()<max_voxels;++z)
+      for(int y=0;y<N && voxels.size()<max_voxels;++y)
+        for(int x=0;x<N && voxels.size()<max_voxels;++x) {
+            const float a=(float(x)/(N-1)-0.5f)*2*pi*gyroid_frequency;
+            const float b=(float(y)/(N-1)-0.5f)*2*pi*gyroid_frequency;
+            const float c=(float(z)/(N-1)-0.5f)*2*pi*gyroid_frequency;
+            const float v=std::sin(a)*std::cos(b)+std::sin(b)*std::cos(c)+
+                          std::sin(c)*std::cos(a);
+            if(std::fabs(v)>gyroid_thickness) continue;
+            add_voxel({center.x+(x-(N-1)*0.5f)*spacing,
+                       center.y+(y-(N-1)*0.5f)*spacing,
+                       center.z+(z-(N-1)*0.5f)*spacing},spacing*0.82f);
+        }
+    sound_mode=old_sound;
+}
+
 static void commit_volume() {
     if(!volume_active) return;
     volume_active=false;
@@ -442,6 +513,8 @@ static void commit_volume() {
         case 11: generate_rossler(center,side); break;
         case 12: generate_fibonacci(center,side); break;
         case 13: case 14: case 15: generate_chaotic(algorithm_mode,center,side); break;
+        case 16: generate_dla(center,side); break;
+        case 17: generate_gyroid(center,side); break;
         default: break;
     }
     // Uniform reveal scheduler for every generator, preserving Lorenz's
@@ -882,11 +955,11 @@ static void draw_face(int page) {
                 selected_artwork_id=0;
     } else if(page==2) {
         static const char* algorithms[]={"LORENZ","ROSSLER","THOMAS","AIZAWA",
-                                         "HALVORSEN","MANDELBROT","JULIA","FIBONACCI"};
-        static const int ids[]={10,11,13,14,15,6,7,12};
-        for(int i=0;i<8;++i) {
+                                         "HALVORSEN","DLA 3D","GYROID","MANDELBROT","JULIA","FIBONACCI"};
+        static const int ids[]={10,11,13,14,15,16,17,6,7,12};
+        for(int i=0;i<10;++i) {
             const int id=ids[i];
-            if(face_button(face,page,algorithms[i],0.169f-i*0.046f,
+            if(face_button(face,page,algorithms[i],0.174f-i*0.037f,
                            algorithm_mode==id))
             {
                 algorithm_mode=(algorithm_mode==id?-1:id);
@@ -938,6 +1011,13 @@ static void draw_face(int page) {
         } else if(algorithm_mode==15) {
             title="HALVORSEN";
             add("A",halvorsen_a,0.05f,0.8f,2.0f);
+        } else if(algorithm_mode==16) {
+            title="DLA 3D";
+            add("DENSITY",dla_density,0.05f,0.1f,1.0f);
+        } else if(algorithm_mode==17) {
+            title="GYROID";
+            add("FREQUENCY",gyroid_frequency,0.25f,1.0f,6.0f);
+            add("THICKNESS",gyroid_thickness,0.025f,0.05f,0.5f);
         } else if(algorithm_mode==11) {
             title="ROSSLER";
             add("A",rossler_a,0.05f,0.01f,1.0f);
