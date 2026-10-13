@@ -352,6 +352,75 @@ static void generate_fibonacci(vec3 center,float side) {
     }
     sound_mode=old_sound;
 }
+
+// Additional chaotic flows share RK4 integration and the existing artwork/reveal pipeline.
+static float thomas_b=0.208186f;
+static float aizawa_a=0.95f, aizawa_b=0.7f, aizawa_c=0.6f;
+static float halvorsen_a=1.4f;
+static RPoint chaotic_velocity(int mode, RPoint p) {
+    if(mode==13) return {std::sin(p.y)-thomas_b*p.x,
+                         std::sin(p.z)-thomas_b*p.y,
+                         std::sin(p.x)-thomas_b*p.z};
+    if(mode==14) {
+        const float d=0.25f,e=0.1f,f=0.1f;
+        return {(p.z-aizawa_b)*p.x-d*p.y,
+                d*p.x+(p.z-aizawa_b)*p.y,
+                aizawa_c+aizawa_a*p.z-p.z*p.z*p.z/3.0f
+                -(p.x*p.x+p.y*p.y)*(1.0f+e*p.z)+
+                f*p.z*p.x*p.x*p.x};
+    }
+    return {-halvorsen_a*p.x-4*p.y-4*p.z-p.y*p.y,
+            -halvorsen_a*p.y-4*p.z-4*p.x-p.z*p.z,
+            -halvorsen_a*p.z-4*p.x-4*p.y-p.x*p.x};
+}
+static RPoint chaotic_step(int mode,RPoint p,float dt) {
+    auto add=[](RPoint a,RPoint b,float k)->RPoint {
+        return {a.x+k*b.x,a.y+k*b.y,a.z+k*b.z};
+    };
+    const auto k1=chaotic_velocity(mode,p);
+    const auto k2=chaotic_velocity(mode,add(p,k1,dt*0.5f));
+    const auto k3=chaotic_velocity(mode,add(p,k2,dt*0.5f));
+    const auto k4=chaotic_velocity(mode,add(p,k3,dt));
+    return {p.x+dt*(k1.x+2*k2.x+2*k3.x+k4.x)/6.0f,
+            p.y+dt*(k1.y+2*k2.y+2*k3.y+k4.y)/6.0f,
+            p.z+dt*(k1.z+2*k2.z+2*k3.z+k4.z)/6.0f};
+}
+static void generate_chaotic(int mode,vec3 center,float side) {
+    constexpr int samples=2800, warmup=1200;
+    const float dt=mode==13?0.05f:(mode==14?0.012f:0.006f);
+    RPoint p=mode==14?RPoint{0.1f,0.0f,0.0f}:RPoint{0.1f,0.2f,0.3f};
+    for(int i=0;i<warmup;++i) {
+        p=chaotic_step(mode,p,dt);
+        if(!std::isfinite(p.x)||!std::isfinite(p.y)||!std::isfinite(p.z)) return;
+    }
+    std::vector<RPoint> path; path.reserve(samples);
+    RPoint lo=p,hi=p;
+    for(int i=0;i<samples;++i) {
+        p=chaotic_step(mode,p,dt);
+        if(!std::isfinite(p.x)||!std::isfinite(p.y)||!std::isfinite(p.z)) break;
+        path.push_back(p);
+        lo={std::min(lo.x,p.x),std::min(lo.y,p.y),std::min(lo.z,p.z)};
+        hi={std::max(hi.x,p.x),std::max(hi.y,p.y),std::max(hi.z,p.z)};
+    }
+    if(path.empty()) return;
+    const float extent=std::max({hi.x-lo.x,hi.y-lo.y,hi.z-lo.z,0.001f});
+    const float scale=side*0.88f/extent;
+    const RPoint mid{(lo.x+hi.x)*0.5f,(lo.y+hi.y)*0.5f,(lo.z+hi.z)*0.5f};
+    const float edge=std::max(0.003f,side/80.0f);
+    const int previous_sound=sound_mode; sound_mode=0;
+    vec3 prev{}; bool has_prev=false;
+    for(const auto& q:path) {
+        if(voxels.size()>=max_voxels) break;
+        const vec3 at={center.x+(q.x-mid.x)*scale,
+                       center.y+(q.z-mid.z)*scale,
+                       center.z+(q.y-mid.y)*scale};
+        if(has_prev && dist(at,prev)<edge*0.85f) continue;
+        add_voxel(at,edge);
+        prev=at; has_prev=true;
+    }
+    sound_mode=previous_sound;
+}
+
 static void commit_volume() {
     if(!volume_active) return;
     volume_active=false;
@@ -372,6 +441,7 @@ static void commit_volume() {
         case 10: generate_lorenz(center,side); break;
         case 11: generate_rossler(center,side); break;
         case 12: generate_fibonacci(center,side); break;
+        case 13: case 14: case 15: generate_chaotic(algorithm_mode,center,side); break;
         default: break;
     }
     // Uniform reveal scheduler for every generator, preserving Lorenz's
@@ -811,12 +881,12 @@ static void draw_face(int page) {
             if(face_button(face,page,"DESELECT",-0.145f))
                 selected_artwork_id=0;
     } else if(page==2) {
-        static const char* algorithms[]={"LORENZ","ROSSLER","MANDELBROT",
-                                         "JULIA","FIBONACCI"};
-        static const int ids[]={10,11,6,7,12};
-        for(int i=0;i<5;++i) {
+        static const char* algorithms[]={"LORENZ","ROSSLER","THOMAS","AIZAWA",
+                                         "HALVORSEN","MANDELBROT","JULIA","FIBONACCI"};
+        static const int ids[]={10,11,13,14,15,6,7,12};
+        for(int i=0;i<8;++i) {
             const int id=ids[i];
-            if(face_button(face,page,algorithms[i],0.135f-i*0.060f,
+            if(face_button(face,page,algorithms[i],0.169f-i*0.046f,
                            algorithm_mode==id))
             {
                 algorithm_mode=(algorithm_mode==id?-1:id);
@@ -857,6 +927,17 @@ static void draw_face(int page) {
             add("SIGMA",lorenz_sigma,0.5f,0.1f,40.0f);
             add("RHO",lorenz_rho,1.0f,0.1f,80.0f);
             add("BETA",lorenz_beta,0.1f,0.1f,10.0f);
+        } else if(algorithm_mode==13) {
+            title="THOMAS";
+            add("B",thomas_b,0.01f,0.05f,0.4f);
+        } else if(algorithm_mode==14) {
+            title="AIZAWA";
+            add("A",aizawa_a,0.05f,0.5f,1.2f);
+            add("B",aizawa_b,0.05f,0.3f,1.0f);
+            add("C",aizawa_c,0.05f,0.2f,1.0f);
+        } else if(algorithm_mode==15) {
+            title="HALVORSEN";
+            add("A",halvorsen_a,0.05f,0.8f,2.0f);
         } else if(algorithm_mode==11) {
             title="ROSSLER";
             add("A",rossler_a,0.05f,0.01f,1.0f);
