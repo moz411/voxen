@@ -11,6 +11,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <unordered_map>
 
 using namespace sk;
 
@@ -149,18 +150,74 @@ static vec3 aim_forward(quat q) {
             -(1-2*(q.x*q.x+q.y*q.y))};
 }
 
+
+struct VoxelCell {
+    int x,y,z;
+    bool operator==(const VoxelCell&) const = default;
+};
+struct VoxelCellHash {
+    size_t operator()(VoxelCell p) const {
+        uint64_t h=1469598103934665603ull;
+        for(int v:{p.x,p.y,p.z}) {
+            h^=static_cast<uint32_t>(v);
+            h*=1099511628211ull;
+        }
+        return static_cast<size_t>(h);
+    }
+};
+static constexpr float voxel_cell_size=0.04f;
+static std::unordered_map<VoxelCell,std::vector<size_t>,VoxelCellHash> voxel_grid;
+static size_t indexed_voxel_count=0;
+static float indexed_max_size=0.0f;
+static VoxelCell voxel_cell(vec3 p) {
+    return {int(std::floor(p.x/voxel_cell_size)),
+            int(std::floor(p.y/voxel_cell_size)),
+            int(std::floor(p.z/voxel_cell_size))};
+}
+static void invalidate_voxel_grid() {
+    voxel_grid.clear();
+    indexed_voxel_count=0;
+    indexed_max_size=0.0f;
+}
+static void index_voxel(size_t i) {
+    const auto& v=voxels[i];
+    voxel_grid[voxel_cell(v.position)].push_back(i);
+    indexed_max_size=std::max(indexed_max_size,v.size);
+    indexed_voxel_count=i+1;
+}
+static void ensure_voxel_grid() {
+    if(indexed_voxel_count==voxels.size()) return;
+    invalidate_voxel_grid();
+    for(size_t i=0;i<voxels.size();++i) index_voxel(i);
+}
+static bool voxel_overlaps(vec3 p,float size) {
+    ensure_voxel_grid();
+    const float reach=(indexed_max_size+size)*0.5f;
+    const VoxelCell lo=voxel_cell({p.x-reach,p.y-reach,p.z-reach});
+    const VoxelCell hi=voxel_cell({p.x+reach,p.y+reach,p.z+reach});
+    for(int z=lo.z;z<=hi.z;++z)
+      for(int y=lo.y;y<=hi.y;++y)
+        for(int x=lo.x;x<=hi.x;++x) {
+            auto it=voxel_grid.find({x,y,z});
+            if(it==voxel_grid.end()) continue;
+            for(size_t i:it->second) {
+                const auto& v=voxels[i];
+                const float gap=(v.size+size)*0.5f-0.0001f;
+                if(std::fabs(v.position.x-p.x)<gap &&
+                   std::fabs(v.position.y-p.y)<gap &&
+                   std::fabs(v.position.z-p.z)<gap) return true;
+            }
+        }
+    return false;
+}
+
 static void add_voxel(vec3 p,float size) {
     if(voxels.size()>=max_voxels) return;
-    // Keep the same collision checks as normal painting.
-    for(const auto& v:voxels) {
-        const float gap=(v.size+size)*0.5f-0.0001f;
-        if(std::fabs(v.position.x-p.x)<gap &&
-           std::fabs(v.position.y-p.y)<gap &&
-           std::fabs(v.position.z-p.z)<gap) return;
-    }
+    if(voxel_overlaps(p,size)) return;
     redo_artworks.clear();
     const float phase=p.x*11+p.y*7+p.z*13;
     voxels.push_back({p,size,color_hsv(hue,1,1,1),selected_shape,effect_mode,gpu_preset,phase,0.0f,0.0f,0.0f,false});
+    index_voxel(voxels.size()-1);
     if(sound_mode>0 && tones[sound_mode-1] && (++note_stride%8)==1)
         sound_play(tones[sound_mode-1],p,0.2f);
 }
@@ -588,6 +645,7 @@ static void load_scene() {
             p.progress,p.duration,p.loop!=0});
     }
     voxels.swap(recovered);
+    invalidate_voxel_grid();
     artworks.clear();redo_artworks.clear();
     property_undo.clear();property_redo.clear();
     selected_artwork_id=0;stroke_active=false;volume_active=false;
@@ -831,6 +889,7 @@ static void undo_stroke() {
     snapshot.voxels.assign(voxels.begin()+artwork.first_voxel,voxels.end());
     redo_artworks.push_back(std::move(snapshot));
     voxels.resize(artwork.first_voxel);
+    invalidate_voxel_grid();
     last_paint_valid = false;
 }
 static void redo_stroke() {
@@ -842,6 +901,7 @@ static void redo_stroke() {
     if (snapshot.voxels.size() > max_voxels - voxels.size()) return;
     snapshot.artwork.first_voxel = static_cast<uint32_t>(voxels.size());
     voxels.insert(voxels.end(),snapshot.voxels.begin(),snapshot.voxels.end());
+    invalidate_voxel_grid();
     artworks.push_back(snapshot.artwork);
     last_paint_valid = false;
 }
