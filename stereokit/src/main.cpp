@@ -549,6 +549,94 @@ static void generate_gyroid(vec3 center,float side) {
     sound_mode=old_sound;
 }
 
+
+static float bulb_power=8.0f, bulb_bailout=2.0f;
+static float gray_feed=0.0367f, gray_kill=0.0649f;
+// Escape-time 3D Mandelbulb, surface extraction from an occupancy field.
+static bool mandelbulb_inside(float x,float y,float z) {
+    float a=0,b=0,c=0;
+    for(int i=0;i<12;++i) {
+        const float r=std::sqrt(a*a+b*b+c*c);
+        if(r>bulb_bailout) return false;
+        if(r<1e-8f){a=x;b=y;c=z;continue;}
+        const float theta=std::acos(std::clamp(c/r,-1.0f,1.0f));
+        const float phi=std::atan2(b,a);
+        const float rn=std::pow(r,bulb_power);
+        const float st=std::sin(theta*bulb_power);
+        a=rn*st*std::cos(phi*bulb_power)+x;
+        b=rn*st*std::sin(phi*bulb_power)+y;
+        c=rn*std::cos(theta*bulb_power)+z;
+        if(!std::isfinite(a)||!std::isfinite(b)||!std::isfinite(c))return false;
+    }
+    return true;
+}
+static void generate_mandelbulb(vec3 center,float side) {
+    constexpr int N=29;
+    std::vector<uint8_t> inside(N*N*N,0);
+    auto idx=[](int x,int y,int z){return (z*N+y)*N+x;};
+    for(int z=0;z<N;++z)for(int y=0;y<N;++y)for(int x=0;x<N;++x) {
+        const float a=(float(x)/(N-1)-0.5f)*2.5f;
+        const float b=(float(y)/(N-1)-0.5f)*2.5f;
+        const float c=(float(z)/(N-1)-0.5f)*2.5f;
+        inside[idx(x,y,z)]=mandelbulb_inside(a,b,c)?1:0;
+    }
+    const float step=side*0.90f/(N-1);
+    const int old_sound=sound_mode; sound_mode=0;
+    for(int z=1;z<N-1 && voxels.size()<max_voxels;++z)
+      for(int y=1;y<N-1 && voxels.size()<max_voxels;++y)
+        for(int x=1;x<N-1 && voxels.size()<max_voxels;++x) {
+            if(!inside[idx(x,y,z)])continue;
+            if(inside[idx(x-1,y,z)]&&inside[idx(x+1,y,z)]&&
+               inside[idx(x,y-1,z)]&&inside[idx(x,y+1,z)]&&
+               inside[idx(x,y,z-1)]&&inside[idx(x,y,z+1)])continue;
+            add_voxel({center.x+(x-(N-1)*0.5f)*step,
+                       center.y+(z-(N-1)*0.5f)*step,
+                       center.z+(y-(N-1)*0.5f)*step},step*0.85f);
+        }
+    sound_mode=old_sound;
+}
+// Gray-Scott reaction-diffusion on a 3D grid with a six-neighbor Laplacian.
+static void generate_gray_scott(vec3 center,float side) {
+    constexpr int N=21, count=N*N*N, steps=190;
+    std::vector<float> u(count,1.0f),v(count,0.0f),nu(count),nv(count);
+    auto idx=[](int x,int y,int z){return (z*N+y)*N+x;};
+    // Deterministic central perturbation and several satellite seeds.
+    for(int z=2;z<N-2;++z)for(int y=2;y<N-2;++y)for(int x=2;x<N-2;++x) {
+        const int dx=x-N/2,dy=y-N/2,dz=z-N/2;
+        if(dx*dx+dy*dy+dz*dz<16 ||
+           ((x-6)*(x-6)+(y-14)*(y-14)+(z-9)*(z-9)<9)) {
+            const int i=idx(x,y,z);u[i]=0.5f;v[i]=0.25f;
+        }
+    }
+    for(int t=0;t<steps;++t) {
+        nu=u;nv=v;
+        for(int z=1;z<N-1;++z)for(int y=1;y<N-1;++y)for(int x=1;x<N-1;++x) {
+            const int i=idx(x,y,z);
+            const float lu=(u[idx(x-1,y,z)]+u[idx(x+1,y,z)]+
+                            u[idx(x,y-1,z)]+u[idx(x,y+1,z)]+
+                            u[idx(x,y,z-1)]+u[idx(x,y,z+1)]-6*u[i])/6.0f;
+            const float lv=(v[idx(x-1,y,z)]+v[idx(x+1,y,z)]+
+                            v[idx(x,y-1,z)]+v[idx(x,y+1,z)]+
+                            v[idx(x,y,z-1)]+v[idx(x,y,z+1)]-6*v[i])/6.0f;
+            const float reaction=u[i]*v[i]*v[i];
+            nu[i]=std::clamp(u[i]+(0.16f*lu-reaction+gray_feed*(1-u[i])),0.0f,1.0f);
+            nv[i]=std::clamp(v[i]+(0.08f*lv+reaction-(gray_feed+gray_kill)*v[i]),0.0f,1.0f);
+        }
+        u.swap(nu);v.swap(nv);
+    }
+    const float spacing=side*0.90f/(N-1);
+    const int old_sound=sound_mode;sound_mode=0;
+    for(int z=1;z<N-1 && voxels.size()<max_voxels;++z)
+      for(int y=1;y<N-1 && voxels.size()<max_voxels;++y)
+        for(int x=1;x<N-1 && voxels.size()<max_voxels;++x) {
+            if(v[idx(x,y,z)]<0.12f)continue;
+            add_voxel({center.x+(x-(N-1)*0.5f)*spacing,
+                       center.y+(y-(N-1)*0.5f)*spacing,
+                       center.z+(z-(N-1)*0.5f)*spacing},spacing*0.83f);
+        }
+    sound_mode=old_sound;
+}
+
 static void commit_volume() {
     if(!volume_active) return;
     volume_active=false;
@@ -572,6 +660,8 @@ static void commit_volume() {
         case 13: case 14: case 15: generate_chaotic(algorithm_mode,center,side); break;
         case 16: generate_dla(center,side); break;
         case 17: generate_gyroid(center,side); break;
+        case 18: generate_mandelbulb(center,side); break;
+        case 19: generate_gray_scott(center,side); break;
         default: break;
     }
     // Uniform reveal scheduler for every generator, preserving Lorenz's
@@ -1015,11 +1105,12 @@ static void draw_face(int page) {
                 selected_artwork_id=0;
     } else if(page==2) {
         static const char* algorithms[]={"LORENZ","ROSSLER","THOMAS","AIZAWA",
-                                         "HALVORSEN","DLA 3D","GYROID","MANDELBROT","JULIA","FIBONACCI"};
-        static const int ids[]={10,11,13,14,15,16,17,6,7,12};
-        for(int i=0;i<10;++i) {
+                                         "HALVORSEN","DLA 3D","GYROID","MANDELBULB","GRAY-SCOTT",
+                                         "MANDELBROT","JULIA","FIBONACCI"};
+        static const int ids[]={10,11,13,14,15,16,17,18,19,6,7,12};
+        for(int i=0;i<12;++i) {
             const int id=ids[i];
-            if(face_button(face,page,algorithms[i],0.174f-i*0.037f,
+            if(face_button(face,page,algorithms[i],0.177f-i*0.031f,
                            algorithm_mode==id))
             {
                 algorithm_mode=(algorithm_mode==id?-1:id);
@@ -1078,6 +1169,14 @@ static void draw_face(int page) {
             title="GYROID";
             add("FREQUENCY",gyroid_frequency,0.25f,1.0f,6.0f);
             add("THICKNESS",gyroid_thickness,0.025f,0.05f,0.5f);
+        } else if(algorithm_mode==18) {
+            title="MANDELBULB";
+            add("POWER",bulb_power,1.0f,2.0f,16.0f);
+            add("BAILOUT",bulb_bailout,0.5f,2.0f,8.0f);
+        } else if(algorithm_mode==19) {
+            title="GRAY-SCOTT";
+            add("FEED",gray_feed,0.001f,0.01f,0.09f);
+            add("KILL",gray_kill,0.001f,0.03f,0.08f);
         } else if(algorithm_mode==11) {
             title="ROSSLER";
             add("A",rossler_a,0.05f,0.01f,1.0f);
