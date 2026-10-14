@@ -499,6 +499,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
     controllerTracked_ = tracked;
     // Match the panel transform used for rendering. Hit-test actual option rows.
     bool uiHit=false;
+    float uiDistance=0.0f;
     int uiOption=-1, uiPage=-1;
     if(tracked[0] && tracked[1]) {
         const auto& left=poses[0].position;
@@ -521,6 +522,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
                 const float localX=cy*hx-sy*hz;
                 uiHit=std::fabs(localX)<=0.205f && std::fabs(localY)<=0.225f;
                 if(uiHit) {
+                    uiDistance=t;
                     for(int i=0;i<carousel_.options() && i<16;++i) {
                         const float x=-0.09f+(i%2)*0.19f;
                         const float y=0.095f-(i/2)*0.043f;
@@ -530,7 +532,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
                     }
                     // The eight page indicators at the bottom are direct navigation targets.
                     if(localY>=-0.211f && localY<=-0.172f) {
-                        for(int i=0;i<8;++i) {
+                        for(int i=0;i<7;++i) {
                             if(std::fabs(localX-(-0.15f+i*0.043f))<=0.019f) {
                                 uiPage=i; uiOption=-1; break;
                             }
@@ -540,6 +542,9 @@ void XrSwapchainRenderer::updateControllerInteraction(
             }
         }
     }
+    carouselRayHit_=uiHit;
+    carouselRayDistance_=uiDistance;
+    hoveredPage_=uiPage;
     carousel_.update(tracked[0]?thumbsticks[0].x:0.0f,
                      tracked[1]?thumbsticks[1].x:0.0f,
                      uiHit && tracked[1] && pressed[1],uiOption,uiPage);
@@ -799,7 +804,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         model.m[14]=wall.pose.position.z+(2*(xz-yw))*ox+(2*(yz+xw))*oy;
         model.m[15]=1;
         const Mat4 mvp=multiply(projView,model);
-        ProceduralPushConstants pc{mvp,{seconds,1.0f,carousel_.hue/16.0f,float(100+carousel_.shader)}};
+        ProceduralPushConstants pc{mvp,{seconds,1.0f,carousel_.hue/16.0f,float(100+(carousel_.background>0 ? carousel_.background-1 : carousel_.shader))}};
         vkCmdPushConstants(commandBuffer_,pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0,sizeof(pc),&pc);
@@ -829,29 +834,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             0,sizeof(pc),&pc);
         vkCmdDraw(commandBuffer_,36,1,0,0);
     }
-    // Optional fullscreen shader backdrop. NONE (default) draws nothing and
-    // preserves transparent compositing over Meta passthrough.
-    // Ray directions are world-aligned, reconstructed per eye using headset orientation.
-    if(carousel_.background>0) {
-        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,backgroundPipeline_);
-        // World-aligned sky rays: turning the headset does not rotate the background.
-        const auto& q=xrView.pose.orientation;
-        const float x=q.x,y=q.y,z=q.z,w=q.w;
-        Mat4 sky{};
-        sky.m[0]=1-2*(y*y+z*z); sky.m[1]=2*(x*y+z*w); sky.m[2]=2*(x*z-y*w);
-        sky.m[4]=2*(x*y-z*w); sky.m[5]=1-2*(x*x+z*z); sky.m[6]=2*(y*z+x*w);
-        sky.m[8]=2*(x*z+y*w); sky.m[9]=2*(y*z-x*w); sky.m[10]=1-2*(x*x+y*y);
-        sky.m[12]=std::tan(xrView.fov.angleLeft);
-        sky.m[13]=std::tan(xrView.fov.angleRight);
-        sky.m[14]=std::tan(xrView.fov.angleDown);
-        sky.m[15]=std::tan(xrView.fov.angleUp);
-        ProceduralPushConstants backgroundPc{sky,
-            {seconds,1.0f,carousel_.hue/16.0f,float(carousel_.background-1)}};
-        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            0,sizeof(backgroundPc),&backgroundPc);
-        vkCmdDraw(commandBuffer_,3,1,0,0);
-    }
+    // Background shader is drawn only on tracked wall geometry, never fullscreen.
     // One instanced draw call for all painted voxels.
     if(!paintedVoxels_.empty() && voxelInstanceMapped_) {
         struct Record {float posSize[4];float style[4];};
@@ -909,6 +892,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             }
         };
         panelCube(0,0,-0.002f,0.41f,0.45f,0.008f,false);
+        panelCube(-0.205f,0.0f,0.011f,0.006f,0.458f,0.008f,true);
+        panelCube( 0.205f,0.0f,0.011f,0.006f,0.458f,0.008f,true);
+        panelCube(0.0f, 0.225f,0.011f,0.416f,0.006f,0.008f,true);
+        panelCube(0.0f,-0.225f,0.011f,0.416f,0.006f,0.008f,true);
         text3d(voxen::ui::pages[carousel_.page],-0.18f,0.17f,0.004f);
         // The active page contains the same categories as the StereoKit UI;
         // unsupported native actions remain visibly listed but inert.
@@ -920,44 +907,36 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             if(i==carousel_.selection || i==carousel_.hovered)
                 panelCube(x,y,-0.001f,0.178f,0.035f,0.009f,false);
             const char* label=nullptr;
-            if(carousel_.page==1) label=voxen::ui::shapes[i];
-            if(carousel_.page==2) label=voxen::ui::algorithms[i];
-            if(carousel_.page==3) label=voxen::ui::shaders[i];
-            if(carousel_.page==4) label=voxen::ui::backgrounds[i];
-            if(label) text3d(label,x-0.083f,y+0.007f,0.0020f);
-            else if(carousel_.page==0)
-                panelCube(x,y,0.012f,0.14f,0.024f,0.003f,true);
+            if(carousel_.page==0) label=voxen::ui::shapes[i];
+            if(carousel_.page==1) label=voxen::ui::algorithms[i];
+            if(carousel_.page==2) label=voxen::ui::shaders[i];
+            if(carousel_.page==3) label=voxen::ui::backgrounds[i];
+            if(label) {
+                if(carousel_.page==0 || carousel_.page==2 || carousel_.page==3)
+                    panelCube(x-0.067f,y,0.014f,0.020f+(i%3)*0.004f,
+                              0.018f+(i%2)*0.009f,0.018f,true);
+                text3d(label,x-0.048f,y+0.007f,0.00165f);
+            } else if(carousel_.page==5) {
+                const char* modes[]={"LOOP","PULSE","SPIN","FLOW"};
+                text3d(modes[i],x-0.08f,y+0.007f,0.002f);
+                panelCube(x+0.062f,y,0.014f,0.010f+(i%2)*0.012f,0.018f,0.010f,true);
+            }
         }
-        if(carousel_.page>=5)
+        if(carousel_.page==4 || carousel_.page==6)
             text3d(carousel_.selectedLabel(),-0.16f,0.065f,0.0035f);
         // Page indicator and interaction reminder.
-        for(int i=0;i<8;++i)
+        for(int i=0;i<7;++i)
             panelCube(-0.15f+i*0.043f,-0.192f,0.015f,
-                i==carousel_.page?0.028f:0.012f,0.006f,0.003f,true);
+                i==carousel_.page || i==hoveredPage_?0.028f:0.012f,0.006f,0.003f,true);
     }
-    // Draw the visible controller rays last; depth testing hides them behind artwork.
-    vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, laserPipeline_);
-    for (std::size_t hand = 0; hand < controllerTracked_.size(); ++hand) {
-        if (!controllerTracked_[hand]) continue;
-        float length = 2.5F;
-        const int target = hoveredArtwork_[hand];
-        if (target >= 0) {
-            const auto& q = controllerPoses_[hand].orientation;
-            const float dx = -2.0F * (q.x*q.z + q.w*q.y);
-            const float dy = -2.0F * (q.y*q.z - q.w*q.x);
-            const float dz = -(1.0F - 2.0F * (q.x*q.x + q.y*q.y));
-            const auto& c = scene_.artworks()[target].transform.position;
-            length = std::clamp(
-                (c[0]-controllerPoses_[hand].position.x)*dx +
-                (c[1]-controllerPoses_[hand].position.y)*dy +
-                (c[2]-controllerPoses_[hand].position.z)*dz, 0.1F, 2.5F);
-        }
-        const Mat4 beamMvp = multiply(projView, laserMatrix(controllerPoses_[hand], length));
-        ProceduralPushConstants constants{beamMvp, {seconds, 1.0F, 1.0F, 0.0F}};
-        vkCmdPushConstants(commandBuffer_, pipelineLayout_,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            0, sizeof(constants), &constants);
-        vkCmdDraw(commandBuffer_, 36, 1, 0, 0);
+    // Only the right-hand ray is displayed, and only on the carousel.
+    if(carouselRayHit_ && controllerTracked_[1]) {
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,laserPipeline_);
+        const Mat4 beamMvp=multiply(projView,laserMatrix(controllerPoses_[1],carouselRayDistance_));
+        ProceduralPushConstants pc{beamMvp,{seconds,1.0f,1.0f,0.0f}};
+        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+        vkCmdDraw(commandBuffer_,36,1,0,0);
     }
     vkCmdEndRenderPass(commandBuffer_);
     checkVk(vkEndCommandBuffer(commandBuffer_), "vkEndCommandBuffer");
