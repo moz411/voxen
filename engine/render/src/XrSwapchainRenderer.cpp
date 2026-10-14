@@ -694,11 +694,21 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     }
     // Optional fullscreen shader backdrop. NONE (default) draws nothing and
     // preserves transparent compositing over Meta passthrough.
-    // This is a screen-space preview; immersive 360 background comes later.
+    // Ray directions are world-aligned, reconstructed per eye using headset orientation.
     if(carousel_.background>0) {
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,backgroundPipeline_);
-        Mat4 identity{};identity.m[0]=identity.m[5]=identity.m[10]=identity.m[15]=1.0f;
-        ProceduralPushConstants backgroundPc{identity,
+        // World-aligned sky rays: turning the headset does not rotate the background.
+        const auto& q=xrView.pose.orientation;
+        const float x=q.x,y=q.y,z=q.z,w=q.w;
+        Mat4 sky{};
+        sky.m[0]=1-2*(y*y+z*z); sky.m[1]=2*(x*y+z*w); sky.m[2]=2*(x*z-y*w);
+        sky.m[4]=2*(x*y-z*w); sky.m[5]=1-2*(x*x+z*z); sky.m[6]=2*(y*z+x*w);
+        sky.m[8]=2*(x*z+y*w); sky.m[9]=2*(y*z-x*w); sky.m[10]=1-2*(x*x+y*y);
+        sky.m[12]=std::tan(xrView.fov.angleLeft);
+        sky.m[13]=std::tan(xrView.fov.angleRight);
+        sky.m[14]=std::tan(xrView.fov.angleDown);
+        sky.m[15]=std::tan(xrView.fov.angleUp);
+        ProceduralPushConstants backgroundPc{sky,
             {seconds,1.0f,carousel_.hue/16.0f,float(carousel_.background-1)}};
         vkCmdPushConstants(commandBuffer_,pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
