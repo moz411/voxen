@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <vector>
+#include <utility>
 
 #include <vulkan/vulkan.h>
 #include <openxr/openxr.h>
@@ -41,6 +42,9 @@ public:
                                      const std::array<bool, 2>& tracked,
                                      const std::array<bool, 2>& pressed,
                                      const std::array<XrVector2f, 2>& thumbsticks);
+
+    struct WallPreview { XrPosef pose; XrRect2Df bounds; };
+    void setWallPreviews(std::vector<WallPreview> walls) { wallPreviews_=std::move(walls); }
 
     // Acquires, clears and releases both eye images, then fills projection views.
     void render(
@@ -95,6 +99,7 @@ private:
     std::array<float, 2> grabDistances_{};
     std::array<std::array<float, 3>, 2> stickOffsets_{};
     std::chrono::steady_clock::time_point lastInteractionUpdate_{};
+    std::vector<WallPreview> wallPreviews_{};
     voxen::ui::Carousel carousel_{};
     struct VoxelStroke { XrVector3f position; float size; float hue; int shader; };
     std::vector<VoxelStroke> paintedVoxels_{};
