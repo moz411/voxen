@@ -4,8 +4,8 @@
 #include <cmath>
 
 namespace voxen::ui {
-inline constexpr std::array<const char*,8> pages = {
-    "COLORS","SHAPES","ALGORITHMS","SHADERS","BACKGROUNDS","PARAMS","ANIMATIONS","SAVE / LOAD"
+inline constexpr std::array<const char*,7> pages = {
+    "VOXELS","ALGORITHMS","SHADERS","BACKGROUNDS","PARAMS","ANIMATIONS","SAVE / LOAD"
 };
 inline constexpr std::array<const char*,8> shapes = {
     "CUBE","SPHERE","TETRA","OCTAHEDRON","CROSS","STAR","CYLINDER","DIAMOND"
@@ -21,6 +21,7 @@ inline constexpr std::array<const char*,5> algorithms = {
 };
 struct Carousel {
     int page = 0;
+    int animation = 0;
     int selection = 0;
     int shape = 0;
     int shader = 0;
@@ -35,7 +36,7 @@ struct Carousel {
     void update(float leftStick, float rightStick, bool trigger, int hitOption = -1, int hitPage = -1) {
         if (std::fabs(leftStick) < 0.35f) leftLatched = false;
         if (!leftLatched && std::fabs(leftStick) > 0.7f) {
-            page=(page+(leftStick>0?1:7))%8;
+            page=(page+(leftStick>0?1:6))%7;
             selection=0;
             leftLatched=true;
         }
@@ -53,12 +54,12 @@ struct Carousel {
         if (hitOption >= 0 && trigger && !selectLatched) selection=hitOption;
         if (trigger && !selectLatched && hitPage < 0 && hitOption >= 0) {
             switch(page) {
-                case 0: hue=selection; break;
-                case 1: shape=selection; break;
-                case 2: algorithm=selection; break;
-                case 3: shader=selection; break;
-                case 4: background=selection; break;
-                case 5: aim=!aim; break;
+                case 0: shape=selection; break;
+                case 1: algorithm=selection; break;
+                case 2: shader=selection; break;
+                case 3: background=selection; break;
+                case 4: aim=!aim; break;
+                case 5: animation=selection; break;
                 default: break; // other pages are placeholders until their controls are ported
             }
         }
@@ -66,21 +67,22 @@ struct Carousel {
     }
     int options() const {
         switch(page) {
-            case 0: return 16;
-            case 1: return (int)shapes.size();
-            case 2: return (int)algorithms.size();
-            case 3: return (int)shaders.size();
-            case 4: return (int)backgrounds.size();
+            case 0: return (int)shapes.size();
+            case 1: return (int)algorithms.size();
+            case 2: return (int)shaders.size();
+            case 3: return (int)backgrounds.size();
+            case 5: return 4;
             default: return 1;
         }
     }
     const char* selectedLabel() const {
         switch(page) {
-            case 1: return shapes[selection];
-            case 2: return algorithms[selection];
-            case 3: return shaders[selection];
-            case 4: return backgrounds[selection];
-            case 5: return aim?"AIM ON":"AIM OFF";
+            case 0: return shapes[selection];
+            case 1: return algorithms[selection];
+            case 2: return shaders[selection];
+            case 3: return backgrounds[selection];
+            case 4: return aim?"AIM ON":"AIM OFF";
+            case 5: return "LOOP / PULSE / SPIN / FLOW";
             default: return pages[page];
         }
     }
