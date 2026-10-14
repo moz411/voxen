@@ -16,6 +16,8 @@
 #include <stdexcept>
 #include <cstring>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace voxen::xr {
 namespace {
@@ -318,6 +320,10 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
             aimPoses[hand] = location.pose;
         }
     }
+    std::vector<voxen::render::XrSwapchainRenderer::WallPreview> wallPreviews;
+    for(const auto& w:sceneScanner_.locateWalls(localSpace_,frameState.predictedDisplayTime))
+        wallPreviews.push_back({w.pose,w.bounds});
+    renderer.setWallPreviews(std::move(wallPreviews));
     renderer.updateControllerInteraction(aimPoses, aimTracked, selectionPressed_, thumbstickValues_);
 
     XrFrameBeginInfo beginInfo{XR_TYPE_FRAME_BEGIN_INFO};
