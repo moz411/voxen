@@ -30,11 +30,20 @@ public:
     int anchors_found = 0;
     int rejected = 0;
     XrResult last_result = XR_SUCCESS;
+    const char* diagnostic = "NOT INITIALIZED";
+    bool scene_extension = false;
+    bool spatial_extension = false;
+    bool query_extension = false;
 
     void initialize() {
-        if (!sk::backend_openxr_ext_enabled(XR_FB_SCENE_EXTENSION_NAME) ||
-            !sk::backend_openxr_ext_enabled(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME) ||
-            !sk::backend_openxr_ext_enabled(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME)) {
+        VOXEN_SCENE_LOG("Background::initialize called");
+        diagnostic = "CHECKING EXTENSIONS";
+        scene_extension = sk::backend_openxr_ext_enabled(XR_FB_SCENE_EXTENSION_NAME);
+        spatial_extension = sk::backend_openxr_ext_enabled(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME);
+        query_extension = sk::backend_openxr_ext_enabled(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
+        VOXEN_SCENE_LOG("extensions scene=%d spatial=%d query=%d", scene_extension, spatial_extension, query_extension);
+        if (!scene_extension || !spatial_extension || !query_extension) {
+            diagnostic = !scene_extension ? "NO XR FB SCENE" : !spatial_extension ? "NO SPATIAL ENTITY" : "NO ENTITY QUERY";
             VOXEN_SCENE_LOG("[Voxen Scene] Scene extensions unavailable\n");
             return;
         }
@@ -51,7 +60,8 @@ public:
             load("xrGetSpaceSemanticLabelsFB",labels_) &&
             load("xrSetSpaceComponentStatusFB",set_status_) &&
             load("xrGetSpaceComponentStatusFB",get_status_);
-        if (!supported) return;
+        if (!supported) { diagnostic="XR FUNCTIONS MISSING"; VOXEN_SCENE_LOG("%s", diagnostic); return; }
+        diagnostic="API READY";
         sk::backend_openxr_add_callback_poll_event(&Background::event_callback, this);
         refresh();
     }
@@ -74,6 +84,7 @@ public:
             reinterpret_cast<const XrSpaceQueryInfoBaseHeaderFB*>(&query), &request_);
         last_result=result;
         loading = XR_SUCCEEDED(result);
+        diagnostic = loading ? "QUERY STARTED" : "QUERY FAILED";
         VOXEN_SCENE_LOG("[Voxen Scene] query start result=%d request=%llu\\n",
             result,static_cast<unsigned long long>(request_));
         if (!loading) VOXEN_SCENE_LOG("[Voxen Scene] xrQuerySpacesFB failed: %d\n", result);
@@ -154,6 +165,7 @@ private:
             if (e->requestId!=self->request_) return;
             self->loading=false;
             self->ready=XR_SUCCEEDED(e->result);
+            self->diagnostic = self->ready ? "QUERY COMPLETE" : "QUERY ERROR";
             self->last_result=e->result;
             VOXEN_SCENE_LOG("[Voxen Scene] query complete: %zu planes, result=%d\n",
                 self->planes_.size(),e->result);
@@ -169,6 +181,7 @@ private:
         out.results=results.data();
         if (XR_FAILED(results_(session_,request_,&out))) return;
         anchors_found+=static_cast<int>(out.resultCountOutput);
+        diagnostic="ANCHORS RECEIVED";
         VOXEN_SCENE_LOG("[Voxen Scene] query batch=%u\\n",out.resultCountOutput);
         for (uint32_t i=0; i<out.resultCountOutput; ++i)
             pending_.push_back(results[i].space);
