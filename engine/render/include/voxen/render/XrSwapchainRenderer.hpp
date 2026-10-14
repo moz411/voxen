@@ -80,6 +80,7 @@ private:
     VkRenderPass renderPass_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxelPipeline_ = VK_NULL_HANDLE;
     VkPipeline organicaPipeline_ = VK_NULL_HANDLE;
     VkPipeline fractalPipeline_ = VK_NULL_HANDLE;
     VkPipeline laserPipeline_ = VK_NULL_HANDLE;
@@ -95,6 +96,11 @@ private:
     std::array<std::array<float, 3>, 2> stickOffsets_{};
     std::chrono::steady_clock::time_point lastInteractionUpdate_{};
     voxen::ui::Carousel carousel_{};
+    struct VoxelStroke { XrVector3f position; float size; float hue; int shader; };
+    std::vector<VoxelStroke> paintedVoxels_{};
+    bool paintPressed_ = false;
+    XrVector3f lastPaint_{};
+    bool paintHasPrevious_ = false;
     bool firstFrameLogged_ = false;
     std::chrono::steady_clock::time_point animationStart_ = std::chrono::steady_clock::now();
 };
