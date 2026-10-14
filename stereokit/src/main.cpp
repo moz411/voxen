@@ -58,7 +58,7 @@ static int fractal_iterations=64;
 static float rossler_a=0.2f, rossler_b=0.2f, rossler_c=5.7f;
 static float fibonacci_turns=5.0f, fibonacci_spacing=1.0f;
 static shader_t voxel_shader = nullptr;
-static material_t gpu_materials[7] = {};
+static material_t gpu_materials[9] = {};
 static uint32_t brush_step = 0;
 static bool volume_active = false;
 static bool save_confirmation = false;
@@ -825,8 +825,8 @@ static void draw_face(int page) {
         }
     } else if(page==3) {
         face_text(face,"GPU MATERIALS",0,0.153f);
-        static const char* names[]={"MATTE","NEON","PLASMA","HOLO","LAVA","ICE","RASENGAN"};
-        for(int i=0;i<7;++i) {
+        static const char* names[]={"MATTE","NEON","PLASMA","HOLO","LAVA","ICE","RASENGAN","PARTICLES","NOISE"};
+        for(int i=0;i<9;++i) {
             const float x=(i%2==0?-0.041f:0.041f);
             const float y=0.090f-(i/2)*0.058f;
             const bool hover=panel_hover(page,x,y,0.074f,0.033f);
@@ -1194,7 +1194,7 @@ int voxen_stereokit_main() {
     voxel_shader=shader_create_mem((void*)sks_voxen_voxel_hlsl,
                                   sizeof(sks_voxen_voxel_hlsl));
     if(voxel_shader) {
-        for(int i=0;i<7;++i) {
+        for(int i=0;i<9;++i) {
             gpu_materials[i]=material_create(voxel_shader);
             if(gpu_materials[i]) material_set_float(gpu_materials[i],"mode",(float)i);
         }
@@ -1219,7 +1219,7 @@ int voxen_stereokit_main() {
         else draw_face(menu_page);
 
         animation_time += time_stepf();
-        for(int i=0;i<7;++i)
+        for(int i=0;i<9;++i)
             if(gpu_materials[i]) material_set_float(gpu_materials[i],
                                                      "time",animation_time);
         for(const PaintedVoxel& voxel:voxels) {
