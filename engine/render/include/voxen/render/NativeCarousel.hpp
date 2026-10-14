@@ -31,7 +31,8 @@ struct Carousel {
     bool leftLatched = false;
     bool rightLatched = false;
     bool selectLatched = false;
-    void update(float leftStick, float rightStick, bool trigger) {
+    int hovered = -1;
+    void update(float leftStick, float rightStick, bool trigger, int hitOption = -1, int hitPage = -1) {
         if (std::fabs(leftStick) < 0.35f) leftLatched = false;
         if (!leftLatched && std::fabs(leftStick) > 0.7f) {
             page=(page+(leftStick>0?1:7))%8;
@@ -44,7 +45,13 @@ struct Carousel {
             selection=(selection+(rightStick>0?1:count-1))%count;
             rightLatched=true;
         }
-        if (trigger && !selectLatched) {
+        if (hitPage >= 0 && trigger && !selectLatched) {
+            page=hitPage;
+            selection=0;
+        }
+        hovered=hitOption;
+        if (hitOption >= 0 && trigger && !selectLatched) selection=hitOption;
+        if (trigger && !selectLatched && hitPage < 0 && hitOption >= 0) {
             switch(page) {
                 case 0: hue=selection; break;
                 case 1: shape=selection; break;
