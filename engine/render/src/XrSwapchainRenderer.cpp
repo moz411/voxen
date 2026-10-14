@@ -658,6 +658,38 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             0, sizeof(constants), &constants);
         vkCmdDraw(commandBuffer_, vertices, 1, 0, 0);
     }
+    // Scene API diagnostics: each wall is a thin box at its real 6DoF pose.
+    // The scene plane's local XY bounds are used directly, including offset.
+    vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,voxelPipeline_);
+    for(const auto& wall:wallPreviews_) {
+        const auto& q=wall.pose.orientation;
+        const float x=q.x,y=q.y,z=q.z,w=q.w;
+        const float xx=x*x,yy=y*y,zz=z*z;
+        const float xy=x*y,xz=x*z,yz=y*z,xw=x*w,yw=y*w,zw=z*w;
+        const float sx=wall.bounds.extent.width,sy=wall.bounds.extent.height,sz=0.005f;
+        const float ox=wall.bounds.offset.x+sx*.5f;
+        const float oy=wall.bounds.offset.y+sy*.5f;
+        Mat4 model{};
+        model.m[0]=(1-2*(yy+zz))*sx;
+        model.m[1]=(2*(xy+zw))*sx;
+        model.m[2]=(2*(xz-yw))*sx;
+        model.m[4]=(2*(xy-zw))*sy;
+        model.m[5]=(1-2*(xx+zz))*sy;
+        model.m[6]=(2*(yz+xw))*sy;
+        model.m[8]=(2*(xz+yw))*sz;
+        model.m[9]=(2*(yz-xw))*sz;
+        model.m[10]=(1-2*(xx+yy))*sz;
+        model.m[12]=wall.pose.position.x+(1-2*(yy+zz))*ox+(2*(xy-zw))*oy;
+        model.m[13]=wall.pose.position.y+(2*(xy+zw))*ox+(1-2*(xx+zz))*oy;
+        model.m[14]=wall.pose.position.z+(2*(xz-yw))*ox+(2*(yz+xw))*oy;
+        model.m[15]=1;
+        const Mat4 mvp=multiply(projView,model);
+        ProceduralPushConstants pc{mvp,{seconds,1.0f,0.58f,1.0f}};
+        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            0,sizeof(pc),&pc);
+        vkCmdDraw(commandBuffer_,36,1,0,0);
+    }
     // Native painted voxel batch: direct Vulkan rendering with per-voxel shader ID.
     vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,voxelPipeline_);
     for(const auto& voxel:paintedVoxels_) {
