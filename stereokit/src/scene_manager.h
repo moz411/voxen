@@ -9,6 +9,7 @@
 #include <openxr/fb_spatial_entity_storage.h>
 #include <openxr/fb_scene.h>
 #include <cstdio>
+#include <vector>
 
 namespace voxen_scene {
 class SceneManager {
@@ -17,6 +18,39 @@ class SceneManager {
     PFN_xrGetSpaceBoundingBox2DFB bounds_ = nullptr;
     XrAsyncRequestIdFB pending_ = 0;
     bool enabled_ = false;
+    XrSession session_ = XR_NULL_HANDLE;
+    std::vector<XrSpace> planes_;
+    static void on_event(void* ctx, void* ev) {
+        auto& self=*static_cast<SceneManager*>(ctx);
+        self.handle_event(*static_cast<const XrEventDataBuffer*>(ev));
+    }
+    void handle_event(const XrEventDataBuffer& ev) {
+        if (!pending_) return;
+        if (ev.type == XR_TYPE_EVENT_DATA_SPACE_QUERY_RESULTS_AVAILABLE_FB) {
+            const auto& event=*reinterpret_cast<const XrEventDataSpaceQueryResultsAvailableFB*>(&ev);
+            if(event.requestId != pending_) return;
+            XrSpaceQueryResultsFB results{XR_TYPE_SPACE_QUERY_RESULTS_FB};
+            if(XR_FAILED(retrieve_(session_,pending_,&results))) return;
+            std::vector<XrSpaceQueryResultFB> entries(results.resultCountOutput);
+            results.resultCapacityInput=static_cast<uint32_t>(entries.size());
+            results.results=entries.data();
+            if(XR_FAILED(retrieve_(session_,pending_,&results))) return;
+            for(uint32_t i=0;i<results.resultCountOutput;++i) {
+                XrRect2Df rect{};
+                if(XR_SUCCEEDED(bounds_(session_,entries[i].space,&rect))) {
+                    planes_.push_back(entries[i].space);
+                    std::printf("[Voxen Scene] plane %zu: %.2f x %.2f m\\n",
+                        planes_.size(),rect.extent.width,rect.extent.height);
+                }
+            }
+        } else if(ev.type == XR_TYPE_EVENT_DATA_SPACE_QUERY_COMPLETE_FB) {
+            const auto& event=*reinterpret_cast<const XrEventDataSpaceQueryCompleteFB*>(&ev);
+            if(event.requestId == pending_) {
+                pending_=0;
+                std::printf("[Voxen Scene] query completed; %zu planes\\n",planes_.size());
+            }
+        }
+    }
 public:
     void initialize() {
         using namespace sk;
@@ -36,11 +70,22 @@ public:
             backend_openxr_get_function("xrGetSpaceBoundingBox2DFB"));
         enabled_ = query_ && retrieve_ && bounds_;
         std::printf("[Voxen Scene] API %s\\n", enabled_ ? "available" : "function pointers missing");
+        if(enabled_) {
+            session_=reinterpret_cast<XrSession>(sk::backend_openxr_get_session());
+            sk::backend_openxr_add_callback_poll_event(on_event,this);
+            query_bounded_planes(session_);
+        }
     }
     bool available() const { return enabled_; }
+    std::size_t plane_count() const { return planes_.size(); }
+    void shutdown() {
+        if(enabled_) sk::backend_openxr_remove_callback_poll_event(on_event);
+        enabled_=false;
+        pending_=0;
+        planes_.clear();
+    }
 
-    // Starts reading locally saved scene planes. No new scene capture is forced.
-    // Call only once an event handler for XR_FB query events has been installed.
+    // Query saved bounded planes; query results are received by StereoKit event callback.
     bool query_bounded_planes(XrSession session) {
         if (!enabled_ || session == XR_NULL_HANDLE || pending_) return false;
         XrSpaceStorageLocationFilterInfoFB local{
