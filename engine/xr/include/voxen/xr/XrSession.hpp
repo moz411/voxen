@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <voxen/xr/SceneScanner.hpp>
 
 #include <openxr/openxr.h>
 #include <vulkan/vulkan.h>
@@ -57,6 +58,7 @@ private:
     std::array<XrPath, 2> handPaths_{};
     std::array<bool, 2> selectionPressed_{};
     std::array<XrVector2f, 2> thumbstickValues_{};
+    SceneScanner sceneScanner_{};
     XrSessionState state_ = XR_SESSION_STATE_UNKNOWN;
     bool running_ = false;
     bool enablePassthrough_ = false;
