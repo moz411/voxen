@@ -23,16 +23,16 @@ public:
     bool ready = false;
 
     void initialize() {
-        if (!backend_openxr_ext_enabled(XR_FB_SCENE_EXTENSION_NAME) ||
-            !backend_openxr_ext_enabled(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME) ||
-            !backend_openxr_ext_enabled(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME)) {
+        if (!sk::backend_openxr_ext_enabled(XR_FB_SCENE_EXTENSION_NAME) ||
+            !sk::backend_openxr_ext_enabled(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME) ||
+            !sk::backend_openxr_ext_enabled(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME)) {
             std::printf("[Voxen Scene] Scene extensions unavailable\n");
             return;
         }
-        session_ = reinterpret_cast<XrSession>(backend_openxr_get_session());
+        session_ = reinterpret_cast<XrSession>(sk::backend_openxr_get_session());
         auto load=[&](const char* name, auto& target) {
             using Proc=std::decay_t<decltype(target)>;
-            target=reinterpret_cast<Proc>(backend_openxr_get_function(name));
+            target=reinterpret_cast<Proc>(sk::backend_openxr_get_function(name));
             return target!=nullptr;
         };
         supported =
@@ -42,7 +42,7 @@ public:
             load("xrGetSpaceSemanticLabelsFB",labels_) &&
             load("xrSetSpaceComponentStatusFB",set_status_);
         if (!supported) return;
-        backend_openxr_add_callback_poll_event(&Background::event_callback, this);
+        sk::backend_openxr_add_callback_poll_event(&Background::event_callback, this);
         refresh();
     }
 
@@ -66,8 +66,8 @@ public:
         if (preset < 0 || !ready || !mesh || preset >= static_cast<int>(materials.size())) return;
         sk::material_t mat=materials[preset];
         if (!mat) return;
-        const XrSpace base=reinterpret_cast<XrSpace>(backend_openxr_get_space());
-        const XrTime time=static_cast<XrTime>(backend_openxr_get_time());
+        const XrSpace base=reinterpret_cast<XrSpace>(sk::backend_openxr_get_space());
+        const XrTime time=static_cast<XrTime>(sk::backend_openxr_get_time());
         if (base==XR_NULL_HANDLE || time==0) return;
         // Scene planes live in the same tracking reference space as the rest of StereoKit.
         for (const Plane& p : planes_) {
@@ -96,7 +96,10 @@ public:
     int plane_count() const { return static_cast<int>(planes_.size()); }
 
     void shutdown() {
-        if (supported) backend_openxr_remove_callback_poll_event(&Background::event_callback,this);
+        // StereoKit exposes registration only. Callback remains installed until sk_shutdown;
+        // this object has static lifetime and no subsequent OpenXR event polling occurs.
+        loading=false;
+        ready=false;
         clear_planes();
         supported=false;
     }
@@ -146,12 +149,12 @@ private:
             XrRect2Df rect{};
             if (XR_FAILED(bounds_(session_,space,&rect))) { xrDestroySpace(space); continue; }
             XrSemanticLabelsFB semantic{XR_TYPE_SEMANTIC_LABELS_FB};
-            if (XR_FAILED(labels_(session_,space,&semantic)) || !semantic.byteCountOutput) {
+            if (XR_FAILED(labels_(session_,space,&semantic)) || !semantic.bufferCountOutput) {
                 xrDestroySpace(space); continue;
             }
-            std::vector<char> label_buffer(semantic.byteCountOutput+1,0);
-            semantic.byteCapacityInput=static_cast<uint32_t>(label_buffer.size());
-            semantic.labels=label_buffer.data();
+            std::vector<char> label_buffer(semantic.bufferCountOutput+1,0);
+            semantic.bufferCapacityInput=static_cast<uint32_t>(label_buffer.size());
+            semantic.buffer=label_buffer.data();
             if (XR_FAILED(labels_(session_,space,&semantic))) { xrDestroySpace(space); continue; }
             const std::string names(label_buffer.data());
             unsigned category=0;
