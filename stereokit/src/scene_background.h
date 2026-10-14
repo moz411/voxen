@@ -21,6 +21,9 @@ public:
     bool supported = false;
     bool loading = false;
     bool ready = false;
+    int anchors_found = 0;
+    int rejected = 0;
+    XrResult last_result = XR_SUCCESS;
 
     void initialize() {
         if (!sk::backend_openxr_ext_enabled(XR_FB_SCENE_EXTENSION_NAME) ||
@@ -49,16 +52,23 @@ public:
     void refresh() {
         if (!supported || loading) return;
         clear_planes();
+        anchors_found=0;
+        rejected=0;
         ready = false;
         XrSpaceComponentFilterInfoFB filter{XR_TYPE_SPACE_COMPONENT_FILTER_INFO_FB};
         filter.componentType = XR_SPACE_COMPONENT_TYPE_BOUNDED_2D_FB;
         XrSpaceQueryInfoFB query{XR_TYPE_SPACE_QUERY_INFO_FB};
         query.queryAction=XR_SPACE_QUERY_ACTION_LOAD_FB;
         query.maxResultCount=128;
-        query.filter=reinterpret_cast<const XrSpaceFilterInfoBaseHeaderFB*>(&filter);
+        // Query all anchors: filtering BOUNDED_2D can yield no spaces on some Scene Model versions.
+        // Semantic classification happens after retrieval.
+        query.filter=nullptr;
         const XrResult result=query_(session_,
             reinterpret_cast<const XrSpaceQueryInfoBaseHeaderFB*>(&query), &request_);
+        last_result=result;
         loading = XR_SUCCEEDED(result);
+        std::printf("[Voxen Scene] query start result=%d request=%llu\\n",
+            result,static_cast<unsigned long long>(request_));
         if (!loading) std::printf("[Voxen Scene] xrQuerySpacesFB failed: %d\n", result);
     }
 
@@ -132,8 +142,10 @@ private:
             if (e->requestId!=self->request_) return;
             self->loading=false;
             self->ready=XR_SUCCEEDED(e->result);
+            self->last_result=e->result;
             std::printf("[Voxen Scene] query complete: %zu planes, result=%d\n",
                 self->planes_.size(),e->result);
+            std::printf("[Voxen Scene] anchors=%d rejected=%d\\n",self->anchors_found,self->rejected);
         }
     }
 
@@ -144,25 +156,28 @@ private:
         out.resultCapacityInput=static_cast<uint32_t>(results.size());
         out.results=results.data();
         if (XR_FAILED(results_(session_,request_,&out))) return;
+        anchors_found+=static_cast<int>(out.resultCountOutput);
+        std::printf("[Voxen Scene] query batch=%u\\n",out.resultCountOutput);
         for (uint32_t i=0; i<out.resultCountOutput; ++i) {
             const XrSpace space=results[i].space;
             XrRect2Df rect{};
-            if (XR_FAILED(bounds_(session_,space,&rect))) { xrDestroySpace(space); continue; }
+            const XrResult bound_result=bounds_(session_,space,&rect);
+            if (XR_FAILED(bound_result)) { ++rejected; xrDestroySpace(space); continue; }
             XrSemanticLabelsFB semantic{XR_TYPE_SEMANTIC_LABELS_FB};
             if (XR_FAILED(labels_(session_,space,&semantic)) || !semantic.bufferCountOutput) {
-                xrDestroySpace(space); continue;
+                ++rejected; xrDestroySpace(space); continue;
             }
             std::vector<char> label_buffer(semantic.bufferCountOutput+1,0);
             semantic.bufferCapacityInput=static_cast<uint32_t>(label_buffer.size());
             semantic.buffer=label_buffer.data();
-            if (XR_FAILED(labels_(session_,space,&semantic))) { xrDestroySpace(space); continue; }
+            if (XR_FAILED(labels_(session_,space,&semantic))) { ++rejected; xrDestroySpace(space); continue; }
             const std::string names(label_buffer.data());
             unsigned category=0;
             if (names.find("WALL_FACE")!=std::string::npos &&
                 names.find("INVISIBLE_WALL_FACE")==std::string::npos) category=Walls;
             else if (names.find("FLOOR")!=std::string::npos) category=Floor;
             else if (names.find("CEILING")!=std::string::npos) category=Ceiling;
-            if (!category) { xrDestroySpace(space); continue; }
+            if (!category) { ++rejected; xrDestroySpace(space); continue; }
             XrSpaceComponentStatusSetInfoFB locatable{XR_TYPE_SPACE_COMPONENT_STATUS_SET_INFO_FB};
             locatable.componentType=XR_SPACE_COMPONENT_TYPE_LOCATABLE_FB;
             locatable.enabled=XR_TRUE;
