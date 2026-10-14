@@ -98,3 +98,16 @@ This is an experimental migration branch, not a replacement for the working main
   command for each object. Instancing requires an instance buffer, matching
   vertex input and a separate batch pipeline.
 - The implementation has not been built on Android nor verified in headset.
+
+## BACKGROUNDS carousel page
+- Eight pages now include BACKGROUNDS immediately after SHADERS.
+- The background choice defaults to NONE (ID 0): no fullscreen fragment
+  background is drawn, retaining transparent projection over passthrough.
+- The other nine choices map to the existing native GLSL voxel material presets.
+- The first background implementation is a screen-space fullscreen triangle
+  drawn at far depth (not a head-tracked spherical environment); it is only
+  a preview of procedural backdrops.
+- The renderer uses a dedicated Vulkan background pipeline with depth writes
+  disabled so foreground artwork and wall diagnostics remain visible.
+- Performance, Vulkan shader compilation, and projection/passthrough blending
+  still require a Quest 3 headset test before merging into main.
