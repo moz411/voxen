@@ -24,7 +24,8 @@ vec3 palette(float h){return 0.5+0.5*cos(6.283*(h+vec3(0.,0.3333,0.6667)));}
 void main(){
     vec3 p=localColor*2.-1.;
     float t=pc.parameters.x*pc.parameters.y;
-    float id=pc.parameters.w;
+    float id=mod(pc.parameters.w,100.0);
+    bool wall=pc.parameters.w>=100.0;
     vec3 c=palette(pc.parameters.z);
     if(id<0.5){} // MATTE
     else if(id<1.5){
@@ -53,5 +54,5 @@ void main(){
         for(int i=0;i<6;i++){v+=noise2(q)*a;w+=a;q*=2.;a*=.5;}
         c=palette(pc.parameters.z)*(v/w);
     }
-    outColor=vec4(clamp(c,0.,1.),1.);
+    outColor=vec4(clamp(c,0.,1.),wall?0.38:1.);
 }
