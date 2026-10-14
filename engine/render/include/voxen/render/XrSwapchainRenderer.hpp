@@ -8,6 +8,7 @@
 #include <vulkan/vulkan.h>
 #include <openxr/openxr.h>
 #include <voxen/scene/Scene.hpp>
+#include <voxen/render/NativeCarousel.hpp>
 #ifdef _WIN32
 #include <windows.h>
 #include <unknwn.h>
@@ -93,6 +94,7 @@ private:
     std::array<float, 2> grabDistances_{};
     std::array<std::array<float, 3>, 2> stickOffsets_{};
     std::chrono::steady_clock::time_point lastInteractionUpdate_{};
+    voxen::ui::Carousel carousel_{};
     bool firstFrameLogged_ = false;
     std::chrono::steady_clock::time_point animationStart_ = std::chrono::steady_clock::now();
 };
