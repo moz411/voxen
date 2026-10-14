@@ -6,6 +6,7 @@
 #include <openxr/openxr.h>
 #include <openxr/fb_spatial_entity.h>
 #include <openxr/fb_spatial_entity_query.h>
+#include <openxr/fb_spatial_entity_storage.h>
 #include <openxr/fb_scene.h>
 #include <cstdio>
 
