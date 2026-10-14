@@ -14,6 +14,7 @@
 
 #include "cubeVert.spv.hpp"
 #include "proceduralFrag.spv.hpp"
+#include "voxelFrag.spv.hpp"
 #include "organicaVert.spv.hpp"
 #include "fractalFrag.spv.hpp"
 #include "fractalVert.spv.hpp"
@@ -358,6 +359,7 @@ void XrSwapchainRenderer::createPipeline() {
         vkDestroyShaderModule(device_, vs, nullptr);
     };
     buildPipeline(cubeVert, cubeVertSize, proceduralFrag, proceduralFragSize, pipeline_);
+    buildPipeline(cubeVert, cubeVertSize, voxelFrag, voxelFragSize, voxelPipeline_);
     buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
@@ -449,12 +451,61 @@ void XrSwapchainRenderer::updateControllerInteraction(
     const auto& artworks = scene_.artworks();
     controllerPoses_ = poses;
     controllerTracked_ = tracked;
+    // Right ray vs left-hand upright UI panel: consume trigger only on actual hit.
+    bool uiHit=false;
+    if(tracked[0] && tracked[1]) {
+        const auto& left=poses[0].position;
+        const auto& right=poses[1];
+        const float yaw=std::atan2(right.position.x-left.x,
+                                  right.position.z-left.z);
+        const float sy=std::sin(yaw),cy=std::cos(yaw);
+        // Aim ray in OpenXR's negative local Z axis.
+        const auto& q=right.orientation;
+        const float dx=-2.0f*(q.x*q.z+q.w*q.y);
+        const float dy=-2.0f*(q.y*q.z-q.w*q.x);
+        const float dz=-(1.0f-2.0f*(q.x*q.x+q.y*q.y));
+        const float nd=dx*sy+dz*cy;
+        if(std::fabs(nd)>0.0001f) {
+            const float t=((left.x-right.position.x)*sy+
+                         (left.z-right.position.z)*cy)/nd;
+            if(t>0.025f && t<2.5f) {
+                const float hx=right.position.x+dx*t-left.x;
+                const float hy=right.position.y+dy*t-(left.y+0.23f);
+                const float hz=right.position.z+dz*t-left.z;
+                const float localX=cy*hx-sy*hz;
+                uiHit=std::fabs(localX)<0.205f && std::fabs(hy)<0.225f;
+            }
+        }
+    }
     carousel_.update(tracked[0]?thumbsticks[0].x:0.0f,
                      tracked[1]?thumbsticks[1].x:0.0f,
-                     tracked[1] && pressed[1]);
+                     uiHit && tracked[1] && pressed[1]);
+
+    // A trigger outside the panel paints individual voxels near the brush tip.
+    // One new voxel per 25 mm of motion, capped for mobile GPU budget.
+    if(tracked[1] && pressed[1] && !uiHit && carousel_.page!=4) {
+        const auto& pose=poses[1];
+        const auto& q=pose.orientation;
+        XrVector3f tip{
+            pose.position.x-0.085f*2.0f*(q.x*q.z+q.w*q.y),
+            pose.position.y-0.085f*2.0f*(q.y*q.z-q.w*q.x),
+            pose.position.z-0.085f*(1.0f-2.0f*(q.x*q.x+q.y*q.y))
+        };
+        const float dx=tip.x-lastPaint_.x,dy=tip.y-lastPaint_.y,dz=tip.z-lastPaint_.z;
+        if((!paintHasPrevious_ || dx*dx+dy*dy+dz*dz>0.000625f)
+           && paintedVoxels_.size()<4096) {
+            paintedVoxels_.push_back({tip,0.025f,carousel_.hue/16.0f,carousel_.shader});
+            lastPaint_=tip;paintHasPrevious_=true;
+        }
+        paintPressed_=true;
+    } else {
+        paintPressed_=false;
+        paintHasPrevious_=false;
+    }
 
 
     for (std::size_t hand = 0; hand < 2; ++hand) {
+        if(hand==1 && pressed[hand] && !uiHit) { heldArtwork_[hand]=-1; previousPress_[hand]=true; continue; }
         hoveredArtwork_[hand] = -1;
         if (!tracked[hand]) {
             if (!pressed[hand]) heldArtwork_[hand] = -1;
@@ -606,6 +657,17 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0, sizeof(constants), &constants);
         vkCmdDraw(commandBuffer_, vertices, 1, 0, 0);
+    }
+    // Native painted voxel batch: direct Vulkan rendering with per-voxel shader ID.
+    vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,voxelPipeline_);
+    for(const auto& voxel:paintedVoxels_) {
+        const Mat4 mvp=multiply(projView,modelMatrix(
+            voxel.position.x,voxel.position.y,voxel.size,voxel.position.z));
+        ProceduralPushConstants constants{mvp,{seconds,1.0f,voxel.hue,float(voxel.shader)}};
+        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            0,sizeof(constants),&constants);
+        vkCmdDraw(commandBuffer_,36,1,0,0);
     }
     // Minimal native carousel: left-hand anchored, upright and facing the viewer.
     // 5x7 glyphs are rendered as tiny cubes with the existing Vulkan pipeline.
@@ -770,6 +832,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     }
 
     if (pipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, pipeline_, nullptr); pipeline_ = VK_NULL_HANDLE; }
+    if (voxelPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, voxelPipeline_, nullptr); voxelPipeline_ = VK_NULL_HANDLE; }
     if (organicaPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, organicaPipeline_, nullptr); organicaPipeline_ = VK_NULL_HANDLE; }
     if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
