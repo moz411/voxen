@@ -111,3 +111,16 @@ This is an experimental migration branch, not a replacement for the working main
   disabled so foreground artwork and wall diagnostics remain visible.
 - Performance, Vulkan shader compilation, and projection/passthrough blending
   still require a Quest 3 headset test before merging into main.
+
+## Native 360 backdrop and translucent walls
+- BACKGROUNDS defaults to NONE, so passthrough remains visible unless the
+  artist explicitly selects an environment shader.
+- The background vertex shader reconstructs world-space rays per eye using
+  headset orientation and asymmetric OpenXR field-of-view tangent bounds.
+  Procedural backgrounds are now direction-locked (360) rather than flat UVs.
+- Scene WALL_FACE geometry uses a dedicated Vulkan blend pipeline with 38%
+  opacity, no depth writes. The chosen SHADERS preset is used for wall previews.
+- This is **whole-wall preview**, not localized wall painting: no ray-to-wall
+  hit test or per-surface UV masks yet.
+- GPU instancing, Scene API runtime validation, and actual Quest build remain
+  outstanding; no performance claim or runtime verification is implied.
