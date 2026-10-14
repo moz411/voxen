@@ -65,7 +65,6 @@ void XrSession::initialize(
     checkXr(xrCreateReferenceSpace(session_, &spaceInfo, &localSpace_), "xrCreateReferenceSpace(LOCAL)");
     initializeActions();
     sceneScanner_.initialize(instance_,session_);
-    sceneScanner_.start();
     if (enablePassthrough_) {
         initializePassthrough();
 #ifdef __ANDROID__
@@ -271,6 +270,13 @@ void XrSession::handleSessionStateChanged(const XrEventDataSessionStateChanged& 
         beginInfo.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
         checkXr(xrBeginSession(session_, &beginInfo), "xrBeginSession");
         running_ = true;
+        if (!sceneScanner_.start()) {
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_INFO, "Voxen", "Native Scene query unavailable or could not start");
+#else
+            std::printf("[Voxen Scene] query unavailable or could not start\\n");
+#endif
+        }
         if (passthrough_ != XR_NULL_HANDLE) {
             checkXr(startPassthrough_(passthrough_), "xrPassthroughStartFB");
 #ifdef __ANDROID__
