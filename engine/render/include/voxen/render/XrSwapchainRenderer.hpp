@@ -69,6 +69,7 @@ private:
     void createSwapchains(XrInstance instance, XrSystemId systemId, ::XrSession session);
     void createPipeline();
     void createFramebuffers();
+    void createVoxelInstanceBuffer();
     void renderImage(EyeSwapchain& eye, uint32_t imageIndex, const XrView& view);
 
     ::XrSession session_ = XR_NULL_HANDLE;
@@ -85,6 +86,10 @@ private:
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipeline voxelPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxelInstancedPipeline_ = VK_NULL_HANDLE;
+    VkBuffer voxelInstanceBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory voxelInstanceMemory_ = VK_NULL_HANDLE;
+    void* voxelInstanceMapped_ = nullptr;
     VkPipeline backgroundPipeline_ = VK_NULL_HANDLE;
     VkPipeline wallPipeline_ = VK_NULL_HANDLE;
     VkPipeline organicaPipeline_ = VK_NULL_HANDLE;
