@@ -4,14 +4,17 @@
 #include <cmath>
 
 namespace voxen::ui {
-inline constexpr std::array<const char*,7> pages = {
-    "COLORS","SHAPES","ALGORITHMS","SHADERS","PARAMS","ANIMATIONS","SAVE / LOAD"
+inline constexpr std::array<const char*,8> pages = {
+    "COLORS","SHAPES","ALGORITHMS","SHADERS","BACKGROUNDS","PARAMS","ANIMATIONS","SAVE / LOAD"
 };
 inline constexpr std::array<const char*,8> shapes = {
     "CUBE","SPHERE","TETRA","OCTAHEDRON","CROSS","STAR","CYLINDER","DIAMOND"
 };
 inline constexpr std::array<const char*,9> shaders = {
     "MATTE","NEON","PLASMA","HOLO","LAVA","ICE","RASENGAN","PARTICLES","NOISE"
+};
+inline constexpr std::array<const char*,10> backgrounds = {
+    "NONE","MATTE","NEON","PLASMA","HOLO","LAVA","ICE","RASENGAN","PARTICLES","NOISE"
 };
 inline constexpr std::array<const char*,5> algorithms = {
     "LORENZ","ROSSLER","MANDELBROT","JULIA","FIBONACCI"
@@ -21,6 +24,7 @@ struct Carousel {
     int selection = 0;
     int shape = 0;
     int shader = 0;
+    int background = 0; // NONE: preserve passthrough by default
     int algorithm = 0;
     int hue = 0;
     bool aim = false;
@@ -30,7 +34,7 @@ struct Carousel {
     void update(float leftStick, float rightStick, bool trigger) {
         if (std::fabs(leftStick) < 0.35f) leftLatched = false;
         if (!leftLatched && std::fabs(leftStick) > 0.7f) {
-            page=(page+(leftStick>0?1:6))%7;
+            page=(page+(leftStick>0?1:7))%8;
             selection=0;
             leftLatched=true;
         }
@@ -46,7 +50,8 @@ struct Carousel {
                 case 1: shape=selection; break;
                 case 2: algorithm=selection; break;
                 case 3: shader=selection; break;
-                case 4: aim=!aim; break;
+                case 4: background=selection; break;
+                case 5: aim=!aim; break;
                 default: break; // other pages are placeholders until their controls are ported
             }
         }
@@ -58,6 +63,7 @@ struct Carousel {
             case 1: return (int)shapes.size();
             case 2: return (int)algorithms.size();
             case 3: return (int)shaders.size();
+            case 4: return (int)backgrounds.size();
             default: return 1;
         }
     }
@@ -66,7 +72,8 @@ struct Carousel {
             case 1: return shapes[selection];
             case 2: return algorithms[selection];
             case 3: return shaders[selection];
-            case 4: return aim?"AIM ON":"AIM OFF";
+            case 4: return backgrounds[selection];
+            case 5: return aim?"AIM ON":"AIM OFF";
             default: return pages[page];
         }
     }
