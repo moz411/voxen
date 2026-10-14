@@ -493,9 +493,61 @@ void XrSwapchainRenderer::updateControllerInteraction(
                      tracked[1]?thumbsticks[1].x:0.0f,
                      uiHit && tracked[1] && pressed[1]);
 
+    // Controller ray intersecting a localized Meta wall rectangle.
+    // Store stamps in tracked world space; they survive frame-to-frame.
+    bool wallHit=false;
+    if(tracked[1] && !uiHit) {
+        const auto& hand=poses[1];
+        const auto& q=hand.orientation;
+        const XrVector3f dir{
+            -2.0f*(q.x*q.z+q.w*q.y),
+            -2.0f*(q.y*q.z-q.w*q.x),
+            -(1.0f-2.0f*(q.x*q.x+q.y*q.y))};
+        float nearest=3.0f;
+        XrPosef nearestPose{};
+        for(const auto& wall:wallPreviews_) {
+            const auto& a=wall.pose.orientation;
+            const XrVector3f right{1-2*(a.y*a.y+a.z*a.z),2*(a.x*a.y+a.z*a.w),2*(a.x*a.z-a.y*a.w)};
+            const XrVector3f up{2*(a.x*a.y-a.z*a.w),1-2*(a.x*a.x+a.z*a.z),2*(a.y*a.z+a.x*a.w)};
+            const XrVector3f normal{2*(a.x*a.z+a.y*a.w),2*(a.y*a.z-a.x*a.w),1-2*(a.x*a.x+a.y*a.y)};
+            const float denom=dir.x*normal.x+dir.y*normal.y+dir.z*normal.z;
+            if(std::fabs(denom)<0.0001f)continue;
+            const auto& o=hand.position;
+            const float dist=((wall.pose.position.x-o.x)*normal.x+
+                              (wall.pose.position.y-o.y)*normal.y+
+                              (wall.pose.position.z-o.z)*normal.z)/denom;
+            if(dist<0.05f || dist>=nearest)continue;
+            XrVector3f hit{o.x+dir.x*dist,o.y+dir.y*dist,o.z+dir.z*dist};
+            const XrVector3f rel{hit.x-wall.pose.position.x,
+                                 hit.y-wall.pose.position.y,
+                                 hit.z-wall.pose.position.z};
+            const float u=rel.x*right.x+rel.y*right.y+rel.z*right.z;
+            const float v=rel.x*up.x+rel.y*up.y+rel.z*up.z;
+            const auto& rect=wall.bounds;
+            if(u<rect.offset.x || u>rect.offset.x+rect.extent.width ||
+               v<rect.offset.y || v>rect.offset.y+rect.extent.height)continue;
+            nearest=dist;
+            nearestPose=wall.pose;
+            nearestPose.position.x=hit.x+normal.x*.007f;
+            nearestPose.position.y=hit.y+normal.y*.007f;
+            nearestPose.position.z=hit.z+normal.z*.007f;
+            wallHit=true;
+        }
+        if(wallHit && pressed[1] && carousel_.page!=5) {
+            const auto& p=nearestPose.position;
+            const float dx=p.x-lastWallPoint_.x,dy=p.y-lastWallPoint_.y,dz=p.z-lastWallPoint_.z;
+            if((!wallStrokeActive_ || dx*dx+dy*dy+dz*dz>=0.0016f)
+                && wallStamps_.size()<2048) {
+                wallStamps_.push_back({nearestPose,.06f,carousel_.hue/16.0f,carousel_.shader});
+                lastWallPoint_=p;
+                wallStrokeActive_=true;
+            }
+        }
+    }
+    if(!tracked[1] || !pressed[1] || !wallHit)wallStrokeActive_=false;
     // A trigger outside the panel paints individual voxels near the brush tip.
     // One new voxel per 25 mm of motion, capped for mobile GPU budget.
-    if(tracked[1] && pressed[1] && !uiHit && carousel_.page!=5) {
+    if(tracked[1] && pressed[1] && !uiHit && !wallHit && carousel_.page!=5) {
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         XrVector3f tip{
@@ -699,6 +751,30 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         ProceduralPushConstants pc{mvp,{seconds,1.0f,carousel_.hue/16.0f,float(100+carousel_.shader)}};
         vkCmdPushConstants(commandBuffer_,pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            0,sizeof(pc),&pc);
+        vkCmdDraw(commandBuffer_,36,1,0,0);
+    }
+    // Localized wall brush marks. Geometry is aligned with each wall pose.
+    vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,wallPipeline_);
+    for(const auto& stamp:wallStamps_) {
+        const auto& q=stamp.pose.orientation;
+        const float x=q.x,y=q.y,z=q.z,w=q.w;
+        Mat4 m{};
+        m.m[0]=(1-2*(y*y+z*z))*stamp.radius*2;
+        m.m[1]=(2*(x*y+z*w))*stamp.radius*2;
+        m.m[2]=(2*(x*z-y*w))*stamp.radius*2;
+        m.m[4]=(2*(x*y-z*w))*stamp.radius*2;
+        m.m[5]=(1-2*(x*x+z*z))*stamp.radius*2;
+        m.m[6]=(2*(y*z+x*w))*stamp.radius*2;
+        m.m[8]=(2*(x*z+y*w))*.002f;
+        m.m[9]=(2*(y*z-x*w))*.002f;
+        m.m[10]=(1-2*(x*x+y*y))*.002f;
+        m.m[12]=stamp.pose.position.x;m.m[13]=stamp.pose.position.y;
+        m.m[14]=stamp.pose.position.z;m.m[15]=1;
+        ProceduralPushConstants pc{multiply(projView,m),
+            {seconds,1.0f,stamp.hue,float(100+stamp.shader)}};
+        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
             0,sizeof(pc),&pc);
         vkCmdDraw(commandBuffer_,36,1,0,0);
     }
