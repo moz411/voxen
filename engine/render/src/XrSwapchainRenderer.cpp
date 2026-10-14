@@ -15,6 +15,8 @@
 #include "cubeVert.spv.hpp"
 #include "proceduralFrag.spv.hpp"
 #include "voxelFrag.spv.hpp"
+#include "voxelInstancedVert.spv.hpp"
+#include "voxelInstancedFrag.spv.hpp"
 #include "backgroundVert.spv.hpp"
 #include "organicaVert.spv.hpp"
 #include "fractalFrag.spv.hpp"
@@ -77,6 +79,28 @@ void XrSwapchainRenderer::initialize(
     createSwapchains(instance, systemId, session);
     createPipeline();
     createFramebuffers();
+    createVoxelInstanceBuffer();
+}
+
+void XrSwapchainRenderer::createVoxelInstanceBuffer() {
+    VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bi.size=4096u*32u;bi.usage=VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bi.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
+    checkVk(vkCreateBuffer(device_,&bi,nullptr,&voxelInstanceBuffer_),"vkCreateBuffer(voxel instances)");
+    VkMemoryRequirements req{};vkGetBufferMemoryRequirements(device_,voxelInstanceBuffer_,&req);
+    VkPhysicalDeviceMemoryProperties props{};
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice_,&props);
+    uint32_t type=UINT32_MAX;
+    for(uint32_t i=0;i<props.memoryTypeCount;++i)
+        if((req.memoryTypeBits&(1u<<i)) &&
+           (props.memoryTypes[i].propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) ==
+             (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)){type=i;break;}
+    if(type==UINT32_MAX)throw std::runtime_error("No coherent host memory for voxels");
+    VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    ai.allocationSize=req.size;ai.memoryTypeIndex=type;
+    checkVk(vkAllocateMemory(device_,&ai,nullptr,&voxelInstanceMemory_),"vkAllocateMemory(voxel instances)");
+    checkVk(vkBindBufferMemory(device_,voxelInstanceBuffer_,voxelInstanceMemory_,0),"vkBindBufferMemory(voxel instances)");
+    checkVk(vkMapMemory(device_,voxelInstanceMemory_,0,bi.size,0,&voxelInstanceMapped_),"vkMapMemory(voxel instances)");
 }
 
 void XrSwapchainRenderer::createCommandResources() {
@@ -331,6 +355,15 @@ void XrSwapchainRenderer::createPipeline() {
         stages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
         stages[1].stage=VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module=fs; stages[1].pName="main";
         VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+        VkVertexInputBindingDescription instBinding{0,32,VK_VERTEX_INPUT_RATE_INSTANCE};
+        VkVertexInputAttributeDescription instAttrs[2]{
+            {0,0,VK_FORMAT_R32G32B32A32_SFLOAT,0},
+            {1,0,VK_FORMAT_R32G32B32A32_SFLOAT,16}
+        };
+        if(&out==&voxelInstancedPipeline_) {
+            vi.vertexBindingDescriptionCount=1;vi.pVertexBindingDescriptions=&instBinding;
+            vi.vertexAttributeDescriptionCount=2;vi.pVertexAttributeDescriptions=instAttrs;
+        }
         VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
         ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
@@ -370,6 +403,7 @@ void XrSwapchainRenderer::createPipeline() {
     };
     buildPipeline(cubeVert, cubeVertSize, proceduralFrag, proceduralFragSize, pipeline_);
     buildPipeline(cubeVert, cubeVertSize, voxelFrag, voxelFragSize, voxelPipeline_);
+    buildPipeline(voxelInstancedVert, voxelInstancedVertSize, voxelInstancedFrag, voxelInstancedFragSize, voxelInstancedPipeline_);
     buildPipeline(cubeVert, cubeVertSize, voxelFrag, voxelFragSize, wallPipeline_);
     buildPipeline(backgroundVert, backgroundVertSize, voxelFrag, voxelFragSize, backgroundPipeline_);
     buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
@@ -801,16 +835,22 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             0,sizeof(backgroundPc),&backgroundPc);
         vkCmdDraw(commandBuffer_,3,1,0,0);
     }
-    // Native painted voxel batch: direct Vulkan rendering with per-voxel shader ID.
-    vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,voxelPipeline_);
-    for(const auto& voxel:paintedVoxels_) {
-        const Mat4 mvp=multiply(projView,modelMatrix(
-            voxel.position.x,voxel.position.y,voxel.size,voxel.position.z));
-        ProceduralPushConstants constants{mvp,{seconds,1.0f,voxel.hue,float(voxel.shader)}};
+    // One instanced draw call for all painted voxels.
+    if(!paintedVoxels_.empty() && voxelInstanceMapped_) {
+        struct Record {float posSize[4];float style[4];};
+        auto* data=static_cast<Record*>(voxelInstanceMapped_);
+        for(size_t i=0;i<paintedVoxels_.size();++i) {
+            const auto& v=paintedVoxels_[i];
+            data[i]={{v.position.x,v.position.y,v.position.z,v.size},
+                     {v.hue,float(v.shader),0,0}};
+        }
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,voxelInstancedPipeline_);
+        VkDeviceSize offset=0;
+        vkCmdBindVertexBuffers(commandBuffer_,0,1,&voxelInstanceBuffer_,&offset);
+        ProceduralPushConstants pc{projView,{seconds,1.0f,0,0}};
         vkCmdPushConstants(commandBuffer_,pipelineLayout_,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            0,sizeof(constants),&constants);
-        vkCmdDraw(commandBuffer_,36,1,0,0);
+            VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+        vkCmdDraw(commandBuffer_,36,static_cast<uint32_t>(paintedVoxels_.size()),0,0);
     }
     // Minimal native carousel: left-hand anchored, upright and facing the viewer.
     // 5x7 glyphs are rendered as tiny cubes with the existing Vulkan pipeline.
@@ -978,6 +1018,10 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (pipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, pipeline_, nullptr); pipeline_ = VK_NULL_HANDLE; }
     if (wallPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, wallPipeline_, nullptr); wallPipeline_ = VK_NULL_HANDLE; }
     if (backgroundPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, backgroundPipeline_, nullptr); backgroundPipeline_ = VK_NULL_HANDLE; }
+    if (voxelInstancedPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,voxelInstancedPipeline_,nullptr); voxelInstancedPipeline_=VK_NULL_HANDLE; }
+    if(voxelInstanceMapped_) { vkUnmapMemory(device_,voxelInstanceMemory_);voxelInstanceMapped_=nullptr; }
+    if(voxelInstanceBuffer_) { vkDestroyBuffer(device_,voxelInstanceBuffer_,nullptr);voxelInstanceBuffer_=VK_NULL_HANDLE; }
+    if(voxelInstanceMemory_) { vkFreeMemory(device_,voxelInstanceMemory_,nullptr);voxelInstanceMemory_=VK_NULL_HANDLE; }
     if (voxelPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, voxelPipeline_, nullptr); voxelPipeline_ = VK_NULL_HANDLE; }
     if (organicaPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, organicaPipeline_, nullptr); organicaPipeline_ = VK_NULL_HANDLE; }
     if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
