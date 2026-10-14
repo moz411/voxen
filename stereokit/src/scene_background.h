@@ -74,13 +74,13 @@ public:
     }
 
     void render(sk::mesh_t mesh, const std::array<sk::material_t, 32>& materials) {
+        if (supported && !pending_.empty()) process_pending();
         if (preset < 0 || !ready || !mesh || preset >= static_cast<int>(materials.size())) return;
         sk::material_t mat=materials[preset];
         if (!mat) return;
         const XrSpace base=reinterpret_cast<XrSpace>(sk::backend_openxr_get_space());
         const XrTime time=static_cast<XrTime>(sk::backend_openxr_get_time());
         if (base==XR_NULL_HANDLE || time==0) return;
-        process_pending();
         // Scene planes live in the same tracking reference space as the rest of StereoKit.
         for (const Plane& p : planes_) {
             if (!(p.category & mask)) continue;
