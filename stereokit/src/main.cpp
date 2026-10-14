@@ -3,6 +3,7 @@
 #include <openxr/openxr.h>
 #include "voxen_voxel.hlsl.h"
 #include "voxel_shapes.h"
+#include "scene_manager.h"
 #include "shader_registry.h"
 #include "artwork.h"
 #include <cstdio>
@@ -58,6 +59,7 @@ static float julia_real=-0.745f, julia_imag=0.186f;
 static int fractal_iterations=64;
 static float rossler_a=0.2f, rossler_b=0.2f, rossler_c=5.7f;
 static float fibonacci_turns=5.0f, fibonacci_spacing=1.0f;
+static voxen_scene::SceneManager scene_manager;
 static shader_t voxel_shader = nullptr;
 static material_t gpu_materials[voxen_effects::count] = {};
 static uint32_t brush_step = 0;
@@ -1171,8 +1173,12 @@ int voxen_stereokit_main() {
     app_settings.blend_preference = display_blend_any_transparent;
     // Must happen before sk_init, which creates StereoKit's OpenXR instance.
     backend_openxr_ext_request(XR_FB_PASSTHROUGH_EXTENSION_NAME);
+    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME);
+    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
+    backend_openxr_ext_request(XR_FB_SCENE_EXTENSION_NAME);
     if (!sk_init(app_settings)) return 1;
     edge_passthrough.initialize();
+    scene_manager.initialize();
     cube = mesh_find(default_id_mesh_cube);
     shape_meshes = voxen_shapes::create(cube);
     material = material_copy(material_find(default_id_material));
