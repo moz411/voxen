@@ -64,7 +64,7 @@ if(VOXEN_USE_STEREOKIT)
         target_link_libraries(voxen PRIVATE StereoKitC ${VOXEN_OPENXR_HEADERS_TARGET} android log)
         skshaderc_compile_headers(voxen
             ${CMAKE_CURRENT_BINARY_DIR}/voxen_shaders/
-            "-O3 -f -e -t e -i ${stereokitc_SOURCE_DIR}/tools/include"
+            "-O3 -f -e -t e -i ${stereokitc_SOURCE_DIR}/tools/include -i ${CMAKE_CURRENT_SOURCE_DIR}/stereokit/shaders"
             stereokit/shaders/voxen_voxel.hlsl)
         target_include_directories(voxen PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/voxen_shaders/)
     else()
@@ -72,7 +72,7 @@ if(VOXEN_USE_STEREOKIT)
         target_link_libraries(voxen_stereokit PRIVATE StereoKitC ${VOXEN_OPENXR_HEADERS_TARGET})
         skshaderc_compile_headers(voxen_stereokit
             ${CMAKE_CURRENT_BINARY_DIR}/voxen_shaders/
-            "-O3 -f -e -t e -i ${stereokitc_SOURCE_DIR}/tools/include"
+            "-O3 -f -e -t e -i ${stereokitc_SOURCE_DIR}/tools/include -i ${CMAKE_CURRENT_SOURCE_DIR}/stereokit/shaders"
             stereokit/shaders/voxen_voxel.hlsl)
         target_include_directories(voxen_stereokit PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/voxen_shaders/)
     endif()

@@ -3,6 +3,7 @@
 #include <openxr/openxr.h>
 #include "voxen_voxel.hlsl.h"
 #include "voxel_shapes.h"
+#include "shader_registry.h"
 #include "artwork.h"
 #include <cstdio>
 #include <fstream>
@@ -58,7 +59,7 @@ static int fractal_iterations=64;
 static float rossler_a=0.2f, rossler_b=0.2f, rossler_c=5.7f;
 static float fibonacci_turns=5.0f, fibonacci_spacing=1.0f;
 static shader_t voxel_shader = nullptr;
-static material_t gpu_materials[6] = {};
+static material_t gpu_materials[voxen_effects::count] = {};
 static uint32_t brush_step = 0;
 static bool volume_active = false;
 static bool save_confirmation = false;
@@ -437,7 +438,7 @@ static void load_scene() {
            !std::isfinite(p.x)||!std::isfinite(p.y)||!std::isfinite(p.z)||
            !std::isfinite(p.size)||p.size<=0 || p.size>2 ||
            p.shape<0||p.shape>=voxen_shapes::count||
-           p.shader<0||p.shader>=6||p.effect<0||p.effect>3) {
+           !voxen_effects::valid(p.shader)||p.effect<0||p.effect>3) {
             storage_status="CORRUPT FILE";return;
         }
         recovered.push_back({{p.x,p.y,p.z},p.size,{p.r,p.g,p.b,p.a},
@@ -825,8 +826,7 @@ static void draw_face(int page) {
         }
     } else if(page==3) {
         face_text(face,"GPU MATERIALS",0,0.153f);
-        static const char* names[]={"MATTE","NEON","PLASMA","HOLO","LAVA","ICE"};
-        for(int i=0;i<6;++i) {
+        for(int i=0;i<voxen_effects::count;++i) {
             const float x=(i%2==0?-0.041f:0.041f);
             const float y=0.090f-(i/2)*0.058f;
             const bool hover=panel_hover(page,x,y,0.074f,0.033f);
@@ -834,7 +834,7 @@ static void draw_face(int page) {
                 hover?color128{0.2f,0.8f,0.95f,0.95f}:
                 gpu_preset==i?color128{0.18f,0.62f,0.45f,0.9f}:
                 color128{0.10f,0.24f,0.35f,0.85f});
-            face_text(face,names[i],x,y);
+            face_text(face,voxen_effects::get(i).label,x,y);
             if(hover && menu_click) {
                 gpu_preset=i;
                 if(selection_mode) edit_selected_shader(i);
@@ -1194,7 +1194,7 @@ int voxen_stereokit_main() {
     voxel_shader=shader_create_mem((void*)sks_voxen_voxel_hlsl,
                                   sizeof(sks_voxen_voxel_hlsl));
     if(voxel_shader) {
-        for(int i=0;i<6;++i) {
+        for(int i=0;i<voxen_effects::count;++i) {
             gpu_materials[i]=material_create(voxel_shader);
             if(gpu_materials[i]) material_set_float(gpu_materials[i],"mode",(float)i);
         }
@@ -1219,7 +1219,7 @@ int voxen_stereokit_main() {
         else draw_face(menu_page);
 
         animation_time += time_stepf();
-        for(int i=0;i<6;++i)
+        for(int i=0;i<voxen_effects::count;++i)
             if(gpu_materials[i]) material_set_float(gpu_materials[i],
                                                      "time",animation_time);
         for(const PaintedVoxel& voxel:voxels) {
@@ -1231,7 +1231,7 @@ int voxen_stereokit_main() {
                     continue;
             }
             const float side=voxel.size*animated_scale(voxel);
-            material_t voxel_mat=gpu_materials[voxel.gpu_preset];
+            material_t voxel_mat=gpu_materials[voxen_effects::valid(voxel.gpu_preset)?voxel.gpu_preset:0];
             render_add_mesh(shape_meshes[std::clamp(voxel.shape,0,voxen_shapes::count-1)],
                 voxel_mat?voxel_mat:material,
                 matrix_ts(voxel.position,{side,side,side}),
