@@ -70,3 +70,16 @@ This is an experimental migration branch, not a replacement for the working main
 - Vulkan currently submits one draw call per voxel, requiring instancing later.
 - **Not compiled or validated on Quest 3:** inspect shader/compiler output and
   device logs before merging to main.
+
+## Native Scene API scanner checkpoint
+- `engine/xr/include/voxen/xr/SceneScanner.hpp` now requests locally
+  stored bounded 2D spatial entities after the OpenXR session starts.
+- `XrSession::pollEvents()` forwards scene query events to the scanner;
+  no competing event loop is introduced.
+- Scanner records `XrSpace` and local 2D rectangular bounds per entity.
+- Still missing: semantic WALL_FACE filtering, xrLocateSpace relative to
+  the reference space, quad generation, persistent anchoring and paint masks.
+- Still missing: GPU voxel instancing / draw call batching. Current native
+  voxel drawing is one draw call per voxel and must not be considered optimized.
+- Device build, runtime extension availability and scene capture permissions
+  require validation on the Quest 3. This branch is an experiment.
