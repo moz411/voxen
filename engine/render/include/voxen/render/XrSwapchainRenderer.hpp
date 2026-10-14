@@ -101,6 +101,9 @@ private:
     std::array<int, 2> hoveredArtwork_{{-1, -1}};
     std::array<XrPosef, 2> controllerPoses_{};
     std::array<bool, 2> controllerTracked_{};
+    bool carouselRayHit_ = false;
+    float carouselRayDistance_ = 0.0f;
+    int hoveredPage_ = -1;
     std::array<bool, 2> previousPress_{};
     std::array<std::array<float, 3>, 2> grabOffsets_{};
     std::array<float, 2> grabDistances_{};
