@@ -30,6 +30,7 @@ public:
     int anchors_found = 0;
     int rejected = 0;
     XrResult last_result = XR_SUCCESS;
+    bool querying_room_layout = true;
     const char* diagnostic = "NOT INITIALIZED";
     bool scene_extension = false;
     bool spatial_extension = false;
@@ -72,14 +73,21 @@ public:
         anchors_found=0;
         rejected=0;
         ready = false;
+        // Query persisted Meta room layouts in LOCAL storage first.
+        // A null filter is legal but has returned an empty result set on this Quest.
+        XrSpaceStorageLocationFilterInfoFB storage{XR_TYPE_SPACE_STORAGE_LOCATION_FILTER_INFO_FB};
+        storage.location=XR_SPACE_STORAGE_LOCATION_LOCAL_FB;
         XrSpaceComponentFilterInfoFB filter{XR_TYPE_SPACE_COMPONENT_FILTER_INFO_FB};
-        filter.componentType = XR_SPACE_COMPONENT_TYPE_BOUNDED_2D_FB;
+        filter.componentType = querying_room_layout
+            ? XR_SPACE_COMPONENT_TYPE_ROOM_LAYOUT_FB
+            : XR_SPACE_COMPONENT_TYPE_BOUNDED_2D_FB;
+        filter.next=&storage;
         XrSpaceQueryInfoFB query{XR_TYPE_SPACE_QUERY_INFO_FB};
         query.queryAction=XR_SPACE_QUERY_ACTION_LOAD_FB;
-        query.maxResultCount=128;
-        // Query all anchors: filtering BOUNDED_2D can yield no spaces on some Scene Model versions.
-        // Semantic classification happens after retrieval.
-        query.filter=nullptr;
+        query.maxResultCount=256;
+        query.filter=reinterpret_cast<const XrSpaceFilterInfoBaseHeaderFB*>(&filter);
+        VOXEN_SCENE_LOG("query filter=%s storage=LOCAL",
+            querying_room_layout?"ROOM_LAYOUT":"BOUNDED_2D");
         const XrResult result=query_(session_,
             reinterpret_cast<const XrSpaceQueryInfoBaseHeaderFB*>(&query), &request_);
         last_result=result;
@@ -166,6 +174,13 @@ private:
             self->loading=false;
             self->ready=XR_SUCCEEDED(e->result);
             self->diagnostic = self->ready ? "QUERY COMPLETE" : "QUERY ERROR";
+            if (self->ready && self->anchors_found==0 && self->querying_room_layout) {
+                self->querying_room_layout=false;
+                self->loading=false;
+                VOXEN_SCENE_LOG("No room layouts; retrying BOUNDED_2D from LOCAL storage");
+                self->refresh();
+                return;
+            }
             self->last_result=e->result;
             VOXEN_SCENE_LOG("[Voxen Scene] query complete: %zu planes, result=%d\n",
                 self->planes_.size(),e->result);
