@@ -64,6 +64,8 @@ void XrSession::initialize(
     spaceInfo.poseInReferenceSpace.orientation.w = 1.0F;
     checkXr(xrCreateReferenceSpace(session_, &spaceInfo, &localSpace_), "xrCreateReferenceSpace(LOCAL)");
     initializeActions();
+    sceneScanner_.initialize(instance_,session_);
+    sceneScanner_.start();
     if (enablePassthrough_) {
         initializePassthrough();
 #ifdef __ANDROID__
@@ -238,6 +240,7 @@ bool XrSession::pollEvents() {
         }
         checkXr(result, "xrPollEvent");
 
+        sceneScanner_.onEvent(event);
         switch (event.type) {
         case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED:
             handleSessionStateChanged(*reinterpret_cast<const XrEventDataSessionStateChanged*>(&event));
@@ -383,6 +386,7 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
 }
 
 void XrSession::shutdown() noexcept {
+    sceneScanner_.shutdown();
     destroyPassthrough();
     for (auto& space : aimSpaces_) {
         if (space != XR_NULL_HANDLE) xrDestroySpace(space);
