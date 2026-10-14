@@ -497,15 +497,15 @@ void XrSwapchainRenderer::updateControllerInteraction(
     const auto& artworks = scene_.artworks();
     controllerPoses_ = poses;
     controllerTracked_ = tracked;
-    // Right ray vs left-hand upright UI panel: consume trigger only on actual hit.
+    // Match the panel transform used for rendering. Hit-test actual option rows.
     bool uiHit=false;
+    int uiOption=-1, uiPage=-1;
     if(tracked[0] && tracked[1]) {
         const auto& left=poses[0].position;
         const auto& right=poses[1];
         const float yaw=std::atan2(right.position.x-left.x,
-                                  right.position.z-left.z);
-        const float sy=std::sin(yaw),cy=std::cos(yaw);
-        // Aim ray in OpenXR's negative local Z axis.
+                                   right.position.z-left.z);
+        const float sy=std::sin(yaw), cy=std::cos(yaw);
         const auto& q=right.orientation;
         const float dx=-2.0f*(q.x*q.z+q.w*q.y);
         const float dy=-2.0f*(q.y*q.z-q.w*q.x);
@@ -513,19 +513,36 @@ void XrSwapchainRenderer::updateControllerInteraction(
         const float nd=dx*sy+dz*cy;
         if(std::fabs(nd)>0.0001f) {
             const float t=((left.x-right.position.x)*sy+
-                         (left.z-right.position.z)*cy)/nd;
+                           (left.z-right.position.z)*cy)/nd;
             if(t>0.025f && t<2.5f) {
                 const float hx=right.position.x+dx*t-left.x;
-                const float hy=right.position.y+dy*t-(left.y+0.23f);
+                const float localY=right.position.y+dy*t-(left.y+0.23f);
                 const float hz=right.position.z+dz*t-left.z;
                 const float localX=cy*hx-sy*hz;
-                uiHit=std::fabs(localX)<0.205f && std::fabs(hy)<0.225f;
+                uiHit=std::fabs(localX)<=0.205f && std::fabs(localY)<=0.225f;
+                if(uiHit) {
+                    for(int i=0;i<carousel_.options() && i<16;++i) {
+                        const float x=-0.09f+(i%2)*0.19f;
+                        const float y=0.095f-(i/2)*0.043f;
+                        if(std::fabs(localX-x)<=0.089f && std::fabs(localY-y)<=0.019f) {
+                            uiOption=i; break;
+                        }
+                    }
+                    // The eight page indicators at the bottom are direct navigation targets.
+                    if(localY>=-0.211f && localY<=-0.172f) {
+                        for(int i=0;i<8;++i) {
+                            if(std::fabs(localX-(-0.15f+i*0.043f))<=0.019f) {
+                                uiPage=i; uiOption=-1; break;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
     carousel_.update(tracked[0]?thumbsticks[0].x:0.0f,
                      tracked[1]?thumbsticks[1].x:0.0f,
-                     uiHit && tracked[1] && pressed[1]);
+                     uiHit && tracked[1] && pressed[1],uiOption,uiPage);
 
     // Controller ray intersecting a localized Meta wall rectangle.
     // Store stamps in tracked world space; they survive frame-to-frame.
@@ -619,7 +636,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
 
         int nearest = -1;
         float bestDistance = 10.0F;
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < static_cast<int>(artworks.size()); ++i) {
             if (heldArtwork_[1-hand] == i) continue;
             const auto& c = artworks[i].transform.position;
             const float vx = c[0] - origin[0];
@@ -857,7 +874,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     // This is deliberately independent of StereoKit and any external UI runtime.
     if(controllerTracked_[0]) {
         const auto& hand=controllerPoses_[0].position;
-        const auto& head=xrView.pose.position;
+        const auto& head=controllerTracked_[1] ? controllerPoses_[1].position : xrView.pose.position;
         const float yaw=std::atan2(head.x-hand.x,head.z-hand.z);
         const float cy=std::cos(yaw),sy=std::sin(yaw);
         const float px=hand.x, py=hand.y+0.23f, pz=hand.z;
@@ -900,7 +917,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const int col=i%2,row=i/2;
             const float x=-0.09f+col*0.19f;
             const float y=0.095f-row*0.043f;
-            if(i==carousel_.selection)
+            if(i==carousel_.selection || i==carousel_.hovered)
                 panelCube(x,y,-0.001f,0.178f,0.035f,0.009f,false);
             const char* label=nullptr;
             if(carousel_.page==1) label=voxen::ui::shapes[i];
