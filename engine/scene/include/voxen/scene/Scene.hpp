@@ -2,6 +2,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace voxen::scene {
 
@@ -24,15 +25,10 @@ class Scene {
 public:
     static constexpr std::size_t capacity = 4;
 
-    Scene() : artworks_{{
-        {1, ArtworkKind::NeonCube, {{-1.05F, 0.0F, -1.5F}, 0.34F, 0.0F}, 1.0F},
-        {2, ArtworkKind::OrganicSphere, {{-0.35F, 0.0F, -1.5F}, 0.31F, 0.0F}, 1.0F},
-        {3, ArtworkKind::OrganicTorus, {{0.35F, 0.0F, -1.5F}, 0.31F, 0.0F}, 1.0F},
-        {4, ArtworkKind::Fractal, {{1.05F, 0.0F, -1.5F}, 0.45F, 0.0F}, 1.0F},
-    }} {}
+    Scene() = default; // Start in an empty MR workspace.
 
-    [[nodiscard]] const std::array<Artwork, capacity>& artworks() const noexcept { return artworks_; }
-    [[nodiscard]] std::array<Artwork, capacity>& artworks() noexcept { return artworks_; }
+    [[nodiscard]] const std::vector<Artwork>& artworks() const noexcept { return artworks_; }
+    [[nodiscard]] std::vector<Artwork>& artworks() noexcept { return artworks_; }
     [[nodiscard]] const Artwork* find(std::uint32_t id) const noexcept {
         for (const auto& item : artworks_) if (item.id == id) return &item;
         return nullptr;
@@ -43,7 +39,7 @@ public:
     }
 
 private:
-    std::array<Artwork, capacity> artworks_;
+    std::vector<Artwork> artworks_;
 };
 
 } // namespace voxen::scene
