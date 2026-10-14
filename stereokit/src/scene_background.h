@@ -6,6 +6,12 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#ifdef __ANDROID__
+#include <android/log.h>
+#define VOXEN_SCENE_LOG(...) __android_log_print(ANDROID_LOG_INFO, "VoxenScene", __VA_ARGS__)
+#else
+#define VOXEN_SCENE_LOG(...) std::printf(__VA_ARGS__)
+#endif
 #include <cstring>
 #include <string>
 #include <type_traits>
@@ -29,7 +35,7 @@ public:
         if (!sk::backend_openxr_ext_enabled(XR_FB_SCENE_EXTENSION_NAME) ||
             !sk::backend_openxr_ext_enabled(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME) ||
             !sk::backend_openxr_ext_enabled(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME)) {
-            std::printf("[Voxen Scene] Scene extensions unavailable\n");
+            VOXEN_SCENE_LOG("[Voxen Scene] Scene extensions unavailable\n");
             return;
         }
         session_ = reinterpret_cast<XrSession>(sk::backend_openxr_get_session());
@@ -68,9 +74,9 @@ public:
             reinterpret_cast<const XrSpaceQueryInfoBaseHeaderFB*>(&query), &request_);
         last_result=result;
         loading = XR_SUCCEEDED(result);
-        std::printf("[Voxen Scene] query start result=%d request=%llu\\n",
+        VOXEN_SCENE_LOG("[Voxen Scene] query start result=%d request=%llu\\n",
             result,static_cast<unsigned long long>(request_));
-        if (!loading) std::printf("[Voxen Scene] xrQuerySpacesFB failed: %d\n", result);
+        if (!loading) VOXEN_SCENE_LOG("[Voxen Scene] xrQuerySpacesFB failed: %d\n", result);
     }
 
     void render(sk::mesh_t mesh, const std::array<sk::material_t, 32>& materials) {
@@ -149,9 +155,9 @@ private:
             self->loading=false;
             self->ready=XR_SUCCEEDED(e->result);
             self->last_result=e->result;
-            std::printf("[Voxen Scene] query complete: %zu planes, result=%d\n",
+            VOXEN_SCENE_LOG("[Voxen Scene] query complete: %zu planes, result=%d\n",
                 self->planes_.size(),e->result);
-            std::printf("[Voxen Scene] anchors=%d rejected=%d\\n",self->anchors_found,self->rejected);
+            VOXEN_SCENE_LOG("[Voxen Scene] anchors=%d rejected=%d\\n",self->anchors_found,self->rejected);
         }
     }
 
@@ -163,7 +169,7 @@ private:
         out.results=results.data();
         if (XR_FAILED(results_(session_,request_,&out))) return;
         anchors_found+=static_cast<int>(out.resultCountOutput);
-        std::printf("[Voxen Scene] query batch=%u\\n",out.resultCountOutput);
+        VOXEN_SCENE_LOG("[Voxen Scene] query batch=%u\\n",out.resultCountOutput);
         for (uint32_t i=0; i<out.resultCountOutput; ++i)
             pending_.push_back(results[i].space);
     }
@@ -178,7 +184,7 @@ private:
             info.enabled=XR_TRUE;
             XrAsyncRequestIdFB id=0;
             const XrResult set_result=set_status_(space,&info,&id);
-            if(XR_FAILED(set_result)) std::printf("[Voxen Scene] enable component %d failed %d\\n",(int)type,set_result);
+            if(XR_FAILED(set_result)) VOXEN_SCENE_LOG("[Voxen Scene] enable component %d failed %d\\n",(int)type,set_result);
         }
         return false;
     }
@@ -213,7 +219,7 @@ private:
             else if(names.find("CEILING")!=std::string::npos) category=Ceiling;
             if(!category) { xrDestroySpace(space); ++rejected; continue; }
             planes_.push_back({space,rect,category});
-            std::printf("[Voxen Scene] plane %s %.2fx%.2f\\n",names.c_str(),rect.extent.width,rect.extent.height);
+            VOXEN_SCENE_LOG("[Voxen Scene] plane %s %.2fx%.2f\\n",names.c_str(),rect.extent.width,rect.extent.height);
         }
     }
 };
