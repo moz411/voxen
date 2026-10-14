@@ -449,6 +449,10 @@ void XrSwapchainRenderer::updateControllerInteraction(
     const auto& artworks = scene_.artworks();
     controllerPoses_ = poses;
     controllerTracked_ = tracked;
+    carousel_.update(tracked[0]?thumbsticks[0].x:0.0f,
+                     tracked[1]?thumbsticks[1].x:0.0f,
+                     tracked[1] && pressed[1]);
+
 
     for (std::size_t hand = 0; hand < 2; ++hand) {
         hoveredArtwork_[hand] = -1;
@@ -602,6 +606,71 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0, sizeof(constants), &constants);
         vkCmdDraw(commandBuffer_, vertices, 1, 0, 0);
+    }
+    // Minimal native carousel: left-hand anchored, upright and facing the viewer.
+    // 5x7 glyphs are rendered as tiny cubes with the existing Vulkan pipeline.
+    // This is deliberately independent of StereoKit and any external UI runtime.
+    if(controllerTracked_[0]) {
+        const auto& hand=controllerPoses_[0].position;
+        const auto& head=xrView.pose.position;
+        const float yaw=std::atan2(head.x-hand.x,head.z-hand.z);
+        const float cy=std::cos(yaw),sy=std::sin(yaw);
+        const float px=hand.x, py=hand.y+0.23f, pz=hand.z;
+        auto panelCube=[&](float x,float y,float z,float sx,float syy,float sz,bool luminous) {
+            Mat4 model{};
+            model.m[0]=cy*sx; model.m[2]=-sy*sx;
+            model.m[5]=syy;
+            model.m[8]=sy*sz; model.m[10]=cy*sz;
+            model.m[12]=px+cy*x+sy*z;
+            model.m[13]=py+y;
+            model.m[14]=pz-sy*x+cy*z;
+            model.m[15]=1.0f;
+            const Mat4 mvp=multiply(projView,model);
+            ProceduralPushConstants constants{mvp,{seconds,1.0f,1.0f,0.0f}};
+            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              luminous?laserPipeline_:pipeline_);
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,sizeof(constants),&constants);
+            vkCmdDraw(commandBuffer_,36,1,0,0);
+        };
+        auto text3d=[&](const char* label,float x,float y,float scale) {
+            float cursor=x;
+            for(const char* p=label;*p && cursor<x+0.36f;++p) {
+                const auto& glyph=voxen::ui::glyph(*p);
+                for(int row=0;row<7;++row)
+                    for(int bit=0;bit<5;++bit)
+                        if(glyph.rows[row] & (1u<<(4-bit)))
+                            panelCube(cursor+bit*scale,y-row*scale,0.016f,
+                                      scale*0.82f,scale*0.82f,0.002f,true);
+                cursor+=6*scale;
+            }
+        };
+        panelCube(0,0,-0.002f,0.41f,0.45f,0.008f,false);
+        text3d(voxen::ui::pages[carousel_.page],-0.18f,0.17f,0.004f);
+        // The active page contains the same categories as the StereoKit UI;
+        // unsupported native actions remain visibly listed but inert.
+        const int count=carousel_.options();
+        for(int i=0;i<count && i<16;++i) {
+            const int col=i%2,row=i/2;
+            const float x=-0.09f+col*0.19f;
+            const float y=0.095f-row*0.043f;
+            if(i==carousel_.selection)
+                panelCube(x,y,-0.001f,0.178f,0.035f,0.009f,false);
+            const char* label=nullptr;
+            if(carousel_.page==1) label=voxen::ui::shapes[i];
+            if(carousel_.page==2) label=voxen::ui::algorithms[i];
+            if(carousel_.page==3) label=voxen::ui::shaders[i];
+            if(label) text3d(label,x-0.083f,y+0.007f,0.0020f);
+            else if(carousel_.page==0)
+                panelCube(x,y,0.012f,0.14f,0.024f,0.003f,true);
+        }
+        if(carousel_.page>=4)
+            text3d(carousel_.selectedLabel(),-0.16f,0.065f,0.0035f);
+        // Page indicator and interaction reminder.
+        for(int i=0;i<7;++i)
+            panelCube(-0.13f+i*0.043f,-0.192f,0.015f,
+                i==carousel_.page?0.028f:0.012f,0.006f,0.003f,true);
     }
     // Draw the visible controller rays last; depth testing hides them behind artwork.
     vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, laserPipeline_);
