@@ -5,6 +5,7 @@
 #include "voxel_shapes.h"
 #include "shader_registry.h"
 #include "artwork.h"
+#include "scene_background.h"
 #include <cstdio>
 #include <fstream>
 #include <cstdint>
@@ -18,7 +19,7 @@ using namespace sk;
 sk_settings_t app_settings = {"Voxen StereoKit"};
 static pose_t palette = {{-0.25f, 0.0f, -0.55f}, quat_identity};
 static int menu_page = 0;
-static constexpr int page_count = 7;
+static constexpr int page_count = 8;
 static constexpr float menu_width = 0.17f;
 static constexpr float menu_height = 0.46f;
 static float carousel_angle = 0.0f;
@@ -60,6 +61,8 @@ static float rossler_a=0.2f, rossler_b=0.2f, rossler_c=5.7f;
 static float fibonacci_turns=5.0f, fibonacci_spacing=1.0f;
 static shader_t voxel_shader = nullptr;
 static material_t gpu_materials[voxen_effects::count] = {};
+static std::array<material_t,32> background_materials{};
+static voxen_scene::Background scene_background;
 static uint32_t brush_step = 0;
 static bool volume_active = false;
 static bool save_confirmation = false;
@@ -835,7 +838,7 @@ static void draw_face(int page) {
     face_rect(face,0,0,panel_width,panel_height,
         {0.012f,0.035f,0.025f,0.87f},0.003f);
     pixel_border(face);
-    static const char* titles[]={"COLORS","SHAPES","ALGORITHMS","SHADERS","PARAMS","ANIMATIONS","SAVE / LOAD"};
+    static const char* titles[]={"COLORS","SHAPES","ALGORITHMS","SHADERS","PARAMS","ANIMATIONS","SAVE / LOAD","BACKGROUNDS"};
     pixel_title(face,titles[page],0.188f);
     if(page==0) {
         for(int i=0;i<16;++i) {
@@ -989,6 +992,34 @@ static void draw_face(int page) {
         for(int i=0;i<4;++i)
             if(face_button(face,page,effects[i],0.085f-i*0.065f,effect_mode==i))
                 effect_mode=i;
+    } else if(page==7) {
+        face_text(face,"META SCENE PLANES",0,0.152f);
+        if (!scene_background.supported) {
+            face_text(face,"SCENE UNAVAILABLE",0,0.105f);
+        } else {
+            char status[48];
+            std::snprintf(status,sizeof(status),"%s / %d PLANES",
+                scene_background.loading?"SCANNING":scene_background.ready?"READY":"NO SCENE",
+                scene_background.plane_count());
+            face_text(face,status,0,0.111f);
+            if(face_button(face,page,"SCAN AGAIN",0.071f)) scene_background.refresh();
+            if(face_button(face,page,scene_background.preset<0?"SHADER: NONE":"SHADER: ACTIVE",0.034f))
+                scene_background.preset = scene_background.preset<0?0:-1;
+            if(face_button(face,page,"PREVIOUS SHADER",-0.004f))
+                scene_background.preset = scene_background.preset<0?0:
+                    (scene_background.preset+voxen_effects::count-1)%voxen_effects::count;
+            if(face_button(face,page,"NEXT SHADER",-0.042f))
+                scene_background.preset = scene_background.preset<0?0:
+                    (scene_background.preset+1)%voxen_effects::count;
+            if(scene_background.preset>=0)
+                face_text(face,voxen_effects::get(scene_background.preset).label,0,-0.074f);
+            if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Walls)?"WALLS: ON":"WALLS: OFF",-0.111f))
+                scene_background.mask ^= voxen_scene::Background::Walls;
+            if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Floor)?"FLOOR: ON":"FLOOR: OFF",-0.146f))
+                scene_background.mask ^= voxen_scene::Background::Floor;
+            if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Ceiling)?"CEILING: ON":"CEILING: OFF",-0.181f))
+                scene_background.mask ^= voxen_scene::Background::Ceiling;
+        }
     } else if(page==6) {
         face_text(face,"SCENE SLOT 1",0,0.125f);
         face_text(face,storage_status,0,0.073f);
@@ -1234,8 +1265,12 @@ int voxen_stereokit_main() {
     app_settings.blend_preference = display_blend_any_transparent;
     // Must happen before sk_init, which creates StereoKit's OpenXR instance.
     backend_openxr_ext_request(XR_FB_PASSTHROUGH_EXTENSION_NAME);
+    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME);
+    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
+    backend_openxr_ext_request(XR_FB_SCENE_EXTENSION_NAME);
     if (!sk_init(app_settings)) return 1;
     edge_passthrough.initialize();
+    scene_background.initialize();
     cube = mesh_find(default_id_mesh_cube);
     shape_meshes = voxen_shapes::create(cube);
     material = material_copy(material_find(default_id_material));
@@ -1262,6 +1297,16 @@ int voxen_stereokit_main() {
             if(gpu_materials[i]) material_set_float(gpu_materials[i],"mode",(float)i);
         }
     } else std::printf("[Voxen] GPU voxel shader unavailable; using default material\\n");
+    if(voxel_shader) {
+        for(int i=0;i<voxen_effects::count && i<(int)background_materials.size();++i) {
+            background_materials[i]=material_create(voxel_shader);
+            if(background_materials[i]) {
+                material_set_float(background_materials[i],"mode",(float)i);
+                material_set_transparency(background_materials[i],transparency_blend);
+                material_set_cull(background_materials[i],cull_none);
+            }
+        }
+    }
     voxels.reserve(max_voxels);
     carousel_mat = material_copy(material_find(default_id_material));
     material_set_transparency(carousel_mat, transparency_blend);
@@ -1285,6 +1330,9 @@ int voxen_stereokit_main() {
         for(int i=0;i<voxen_effects::count;++i)
             if(gpu_materials[i]) material_set_float(gpu_materials[i],
                                                      "time",animation_time);
+        for(int i=0;i<voxen_effects::count && i<(int)background_materials.size();++i)
+            if(background_materials[i]) material_set_float(background_materials[i],"time",animation_time);
+        scene_background.render(cube,background_materials);
         for(const PaintedVoxel& voxel:voxels) {
             if(voxel.reveal_duration>0.0f) {
                 const float elapsed=std::max(0.0f,animation_time-voxel.reveal_start);
@@ -1313,11 +1361,13 @@ int voxen_stereokit_main() {
         edge_passthrough.frame(edges_enabled, camera_opacity,
             color_hsv(edge_hue, 1.0f, 1.0f, 1.0f));
     }, [] {
+        scene_background.shutdown();
         edge_passthrough.shutdown();
         for(mesh_t mesh:shape_meshes) if(mesh) mesh_release(mesh);
         material_release(material);
         material_release(carousel_mat);
         for(material_t mat:gpu_materials) if(mat) material_release(mat);
+        for(material_t mat:background_materials) if(mat) material_release(mat);
         if(voxel_shader) shader_release(voxel_shader);
         if (click_sound) sound_release(click_sound);
         for (sound_t tone: tones) if(tone) sound_release(tone);
