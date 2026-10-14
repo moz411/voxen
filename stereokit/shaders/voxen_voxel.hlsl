@@ -83,7 +83,8 @@ float collection_hash(float2 seed) {
     seed=sin(seed*float2(12.45,56.43))*64.7+12.34;
     return frac(seed.x*seed.y);
 }
-// EmCYTuRzv2: animated smooth value noise; six octaves.
+// SHADERed EmCYTuRzv2: animated smooth value noise; six octaves.
+// Source algorithm preserved, adapted from fullscreen UV to voxel-local coordinates.
 float collection_noise(float2 uv) {
     float n=0.0, amp=1.0, den=0.0;
     [unroll] for(int i=0;i<6;i++) {
@@ -96,7 +97,7 @@ float collection_noise(float2 uv) {
     }
     return n/den;
 }
-// jHKMZig75S: layered moving colored particles, localized to each voxel face.
+// SHADERed jHKMZig75S: layered moving colored particles, localized to each voxel face.
 float3 collection_particles(float2 uv, float t) {
     float3 outc=float3(0.1,0.1,0.1);
     float2 p=uv*12.0;
@@ -139,7 +140,8 @@ float4 ps(psIn input) : SV_TARGET {
         float f=sin(p.x*16+sin(p.y*13+t*2.5))+sin(p.z*17-t*1.7);
         c=float3(1.0, 0.15+0.32*saturate(f+0.5), 0.015);
     } else if (mode > 7.5) { // animated noise from EmCYTuRzv2
-        c=collection_noise(p.xy*12.0-float2(t,0.0)).xxx;
+        float n=collection_noise(p.xy*12.0-float2(t,0.0));
+        c=float3(n,n,n);
     } else if (mode > 6.5) { // moving particles from jHKMZig75S
         c=collection_particles(p.xy,t);
     } else if (mode > 5.5) { // rasengan
