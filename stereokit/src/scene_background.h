@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace voxen_scene {
@@ -29,16 +30,17 @@ public:
             return;
         }
         session_ = reinterpret_cast<XrSession>(backend_openxr_get_session());
-        auto load=[&](const char* name, PFN_xrVoidFunction* target) {
-            *target = backend_openxr_get_function(name);
-            return *target != nullptr;
+        auto load=[&](const char* name, auto& target) {
+            using Proc=std::decay_t<decltype(target)>;
+            target=reinterpret_cast<Proc>(backend_openxr_get_function(name));
+            return target!=nullptr;
         };
         supported =
-            load("xrQuerySpacesFB",reinterpret_cast<PFN_xrVoidFunction*>(&query_)) &&
-            load("xrRetrieveSpaceQueryResultsFB",reinterpret_cast<PFN_xrVoidFunction*>(&results_)) &&
-            load("xrGetSpaceBoundingBox2DFB",reinterpret_cast<PFN_xrVoidFunction*>(&bounds_)) &&
-            load("xrGetSpaceSemanticLabelsFB",reinterpret_cast<PFN_xrVoidFunction*>(&labels_)) &&
-            load("xrSetSpaceComponentStatusFB",reinterpret_cast<PFN_xrVoidFunction*>(&set_status_));
+            load("xrQuerySpacesFB",query_) &&
+            load("xrRetrieveSpaceQueryResultsFB",results_) &&
+            load("xrGetSpaceBoundingBox2DFB",bounds_) &&
+            load("xrGetSpaceSemanticLabelsFB",labels_) &&
+            load("xrSetSpaceComponentStatusFB",set_status_);
         if (!supported) return;
         backend_openxr_add_callback_poll_event(&Background::event_callback, this);
         refresh();
@@ -161,7 +163,11 @@ private:
             XrSpaceComponentStatusSetInfoFB locatable{XR_TYPE_SPACE_COMPONENT_STATUS_SET_INFO_FB};
             locatable.componentType=XR_SPACE_COMPONENT_TYPE_LOCATABLE_FB;
             locatable.enabled=XR_TRUE;
-            set_status_(space,&locatable,nullptr);
+            XrAsyncRequestIdFB locate_request=0;
+            const XrResult locate_result=set_status_(space,&locatable,&locate_request);
+            if (XR_FAILED(locate_result)) {
+                std::printf("[Voxen Scene] locatable unavailable: %d\\n",locate_result);
+            }
             planes_.push_back({space,rect,category});
         }
     }
