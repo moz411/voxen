@@ -54,3 +54,19 @@ This is an experimental migration branch, not a replacement for the working main
   glyphs currently make many cube draw calls; replace with instancing / font
   atlas once visual positioning is verified in headset.
 - No Quest or Windows build/visual validation has been performed here.
+
+## Native painting prototype (October 2026)
+- Right controller trigger outside the carousel emits 25 mm cube voxels at a
+  brush point 8.5 cm along the controller's aim ray.
+- The right trigger is captured for UI or painting (not artwork grabbing).
+- 25 mm stroke spacing, 4096 voxel hard cap, no persistent storage yet.
+- The nine original material names map to a native GLSL/Vulkan fragment shader.
+  Rasengan, Particles and Noise are approximate native ports, not pixel-identical
+  copies of the StereoKit HLSL versions.
+- Carousel selections COLOR and SHADER affect *newly painted* voxels.
+- SHAPES and ALGORITHMS selections are visible in the UI but the native
+  generator and non-cubic voxel geometry are not yet migrated.
+- PARAMS, ANIMATIONS, SAVE / LOAD remain placeholders.
+- Vulkan currently submits one draw call per voxel, requiring instancing later.
+- **Not compiled or validated on Quest 3:** inspect shader/compiler output and
+  device logs before merging to main.
