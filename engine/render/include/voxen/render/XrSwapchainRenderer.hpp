@@ -102,6 +102,10 @@ private:
     std::array<std::array<float, 3>, 2> stickOffsets_{};
     std::chrono::steady_clock::time_point lastInteractionUpdate_{};
     std::vector<WallPreview> wallPreviews_{};
+    struct WallStamp { XrPosef pose; float radius; float hue; int shader; };
+    std::vector<WallStamp> wallStamps_{};
+    XrVector3f lastWallPoint_{};
+    bool wallStrokeActive_=false;
     voxen::ui::Carousel carousel_{};
     struct VoxelStroke { XrVector3f position; float size; float hue; int shader; };
     std::vector<VoxelStroke> paintedVoxels_{};
