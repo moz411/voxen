@@ -114,6 +114,32 @@ void XrContext::createInstance() {
 #endif
     if (passthroughEnabled_) extensions.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
 
+    // The native backend owns OpenXR directly. Enable Scene API components only
+    // when the Quest runtime advertises the complete required extension set.
+    const auto supports = [&](const char* name) {
+        return std::any_of(available.begin(), available.end(), [name](const auto& e) {
+            return std::strcmp(e.extensionName, name) == 0;
+        });
+    };
+    constexpr const char* sceneExtensions[] = {
+        "XR_FB_spatial_entity",
+        "XR_FB_spatial_entity_query",
+        "XR_FB_scene",
+        "XR_FB_spatial_entity_storage"
+    };
+    sceneEnabled_ = std::all_of(std::begin(sceneExtensions), std::end(sceneExtensions),
+                                supports);
+    if (sceneEnabled_) {
+        for (auto* extension : sceneExtensions) extensions.push_back(extension);
+    }
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO, "Voxen",
+        "Native Scene API extensions available: %s", sceneEnabled_ ? "yes" : "no");
+#else
+    std::printf("[Voxen] Native Scene API extensions available: %s\\n",
+        sceneEnabled_ ? "yes" : "no");
+#endif
+
     XrInstanceCreateInfo createInfo{XR_TYPE_INSTANCE_CREATE_INFO};
     std::strncpy(createInfo.applicationInfo.applicationName, "Voxen", XR_MAX_APPLICATION_NAME_SIZE - 1);
     createInfo.applicationInfo.applicationVersion = 1;
@@ -156,6 +182,7 @@ void XrContext::requireExtension(const char* extensionName) const {
 void XrContext::shutdown() noexcept {
     systemId_ = XR_NULL_SYSTEM_ID;
     passthroughEnabled_ = false;
+    sceneEnabled_ = false;
     if (instance_ != XR_NULL_HANDLE) {
         xrDestroyInstance(instance_);
         instance_ = XR_NULL_HANDLE;
