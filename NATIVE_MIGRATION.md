@@ -83,3 +83,18 @@ This is an experimental migration branch, not a replacement for the working main
   voxel drawing is one draw call per voxel and must not be considered optimized.
 - Device build, runtime extension availability and scene capture permissions
   require validation on the Quest 3. This branch is an experiment.
+
+## Wall diagnostic pass
+- `SceneScanner` reads semantic labels and retains only entities with the
+  exact comma-separated label `WALL_FACE` for wall rendering.
+- `xrLocateSpace` resolves the wall pose relative to the app's LOCAL space
+  at the OpenXR predicted display time (invalid poses are ignored).
+- The native Vulkan renderer draws the bounded 2D wall rectangle as a 5 mm
+  thin diagnostic box with animated shader preset NEON.
+- Diagnostics are opaque at present: blending and wall-aligned masks remain
+  pending. Scene component availability/enabling must be tested against the
+  installed Quest OpenXR runtime before the result can be considered reliable.
+- This is **not GPU instancing**. Both voxels and walls currently issue a draw
+  command for each object. Instancing requires an instance buffer, matching
+  vertex input and a separate batch pipeline.
+- The implementation has not been built on Android nor verified in headset.
