@@ -727,8 +727,7 @@ static pose_t face_panel_pose(int page) {
                                   quat_from_angles(0,180.0f,0));
     const vec3 outward=quat_mul_vec(rotation,{0,0,0.005f});
     // ALGORITHMS and PARAMS are a paired side-by-side workspace.
-    const bool pair=menu_page==2 || menu_page==4;
-    const float shift=pair?(page==2?-0.087f:page==4?0.087f:0.0f):0.0f;
+    const float shift=0.0f;
     const vec3 lateral=quat_mul_vec(rotation,{shift,0,0});
     return {{carousel_base.position.x+outward.x+lateral.x,
              carousel_base.position.y+outward.y+lateral.y,
@@ -838,7 +837,7 @@ static void draw_face(int page) {
     face_rect(face,0,0,panel_width,panel_height,
         {0.012f,0.035f,0.025f,0.87f},0.003f);
     pixel_border(face);
-    static const char* titles[]={"COLORS","SHAPES","ALGORITHMS","SHADERS","PARAMS","ANIMATIONS","SAVE / LOAD","BACKGROUNDS"};
+    static const char* titles[]={"COLORS","SHAPES","ALGORITHMS","TEXTURES","PARAMS","ANIMATIONS","SAVE / LOAD","BACKGROUNDS"};
     pixel_title(face,titles[page],0.188f);
     if(page==0) {
         for(int i=0;i<16;++i) {
@@ -998,10 +997,10 @@ static void draw_face(int page) {
             face_text(face,"SCENE UNAVAILABLE",0,0.105f);
         } else {
             char status[48];
-            std::snprintf(status,sizeof(status),"%s / %d PLANES",
-                scene_background.loading?"SCANNING":scene_background.ready?"READY":"NO SCENE",
-                scene_background.plane_count());
+            std::snprintf(status,sizeof(status),"%d ANCHORS / %d PLANES",
+                scene_background.anchors_found,scene_background.plane_count());
             face_text(face,status,0,0.111f);
+            if(scene_background.loading) face_text(face,"SCANNING...",0,0.089f);
             if(face_button(face,page,"SCAN AGAIN",0.071f)) scene_background.refresh();
             if(face_button(face,page,scene_background.preset<0?"SHADER: NONE":"SHADER: ACTIVE",0.034f))
                 scene_background.preset = scene_background.preset<0?0:-1;
@@ -1094,7 +1093,7 @@ static void update_menu_ray() {
     // Intersect each face in its own local coordinates. This uses exactly
     // the same transforms as each rendered StereoKit panel.
     for (int page=0; page<page_count; ++page) {
-        if(page!=menu_page && !((menu_page==2 || menu_page==4) && (page==2 || page==4))) continue;
+        if(page!=menu_page) continue;
         const pose_t face = face_panel_pose(page);
         const quat inverse = quat_inverse(face.orientation);
         const vec3 face_origin = face.position;
@@ -1324,8 +1323,7 @@ int voxen_stereokit_main() {
         update_left_buttons();
         update_menu_ray();
         // Never render overlapping inactive pages.
-        if(menu_page==2 || menu_page==4) { draw_face(2); draw_face(4); }
-        else draw_face(menu_page);
+        draw_face(menu_page);
 
         animation_time += time_stepf();
         for(int i=0;i<voxen_effects::count;++i)
