@@ -750,6 +750,68 @@ static void face_text(const pose_t& face,const char* label,float x,float y) {
     text_add_at(label,matrix_trs(panel_world(face,x,y,0.011f),
         text_rotation,{1,1,1}),panel_text_style);
 }
+namespace phosphor_pixel {
+struct Glyph {char ch; std::array<uint8_t,7> rows;};
+inline constexpr Glyph font[]={
+{'A',{14,17,17,31,17,17,17}}, {'B',{30,17,17,30,17,17,30}},
+{'C',{14,17,16,16,16,17,14}}, {'D',{30,17,17,17,17,17,30}},
+{'E',{31,16,16,30,16,16,31}}, {'F',{31,16,16,30,16,16,16}},
+{'G',{14,17,16,23,17,17,14}}, {'H',{17,17,17,31,17,17,17}},
+{'I',{14,4,4,4,4,4,14}}, {'J',{7,2,2,2,18,18,12}},
+{'K',{17,18,20,24,20,18,17}}, {'L',{16,16,16,16,16,16,31}},
+{'M',{17,27,21,21,17,17,17}}, {'N',{17,25,21,19,17,17,17}},
+{'O',{14,17,17,17,17,17,14}}, {'P',{30,17,17,30,16,16,16}},
+{'Q',{14,17,17,17,21,18,13}}, {'R',{30,17,17,30,20,18,17}},
+{'S',{15,16,16,14,1,1,30}}, {'T',{31,4,4,4,4,4,4}},
+{'U',{17,17,17,17,17,17,14}}, {'V',{17,17,17,17,17,10,4}},
+{'W',{17,17,17,21,21,21,10}}, {'X',{17,17,10,4,10,17,17}},
+{'Y',{17,17,10,4,4,4,4}}, {'Z',{31,1,2,4,8,16,31}},
+{'0',{14,17,19,21,25,17,14}}, {'1',{4,12,4,4,4,4,14}},
+{'2',{14,17,1,2,4,8,31}}, {'3',{30,1,1,14,1,1,30}},
+{'4',{2,6,10,18,31,2,2}}, {'5',{31,16,16,30,1,1,30}},
+{'6',{14,16,16,30,17,17,14}}, {'7',{31,1,2,4,8,8,8}},
+{'8',{14,17,17,14,17,17,14}}, {'9',{14,17,17,15,1,1,14}},
+{'/',{1,1,2,4,8,16,16}}, {'-',{0,0,0,31,0,0,0}},
+{' ',{0,0,0,0,0,0,0}}
+};
+
+inline const Glyph& glyph(char c) {
+    for (const auto& item : font) if (item.ch == c) return item;
+    return font[sizeof(font)/sizeof(font[0])-1];
+}
+}
+static void pixel_title(const pose_t& face,const char* label,float y) {
+    const float cell=0.00275f, advance=cell*6.0f;
+    size_t length=0; while(label[length]) ++length;
+    // Keep long titles contained within the original panel width.
+    const float width=std::min(0.151f,static_cast<float>(length)*advance);
+    const float scale=length>9?width/(static_cast<float>(length)*6.0f):cell;
+    const float start=-static_cast<float>(length)*scale*3.0f+scale*0.5f;
+    const color128 green={0.22f,1.0f,0.46f,0.98f};
+    for(size_t i=0;i<length;++i) {
+        const auto& glyph=phosphor_pixel::glyph(label[i]);
+        for(int row=0;row<7;++row)
+            for(int col=0;col<5;++col)
+                if(glyph.rows[row] & (1u<<(4-col)))
+                    face_rect(face,start+i*scale*6+col*scale,
+                              y+(3-row)*scale,scale*0.82f,scale*0.82f,green,0.013f);
+    }
+}
+static void pixel_border(const pose_t& face) {
+    const color128 rim={0.09f,0.84f,0.31f,0.9f};
+    const float x=panel_width*0.5f, y=panel_height*0.5f;
+    // Segmented border uses few meshes; no shader or XR runtime changes.
+    for(int i=0;i<19;++i) {
+        const float px=-x+(i+0.5f)*panel_width/19;
+        face_rect(face,px,y-0.002f,panel_width/19*0.79f,0.003f,rim,0.012f);
+        face_rect(face,px,-y+0.002f,panel_width/19*0.79f,0.003f,rim,0.012f);
+    }
+    for(int i=1;i<31;++i) {
+        const float py=-y+(i+0.5f)*panel_height/31;
+        face_rect(face,-x+0.002f,py,0.003f,panel_height/31*0.76f,rim,0.012f);
+        face_rect(face,x-0.002f,py,0.003f,panel_height/31*0.76f,rim,0.012f);
+    }
+}
 static bool panel_hover(int page,float x,float y,float w,float h) {
     return menu_aiming && hit_page==page &&
        std::fabs(menu_hit_x-x)<w*0.5f &&
@@ -759,9 +821,9 @@ static bool face_button(const pose_t& face,int page,const char* label,
                         float y,bool selected=false) {
     const bool hover=panel_hover(page,0,y,0.137f,0.026f);
     face_rect(face,0,y,0.137f,0.025f,
-        hover ? color128{0.18f,0.75f,0.9f,0.9f} :
-        selected ? color128{0.18f,0.6f,0.4f,0.8f} :
-        color128{0.12f,0.25f,0.35f,0.85f});
+        hover ? color128{0.12f,0.62f,0.27f,0.95f} :
+        selected ? color128{0.12f,0.42f,0.21f,0.92f} :
+        color128{0.025f,0.10f,0.055f,0.88f});
     face_text(face,label,0,y);
     if(hover && menu_click && click_sound)
         sound_play(click_sound,menu_hit,0.35f);
@@ -771,9 +833,10 @@ static bool face_button(const pose_t& face,int page,const char* label,
 static void draw_face(int page) {
     const pose_t face=face_panel_pose(page);
     face_rect(face,0,0,panel_width,panel_height,
-        {0.06f,0.13f,0.22f,0.80f},0.003f);
+        {0.012f,0.035f,0.025f,0.87f},0.003f);
+    pixel_border(face);
     static const char* titles[]={"COLORS","SHAPES","ALGORITHMS","SHADERS","PARAMS","ANIMATIONS","SAVE / LOAD"};
-    face_text(face,titles[page],0,0.188f);
+    pixel_title(face,titles[page],0.188f);
     if(page==0) {
         for(int i=0;i<16;++i) {
             const float x=-0.057f+(i%4)*0.038f;
@@ -793,9 +856,9 @@ static void draw_face(int page) {
             const float y=0.135f-row*0.051f;
             const bool hover=panel_hover(page,x,y,0.076f,0.038f);
             face_rect(face,x,y,0.075f,0.036f,
-                hover?color128{0.2f,0.8f,0.95f,0.95f}:
-                selected_shape==i?color128{0.18f,0.62f,0.45f,0.9f}:
-                color128{0.10f,0.24f,0.35f,0.85f});
+                hover?color128{0.12f,0.65f,0.26f,0.95f}:
+                selected_shape==i?color128{0.12f,0.45f,0.22f,0.9f}:
+                color128{0.025f,0.11f,0.06f,0.85f});
             face_text(face,voxen_shapes::labels[i],x,y);
             if(hover && menu_click) {
                 selected_shape=i;
@@ -831,9 +894,9 @@ static void draw_face(int page) {
             const float y=0.090f-(i/2)*0.058f;
             const bool hover=panel_hover(page,x,y,0.074f,0.033f);
             face_rect(face,x,y,0.074f,0.031f,
-                hover?color128{0.2f,0.8f,0.95f,0.95f}:
-                gpu_preset==i?color128{0.18f,0.62f,0.45f,0.9f}:
-                color128{0.10f,0.24f,0.35f,0.85f});
+                hover?color128{0.12f,0.65f,0.26f,0.95f}:
+                gpu_preset==i?color128{0.12f,0.45f,0.22f,0.9f}:
+                color128{0.025f,0.11f,0.06f,0.85f});
             face_text(face,voxen_effects::get(i).label,x,y);
             if(hover && menu_click) {
                 gpu_preset=i;
@@ -1209,7 +1272,7 @@ int voxen_stereokit_main() {
     input_hand_solid(handed_right, false);
     ui_enable_far_interact(false);
     panel_text_style=text_make_style(font_find(default_id_font),0.0085f,
-        {0.95f,0.98f,1,1});
+        {0.55f,1.0f,0.66f,1});
     sk_run([] {
         update_controller_palette();
         update_left_buttons();
