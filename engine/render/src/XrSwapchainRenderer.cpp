@@ -342,9 +342,18 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &backgroundPipeline_) ? VK_FALSE : VK_TRUE;
+        ds.depthWriteEnable = (&out != &laserPipeline_ && &out != &backgroundPipeline_ && &out != &wallPipeline_) ? VK_TRUE : VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
+        if (&out == &wallPipeline_) {
+            blend.blendEnable=VK_TRUE;
+            blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
+            blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.colorBlendOp=VK_BLEND_OP_ADD;
+            blend.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;
+            blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.alphaBlendOp=VK_BLEND_OP_ADD;
+        }
         VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
         cb.attachmentCount=1; cb.pAttachments=&blend;
         VkDynamicState dyns[]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR};
@@ -361,6 +370,7 @@ void XrSwapchainRenderer::createPipeline() {
     };
     buildPipeline(cubeVert, cubeVertSize, proceduralFrag, proceduralFragSize, pipeline_);
     buildPipeline(cubeVert, cubeVertSize, voxelFrag, voxelFragSize, voxelPipeline_);
+    buildPipeline(cubeVert, cubeVertSize, voxelFrag, voxelFragSize, wallPipeline_);
     buildPipeline(backgroundVert, backgroundVertSize, voxelFrag, voxelFragSize, backgroundPipeline_);
     buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
@@ -660,9 +670,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             0, sizeof(constants), &constants);
         vkCmdDraw(commandBuffer_, vertices, 1, 0, 0);
     }
-    // Scene API diagnostics: each wall is a thin box at its real 6DoF pose.
+    // Scene API wall preview: translucent and material-selectable.
     // The scene plane's local XY bounds are used directly, including offset.
-    vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,voxelPipeline_);
+    vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,wallPipeline_);
     for(const auto& wall:wallPreviews_) {
         const auto& q=wall.pose.orientation;
         const float x=q.x,y=q.y,z=q.z,w=q.w;
@@ -686,7 +696,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         model.m[14]=wall.pose.position.z+(2*(xz-yw))*ox+(2*(yz+xw))*oy;
         model.m[15]=1;
         const Mat4 mvp=multiply(projView,model);
-        ProceduralPushConstants pc{mvp,{seconds,1.0f,0.58f,1.0f}};
+        ProceduralPushConstants pc{mvp,{seconds,1.0f,carousel_.hue/16.0f,float(100+carousel_.shader)}};
         vkCmdPushConstants(commandBuffer_,pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0,sizeof(pc),&pc);
@@ -890,6 +900,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     }
 
     if (pipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, pipeline_, nullptr); pipeline_ = VK_NULL_HANDLE; }
+    if (wallPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, wallPipeline_, nullptr); wallPipeline_ = VK_NULL_HANDLE; }
     if (backgroundPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, backgroundPipeline_, nullptr); backgroundPipeline_ = VK_NULL_HANDLE; }
     if (voxelPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, voxelPipeline_, nullptr); voxelPipeline_ = VK_NULL_HANDLE; }
     if (organicaPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, organicaPipeline_, nullptr); organicaPipeline_ = VK_NULL_HANDLE; }
