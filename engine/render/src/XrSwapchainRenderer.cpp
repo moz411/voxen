@@ -15,6 +15,7 @@
 #include "cubeVert.spv.hpp"
 #include "proceduralFrag.spv.hpp"
 #include "voxelFrag.spv.hpp"
+#include "backgroundVert.spv.hpp"
 #include "organicaVert.spv.hpp"
 #include "fractalFrag.spv.hpp"
 #include "fractalVert.spv.hpp"
@@ -341,7 +342,7 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_) ? VK_FALSE : VK_TRUE;
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &backgroundPipeline_) ? VK_FALSE : VK_TRUE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
         VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
@@ -360,6 +361,7 @@ void XrSwapchainRenderer::createPipeline() {
     };
     buildPipeline(cubeVert, cubeVertSize, proceduralFrag, proceduralFragSize, pipeline_);
     buildPipeline(cubeVert, cubeVertSize, voxelFrag, voxelFragSize, voxelPipeline_);
+    buildPipeline(backgroundVert, backgroundVertSize, voxelFrag, voxelFragSize, backgroundPipeline_);
     buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
@@ -483,7 +485,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
 
     // A trigger outside the panel paints individual voxels near the brush tip.
     // One new voxel per 25 mm of motion, capped for mobile GPU budget.
-    if(tracked[1] && pressed[1] && !uiHit && carousel_.page!=4) {
+    if(tracked[1] && pressed[1] && !uiHit && carousel_.page!=5) {
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         XrVector3f tip{
@@ -690,6 +692,19 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             0,sizeof(pc),&pc);
         vkCmdDraw(commandBuffer_,36,1,0,0);
     }
+    // Optional fullscreen shader backdrop. NONE (default) draws nothing and
+    // preserves transparent compositing over Meta passthrough.
+    // This is a screen-space preview; immersive 360 background comes later.
+    if(carousel_.background>0) {
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,backgroundPipeline_);
+        Mat4 identity{};identity.m[0]=identity.m[5]=identity.m[10]=identity.m[15]=1.0f;
+        ProceduralPushConstants backgroundPc{identity,
+            {seconds,1.0f,carousel_.hue/16.0f,float(carousel_.background-1)}};
+        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            0,sizeof(backgroundPc),&backgroundPc);
+        vkCmdDraw(commandBuffer_,3,1,0,0);
+    }
     // Native painted voxel batch: direct Vulkan rendering with per-voxel shader ID.
     vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,voxelPipeline_);
     for(const auto& voxel:paintedVoxels_) {
@@ -755,15 +770,16 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             if(carousel_.page==1) label=voxen::ui::shapes[i];
             if(carousel_.page==2) label=voxen::ui::algorithms[i];
             if(carousel_.page==3) label=voxen::ui::shaders[i];
+            if(carousel_.page==4) label=voxen::ui::backgrounds[i];
             if(label) text3d(label,x-0.083f,y+0.007f,0.0020f);
             else if(carousel_.page==0)
                 panelCube(x,y,0.012f,0.14f,0.024f,0.003f,true);
         }
-        if(carousel_.page>=4)
+        if(carousel_.page>=5)
             text3d(carousel_.selectedLabel(),-0.16f,0.065f,0.0035f);
         // Page indicator and interaction reminder.
-        for(int i=0;i<7;++i)
-            panelCube(-0.13f+i*0.043f,-0.192f,0.015f,
+        for(int i=0;i<8;++i)
+            panelCube(-0.15f+i*0.043f,-0.192f,0.015f,
                 i==carousel_.page?0.028f:0.012f,0.006f,0.003f,true);
     }
     // Draw the visible controller rays last; depth testing hides them behind artwork.
@@ -864,6 +880,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     }
 
     if (pipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, pipeline_, nullptr); pipeline_ = VK_NULL_HANDLE; }
+    if (backgroundPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, backgroundPipeline_, nullptr); backgroundPipeline_ = VK_NULL_HANDLE; }
     if (voxelPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, voxelPipeline_, nullptr); voxelPipeline_ = VK_NULL_HANDLE; }
     if (organicaPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, organicaPipeline_, nullptr); organicaPipeline_ = VK_NULL_HANDLE; }
     if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
