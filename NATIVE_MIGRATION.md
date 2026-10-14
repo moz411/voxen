@@ -138,3 +138,16 @@ This is an experimental migration branch, not a replacement for the working main
   voxel with a separate `vkCmdDraw`. Implement an instance vertex buffer and
   per-instance transform/shader data before increasing object counts.
 - Neither the build nor runtime have been validated on a Quest headset.
+
+## GPU voxel instancing checkpoint
+- A dedicated GLSL vertex+fragment pipeline reads 32-byte records with
+  per-instance position, cube size, hue and shader ID.
+- The renderer now uses **one vkCmdDraw(..., instanceCount, ...)** for up to
+  4096 painted voxels, replacing one draw per voxel.
+- A persistently mapped HOST_VISIBLE | HOST_COHERENT vertex buffer backs these
+  records; data is updated before each eye render, following the existing
+  per-eye fence synchronization.
+- Wall stamps and XR carousel glyphs are still drawn individually.
+- The Meta passthrough layer, edgeColor configuration and native accentuation
+  remain unchanged. This is NOT a camera-texture Sobel implementation.
+- Build and Quest headset validation remain outstanding.
