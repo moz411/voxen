@@ -124,3 +124,17 @@ This is an experimental migration branch, not a replacement for the working main
   hit test or per-surface UV masks yet.
 - GPU instancing, Scene API runtime validation, and actual Quest build remain
   outstanding; no performance claim or runtime verification is implied.
+
+## Localized wall painting prototype
+- The right-hand controller ray is intersected with each located WALL_FACE plane,
+  then checked against its actual bounded-2D rectangle (offset and extents).
+- Holding the trigger on a wall paints independent wall-aligned procedural 12 cm
+  stamps, spaced at least 4 cm; it does not also place free-space voxels.
+- Brush stamps currently store world-space poses, hue and shader ID in memory;
+  a maximum of 2048 marks is enforced.
+- **Not yet a UV-mask system**: stamps are translucent wall-aligned thin cubes,
+  not texture masks, and will not survive app restart or room relocalization.
+- GPU instancing remains pending. Current implementation renders each mark and
+  voxel with a separate `vkCmdDraw`. Implement an instance vertex buffer and
+  per-instance transform/shader data before increasing object counts.
+- Neither the build nor runtime have been validated on a Quest headset.
