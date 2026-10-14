@@ -505,7 +505,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
 
 
     for (std::size_t hand = 0; hand < 2; ++hand) {
-        if(hand==1 && pressed[hand] && !uiHit) { heldArtwork_[hand]=-1; previousPress_[hand]=true; continue; }
+        if(hand==1 && pressed[hand]) { heldArtwork_[hand]=-1; hoveredArtwork_[hand]=-1; previousPress_[hand]=true; continue; }
         hoveredArtwork_[hand] = -1;
         if (!tracked[hand]) {
             if (!pressed[hand]) heldArtwork_[hand] = -1;
