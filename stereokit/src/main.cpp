@@ -994,13 +994,19 @@ static void draw_face(int page) {
     } else if(page==7) {
         face_text(face,"META SCENE PLANES",0,0.152f);
         if (!scene_background.supported) {
-            face_text(face,"SCENE UNAVAILABLE",0,0.105f);
+            face_text(face,scene_background.diagnostic,0,0.105f);
+            face_text(face,"CHECK QUEST SPACE SETUP",0,0.053f);
         } else {
             char status[48];
             std::snprintf(status,sizeof(status),"%d ANCHORS / %d PLANES",
                 scene_background.anchors_found,scene_background.plane_count());
             face_text(face,status,0,0.111f);
-            if(scene_background.loading) face_text(face,"SCANNING...",0,0.089f);
+            face_text(face,scene_background.diagnostic,0,0.089f);
+            if(scene_background.last_result != XR_SUCCESS) {
+                char error_code[40];
+                std::snprintf(error_code,sizeof(error_code),"XR ERROR %d",(int)scene_background.last_result);
+                face_text(face,error_code,0,-0.207f);
+            }
             if(face_button(face,page,"SCAN AGAIN",0.071f)) scene_background.refresh();
             if(face_button(face,page,scene_background.preset<0?"SHADER: NONE":"SHADER: ACTIVE",0.034f))
                 scene_background.preset = scene_background.preset<0?0:-1;
