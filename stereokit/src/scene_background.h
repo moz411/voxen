@@ -43,7 +43,8 @@ public:
             load("xrRetrieveSpaceQueryResultsFB",results_) &&
             load("xrGetSpaceBoundingBox2DFB",bounds_) &&
             load("xrGetSpaceSemanticLabelsFB",labels_) &&
-            load("xrSetSpaceComponentStatusFB",set_status_);
+            load("xrSetSpaceComponentStatusFB",set_status_) &&
+            load("xrGetSpaceComponentStatusFB",get_status_);
         if (!supported) return;
         sk::backend_openxr_add_callback_poll_event(&Background::event_callback, this);
         refresh();
@@ -79,6 +80,7 @@ public:
         const XrSpace base=reinterpret_cast<XrSpace>(sk::backend_openxr_get_space());
         const XrTime time=static_cast<XrTime>(sk::backend_openxr_get_time());
         if (base==XR_NULL_HANDLE || time==0) return;
+        process_pending();
         // Scene planes live in the same tracking reference space as the rest of StereoKit.
         for (const Plane& p : planes_) {
             if (!(p.category & mask)) continue;
@@ -124,10 +126,14 @@ private:
     PFN_xrGetSpaceBoundingBox2DFB bounds_=nullptr;
     PFN_xrGetSpaceSemanticLabelsFB labels_=nullptr;
     PFN_xrSetSpaceComponentStatusFB set_status_=nullptr;
+    PFN_xrGetSpaceComponentStatusFB get_status_=nullptr;
+    std::vector<XrSpace> pending_;
 
     void clear_planes() {
         for (const auto& p : planes_) if (p.space!=XR_NULL_HANDLE) xrDestroySpace(p.space);
         planes_.clear();
+        for(XrSpace p:pending_) if(p!=XR_NULL_HANDLE) xrDestroySpace(p);
+        pending_.clear();
     }
 
     static void event_callback(void* context, void* event) {
@@ -158,35 +164,56 @@ private:
         if (XR_FAILED(results_(session_,request_,&out))) return;
         anchors_found+=static_cast<int>(out.resultCountOutput);
         std::printf("[Voxen Scene] query batch=%u\\n",out.resultCountOutput);
-        for (uint32_t i=0; i<out.resultCountOutput; ++i) {
-            const XrSpace space=results[i].space;
+        for (uint32_t i=0; i<out.resultCountOutput; ++i)
+            pending_.push_back(results[i].space);
+    }
+    bool ensure_component(XrSpace space, XrSpaceComponentTypeFB type) {
+        XrSpaceComponentStatusFB status{XR_TYPE_SPACE_COMPONENT_STATUS_FB};
+        const XrResult result=get_status_(space,type,&status);
+        if (XR_FAILED(result)) return false;
+        if (status.enabled) return true;
+        if (!status.changePending) {
+            XrSpaceComponentStatusSetInfoFB info{XR_TYPE_SPACE_COMPONENT_STATUS_SET_INFO_FB};
+            info.componentType=type;
+            info.enabled=XR_TRUE;
+            XrAsyncRequestIdFB id=0;
+            const XrResult set_result=set_status_(space,&info,&id);
+            if(XR_FAILED(set_result)) std::printf("[Voxen Scene] enable component %d failed %d\\n",(int)type,set_result);
+        }
+        return false;
+    }
+    void process_pending() {
+        for(size_t i=0;i<pending_.size();) {
+            const XrSpace space=pending_[i];
+            // Anchor queries return handles, not necessarily enabled components.
+            XrSpaceComponentStatusFB bounded{XR_TYPE_SPACE_COMPONENT_STATUS_FB};
+            if(XR_FAILED(get_status_(space,XR_SPACE_COMPONENT_TYPE_BOUNDED_2D_FB,&bounded))) {
+                xrDestroySpace(space); pending_.erase(pending_.begin()+i); ++rejected; continue;
+            }
+            const bool b=ensure_component(space,XR_SPACE_COMPONENT_TYPE_BOUNDED_2D_FB);
+            const bool l=ensure_component(space,XR_SPACE_COMPONENT_TYPE_SEMANTIC_LABELS_FB);
+            const bool p=ensure_component(space,XR_SPACE_COMPONENT_TYPE_LOCATABLE_FB);
+            if(!b || !l || !p) { ++i; continue; }
+            pending_.erase(pending_.begin()+i);
             XrRect2Df rect{};
-            const XrResult bound_result=bounds_(session_,space,&rect);
-            if (XR_FAILED(bound_result)) { ++rejected; xrDestroySpace(space); continue; }
+            if(XR_FAILED(bounds_(session_,space,&rect))) { xrDestroySpace(space); ++rejected; continue; }
             XrSemanticLabelsFB semantic{XR_TYPE_SEMANTIC_LABELS_FB};
-            if (XR_FAILED(labels_(session_,space,&semantic)) || !semantic.bufferCountOutput) {
-                ++rejected; xrDestroySpace(space); continue;
+            if(XR_FAILED(labels_(session_,space,&semantic)) || !semantic.bufferCountOutput) {
+                xrDestroySpace(space); ++rejected; continue;
             }
             std::vector<char> label_buffer(semantic.bufferCountOutput+1,0);
             semantic.bufferCapacityInput=static_cast<uint32_t>(label_buffer.size());
             semantic.buffer=label_buffer.data();
-            if (XR_FAILED(labels_(session_,space,&semantic))) { ++rejected; xrDestroySpace(space); continue; }
+            if(XR_FAILED(labels_(session_,space,&semantic))) { xrDestroySpace(space); ++rejected; continue; }
             const std::string names(label_buffer.data());
             unsigned category=0;
-            if (names.find("WALL_FACE")!=std::string::npos &&
+            if(names.find("WALL_FACE")!=std::string::npos &&
                 names.find("INVISIBLE_WALL_FACE")==std::string::npos) category=Walls;
-            else if (names.find("FLOOR")!=std::string::npos) category=Floor;
-            else if (names.find("CEILING")!=std::string::npos) category=Ceiling;
-            if (!category) { ++rejected; xrDestroySpace(space); continue; }
-            XrSpaceComponentStatusSetInfoFB locatable{XR_TYPE_SPACE_COMPONENT_STATUS_SET_INFO_FB};
-            locatable.componentType=XR_SPACE_COMPONENT_TYPE_LOCATABLE_FB;
-            locatable.enabled=XR_TRUE;
-            XrAsyncRequestIdFB locate_request=0;
-            const XrResult locate_result=set_status_(space,&locatable,&locate_request);
-            if (XR_FAILED(locate_result)) {
-                std::printf("[Voxen Scene] locatable unavailable: %d\\n",locate_result);
-            }
+            else if(names.find("FLOOR")!=std::string::npos) category=Floor;
+            else if(names.find("CEILING")!=std::string::npos) category=Ceiling;
+            if(!category) { xrDestroySpace(space); ++rejected; continue; }
             planes_.push_back({space,rect,category});
+            std::printf("[Voxen Scene] plane %s %.2fx%.2f\\n",names.c_str(),rect.extent.width,rect.extent.height);
         }
     }
 };
