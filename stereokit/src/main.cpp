@@ -1267,6 +1267,7 @@ int voxen_stereokit_main() {
     backend_openxr_ext_request(XR_FB_PASSTHROUGH_EXTENSION_NAME);
     backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME);
     backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
+    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_STORAGE_EXTENSION_NAME);
     backend_openxr_ext_request(XR_FB_SCENE_EXTENSION_NAME);
     if (!sk_init(app_settings)) return 1;
     edge_passthrough.initialize();
