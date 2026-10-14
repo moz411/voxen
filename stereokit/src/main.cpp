@@ -1256,6 +1256,7 @@ int voxen_stereokit_main() {
         edge_passthrough.frame(edges_enabled, camera_opacity,
             color_hsv(edge_hue, 1.0f, 1.0f, 1.0f));
     }, [] {
+        scene_manager.shutdown();
         edge_passthrough.shutdown();
         for(mesh_t mesh:shape_meshes) if(mesh) mesh_release(mesh);
         material_release(material);
