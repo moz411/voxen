@@ -78,6 +78,49 @@ float3 rs_color(float2 uv,float t) {
     return saturate(col*(1.0+halo*0.65));
 }
 
+
+float collection_hash(float2 seed) {
+    seed=sin(seed*float2(12.45,56.43))*64.7+12.34;
+    return frac(seed.x*seed.y);
+}
+// EmCYTuRzv2: animated smooth value noise; six octaves.
+float collection_noise(float2 uv) {
+    float n=0.0, amp=1.0, den=0.0;
+    [unroll] for(int i=0;i<6;i++) {
+        float2 f=frac(uv), id=floor(uv);
+        float2 w=f*f*(3.0-2.0*f);
+        float bl=collection_hash(id), br=collection_hash(id+float2(1,0));
+        float tl=collection_hash(id+float2(0,1)), tr=collection_hash(id+float2(1,1));
+        n+=lerp(lerp(bl,br,w.x),lerp(tl,tr,w.x),w.y)*amp;
+        den+=amp; amp*=0.5; uv*=2.0;
+    }
+    return n/den;
+}
+// jHKMZig75S: layered moving colored particles, localized to each voxel face.
+float3 collection_particles(float2 uv, float t) {
+    float3 outc=float3(0.1,0.1,0.1);
+    float2 p=uv*12.0;
+    [loop] for(int j=0;j<10;j++) {
+        float fj=j/10.0;
+        float r1=(sin(fj*100.0+1.0)+1.0)*0.5;
+        float r2=(sin(fj*100.0+7.0)+1.0)*0.5;
+        float len=0.5+r2*0.7, maxSize=0.25+r2*0.4, minSize=0.15+r2*0.1;
+        float period=lerp(3.0,10.0,r1);
+        float phase=frac((t+3.141592+r2*13.0)/period);
+        float x=lerp(-6.0-maxSize,6.0+len+minSize,phase);
+        [unroll] for(int i=0;i<8;i++) {
+            float fi=i/8.0;
+            float2 q=float2(x-fi*len,-6.0+12.0*fj+0.6);
+            q.y+=0.2*sin(5.0*q.x)+0.6*cos(2.0*q.x)-0.1*cos(-5.0*q.x);
+            float radius=lerp(maxSize,minSize,fi);
+            float mask=1.0-smoothstep(radius-0.02,radius+0.02,length(p.yx-q));
+            float3 tint=float3(lerp(0.1,0.9,r1),lerp(0.4,0.8,r2),fi)*(1.0-0.8*fi);
+            outc=lerp(outc,tint,mask);
+        }
+    }
+    return outc;
+}
+
 float4 ps(psIn input) : SV_TARGET {
     float3 p = input.local;
     float t = time;
@@ -95,6 +138,10 @@ float4 ps(psIn input) : SV_TARGET {
     } else if (mode > 3.5 && mode < 4.5) { // lava
         float f=sin(p.x*16+sin(p.y*13+t*2.5))+sin(p.z*17-t*1.7);
         c=float3(1.0, 0.15+0.32*saturate(f+0.5), 0.015);
+    } else if (mode > 7.5) { // animated noise from EmCYTuRzv2
+        c=collection_noise(p.xy*12.0-float2(t,0.0)).xxx;
+    } else if (mode > 6.5) { // moving particles from jHKMZig75S
+        c=collection_particles(p.xy,t);
     } else if (mode > 5.5) { // rasengan
         float3 n=abs(normalize(input.normal));
         float2 uv=n.x>n.y && n.x>n.z ? p.yz : (n.y>n.z ? p.xz : p.xy);
