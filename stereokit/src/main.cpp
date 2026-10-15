@@ -9,6 +9,9 @@
 #include "scene_background.h"
 #include "background_catalog.h"
 #include <cstdio>
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
 #include <fstream>
 #include <cstdint>
 #include <cstring>
@@ -1017,14 +1020,22 @@ static void draw_face(int page) {
         if(face_button(face,page,sky_mode<0?"BACKGROUND: OFF":"BACKGROUND: ON",0.064f))
             sky_mode=sky_mode<0?0:-1;
         static const char* sky_names[]={"AURORA","EMBER HORIZON","GALAXY","AQUATIC","RAINFOREST","MATRIX RAIN"};
-        if(sky_mode>=0) face_text(face,sky_names[sky_mode],0,0.015f);
+        if(sky_mode>=0 && sky_mode<6) face_text(face,sky_names[sky_mode],0,0.015f);
         else face_text(face,"NONE",0,0.015f);
-        if(face_button(face,page,"PREVIOUS",-0.033f))
+        if(face_button(face,page,"PREVIOUS",-0.033f)) {
             sky_mode=sky_mode<0?5:(sky_mode+5)%6;
-        if(face_button(face,page,"NEXT",-0.077f))
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_INFO,"VoxenSky","PREVIOUS -> %d",sky_mode);
+#endif
+        }
+        if(face_button(face,page,"NEXT",-0.077f)) {
             sky_mode=sky_mode<0?0:(sky_mode+1)%6;
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_INFO,"VoxenSky","NEXT -> %d",sky_mode);
+#endif
+        }
         char info[32];
-        std::snprintf(info,sizeof(info),"INTENSITY %d%%",(int)(sky_opacity*100));
+        std::snprintf(info,sizeof(info),"MODE %d / INTENSITY %d%%",sky_mode,(int)(sky_opacity*100));
         face_text(face,info,0,-0.118f);
         if(face_button(face,page,"LESS",-0.163f))
             sky_opacity=std::max(0.05f,sky_opacity-0.05f);
