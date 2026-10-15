@@ -42,5 +42,13 @@ float4 ps(psIn input) : SV_TARGET {
     c=lerp(c,float3(0.05,0.015,0.12),skyline);
     c+=float3(1.0,0.12,0.52)*neonGrid*0.16*(1.0-skyline);
     if(mode > 1.5) c=environment_clouds(uv,time);
+    else if(mode > 0.5) {
+        float3 p=float3(dir.x*80.0,dir.y*8.0,dir.z*80.0);
+        float3 vegetation=grass_color(p,dir.y*0.5,time);
+        float wave=grass_noise(p.xz*0.65+float2(time*0.03,time*0.03));
+        float horizon=smoothstep(-0.04,0.08,dir.y);
+        float3 sky=lerp(float3(0.58,0.77,0.89),float3(0.18,0.38,0.63),saturate(dir.y));
+        c=lerp(vegetation*(0.8+0.35*wave),sky,horizon);
+    }
     return float4(saturate(c),saturate(strength));
 }
