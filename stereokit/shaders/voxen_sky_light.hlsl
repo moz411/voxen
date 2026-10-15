@@ -46,8 +46,8 @@ float3 matrix_rain(float angle,float height,float t) {
     float tail=exp(-5.0*frac(falling-trail+1.0));
     float bright=pow(saturate(tail),9.0);
     float luminous=glyph*active*(0.12+0.65*tail);
-    return float3(0.003,0.015,0.008)+luminous*float3(0.035,0.78,0.19)
-        +glyph*active*bright*float3(0.28,0.20,0.16);
+    return float3(0.006,0.048,0.016)+luminous*float3(0.15,2.8,0.52)
+        +glyph*active*bright*float3(0.70,1.25,0.55);
 }
 float4 ps(psIn input):SV_TARGET {
     float3 d=normalize(input.dir);
@@ -75,18 +75,18 @@ float4 ps(psIn input):SV_TARGET {
         float spiral=0.5+0.5*sin(angle*8.0+d.y*28.0-time*0.025);
         float cell=sin(angle*171.0)*sin(d.y*217.0);
         float stars=pow(saturate(cell),50.0);
-        c=float3(0.002,0.003,0.014);
-        c+=band*lerp(float3(0.09,0.05,0.25),float3(0.24,0.20,0.43),spiral)*0.95;
-        c+=stars*float3(0.65,0.78,1.0)*0.48;
+        c=float3(0.025,0.035,0.13);
+        c+=band*lerp(float3(0.35,0.19,0.85),float3(0.70,0.52,1.0),spiral)*0.95;
+        c+=stars*float3(0.85,0.95,1.0)*0.95;
     } else if(mode > 2.5 && mode < 3.5) {
         // Aquatic: underwater turquoise gradient, shallow light shafts, drifting caustics.
         float depth=saturate(0.5-0.5*d.y);
         float caustic=sin(angle*15.0+time*0.16+sin(d.y*12.0))
                      *sin(d.y*19.0-angle*8.0-time*0.11);
         float shaft=pow(saturate(sin(angle*6.0+time*0.04)),12.0)*saturate(d.y+0.4);
-        c=lerp(float3(0.01,0.11,0.19),float3(0.015,0.39,0.46),horizon);
-        c+=float3(0.04,0.23,0.20)*saturate(caustic)*0.27;
-        c+=float3(0.15,0.52,0.53)*shaft*0.32;
+        c=lerp(float3(0.03,0.32,0.48),float3(0.08,0.78,0.88),horizon);
+        c+=float3(0.30,0.76,0.78)*saturate(caustic)*0.48;
+        c+=float3(0.42,0.85,0.78)*shaft*0.54;
         c*=1.0-depth*0.25;
     } else if(mode > 3.5 && mode < 4.5) {
         // Rainforest: layered canopy silhouettes, warm forest shafts and distant haze.
@@ -96,11 +96,13 @@ float4 ps(psIn input):SV_TARGET {
         float mist=exp(-11.0*abs(d.y+0.1));
         float sun=pow(saturate(sin(angle*7.0+time*0.02)),20.0)*saturate(d.y+0.1);
         float foliage=1.0-smoothstep(canopy-0.06,canopy+0.06,d.y);
-        c=lerp(float3(0.13,0.29,0.17),float3(0.31,0.49,0.30),horizon);
-        c=lerp(c,float3(0.014,0.072,0.031)*(0.84+0.16*leaves),foliage*0.80);
-        c=lerp(c,float3(0.012,0.045,0.026),tree*0.76);
+        c=lerp(float3(0.16,0.46,0.21),float3(0.54,0.76,0.38),horizon);
+        c=lerp(c,float3(0.045,0.23,0.075)*(0.84+0.16*leaves),foliage*0.65);
+        c=lerp(c,float3(0.03,0.13,0.04),tree*0.67);
         c+=float3(0.23,0.27,0.13)*mist*0.17+float3(0.45,0.40,0.20)*sun*0.17;
     }
     if(mode > 4.5) c=matrix_rain(angle,d.y,time);
+    // Palette boosts compensate for compositing a transparent sky over passthrough.
+    // Preserve the global opacity control and avoid extra geometry or loops.
     return float4(saturate(c),saturate(strength));
 }
