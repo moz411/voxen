@@ -3,6 +3,7 @@
 //--strength = 0.30
 float time;
 float strength;
+float mode;
 struct vsIn {
     float4 pos : SV_Position;
     float3 norm : NORMAL0;
