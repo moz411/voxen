@@ -470,7 +470,7 @@ static color128 animated_tint(const PaintedVoxel& v) {
     }
     if (v.effect==3 || v.effect==4 || v.effect==5 || v.effect==6 || v.effect==7) {
         const float k=v.effect==4 ? (0.5f+0.5f*std::sin(animation_time*1.5f+v.phase*3.0f)) :
-            v.effect==5 ? (0.5f+0.5f*std::sin(animation_time*7.0f+v.position.y*15.0f)) :
+            v.effect==5 ? (0.75f+0.25f*std::sin(animation_time*1.2f+v.position.y*3.0f)) :
             v.effect==6 ? (0.55f+0.45f*std::sin(animation_time*4.0f+v.position.x*14.0f+v.position.z*14.0f)) :
             v.effect==7 ? (0.7f+0.3f*std::sin(animation_time*2.0f+v.phase)) :
             (0.65f+0.35f*std::sin(animation_time*5.0f+v.phase));
@@ -484,7 +484,7 @@ static float animated_scale(const PaintedVoxel& v) {
     if (v.effect==1 || v.effect==4 || v.effect==5 || v.effect==6 || v.effect==7) {
         const float t=animation_time;
         if(v.effect==4) return 0.85f+0.15f*std::sin(t*1.5f+v.phase*2.0f);
-        if(v.effect==5) return 0.8f+0.2f*std::sin(t*6.0f+v.position.y*18.0f);
+        if(v.effect==5) return 0.9f+0.1f*std::sin(t*1.2f+v.position.y*3.0f);
         if(v.effect==6) return 0.78f+0.22f*std::sin(t*4.0f+v.position.x*16.0f+v.position.z*16.0f);
         if(v.effect==7) return 0.82f+0.18f*std::sin(t*2.0f+v.phase);
         return 0.82f+0.18f*(0.5f+0.5f*std::sin(t*3.5f+v.phase));
@@ -1004,7 +1004,7 @@ static void draw_face(int page) {
         }
     } else if(page==5) {
         face_text(face,"VOXEL ANIMATION",0,0.145f);
-        static const char* effects[]={"SOLID","BREATHE","RAINBOW","SHIMMER","SLOW PULSE","STROBE","RIPPLE","ORGANIC"};
+        static const char* effects[]={"SOLID","BREATHE","RAINBOW","SHIMMER","SLOW PULSE","SOFT TIDE","RIPPLE","ORGANIC"};
         for(int i=0;i<8;++i)
             if(face_button(face,page,effects[i],0.105f-i*0.044f,effect_mode==i))
                 effect_mode=i;
@@ -1267,13 +1267,13 @@ int voxen_stereokit_main() {
     app_settings.blend_preference = display_blend_any_transparent;
     // Must happen before sk_init, which creates StereoKit's OpenXR instance.
     backend_openxr_ext_request(XR_FB_PASSTHROUGH_EXTENSION_NAME);
-    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME);
-    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
-    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_STORAGE_EXTENSION_NAME);
-    backend_openxr_ext_request(XR_FB_SCENE_EXTENSION_NAME);
+    // Scene extensions remain optional but are not requested for sky backgrounds.
+
+
+
     if (!sk_init(app_settings)) return 1;
     edge_passthrough.initialize();
-    scene_background.initialize();
+    // No Scene API query for panoramic backgrounds.
     cube = mesh_find(default_id_mesh_cube);
     shape_meshes = voxen_shapes::create(cube);
     material = material_copy(material_find(default_id_material));
