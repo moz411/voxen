@@ -9,7 +9,7 @@ struct Definition {
     const char* label;
     Kind kind;
 };
-inline constexpr std::array<Definition,10> materials = {{
+inline constexpr std::array<Definition,9> materials = {{
     {0,"matte","MATTE",Kind::Material},
     {1,"neon","NEON",Kind::Material},
     {2,"plasma","PLASMA",Kind::Material},
@@ -18,8 +18,7 @@ inline constexpr std::array<Definition,10> materials = {{
     {5,"ice","ICE",Kind::Material},
     {6,"rasengan","RASENGAN",Kind::Material},
     {7,"particles","PARTICLES",Kind::Material},
-    {8,"noise","NOISE",Kind::Material},
-    {9,"grass_wind","GRASS WIND",Kind::Material}
+    {8,"noise","NOISE",Kind::Material}
 }};
 inline constexpr int count = static_cast<int>(materials.size());
 inline constexpr bool valid(int id) {return id>=0 && id<count;}
