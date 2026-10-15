@@ -1,9 +1,12 @@
 #include "stereokit.hlsli"
 //--time = 0
 //--strength = 0.30
+//--mode = 0
 float time;
 float strength;
 float mode;
+#include "materials/grass_wind.hlsli"
+#include "materials/cloudy_skies.hlsli"
 struct vsIn {
     float4 pos : SV_Position;
     float3 norm : NORMAL0;
