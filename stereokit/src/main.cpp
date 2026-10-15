@@ -1361,7 +1361,35 @@ int voxen_stereokit_main() {
             if(head) render_add_mesh(sky_sphere,sky_material,
                 matrix_ts(head->position,{20,20,20}),{1,1,1,1});
         }
-        for(const PaintedVoxel& voxel:voxels) {
+        // Cache one pivot and extent per voxel in O(voxel count) each frame.
+        // The pivot belongs to the whole artwork, not the individual cube.
+        static std::vector<vec3> animation_pivots;
+        static std::vector<float> animation_extents;
+        animation_pivots.resize(voxels.size());
+        animation_extents.resize(voxels.size());
+        for(size_t i=0;i<voxels.size();++i) {
+            animation_pivots[i]=voxels[i].position;
+            animation_extents[i]=0.12f;
+        }
+        for(const voxen::Artwork& artwork:artworks) {
+            const size_t begin=std::min((size_t)artwork.first_voxel,voxels.size());
+            const size_t end=std::min(begin+(size_t)artwork.voxel_count,voxels.size());
+            if(end<=begin) continue;
+            vec3 lo=voxels[begin].position,hi=lo;
+            for(size_t i=begin+1;i<end;++i) {
+                const vec3 p=voxels[i].position;
+                lo.x=std::min(lo.x,p.x);lo.y=std::min(lo.y,p.y);lo.z=std::min(lo.z,p.z);
+                hi.x=std::max(hi.x,p.x);hi.y=std::max(hi.y,p.y);hi.z=std::max(hi.z,p.z);
+            }
+            const vec3 pivot={(lo.x+hi.x)*0.5f,(lo.y+hi.y)*0.5f,(lo.z+hi.z)*0.5f};
+            const float extent=std::max(0.12f,std::max(hi.x-lo.x,hi.y-lo.y));
+            for(size_t i=begin;i<end;++i) {
+                animation_pivots[i]=pivot;
+                animation_extents[i]=extent;
+            }
+        }
+        for(size_t i=0;i<voxels.size();++i) {
+            const PaintedVoxel& voxel=voxels[i];
             if(voxel.reveal_duration>0.0f) {
                 const float elapsed=std::max(0.0f,animation_time-voxel.reveal_start);
                 const float progress_time=voxel.reveal_loop
@@ -1370,11 +1398,16 @@ int voxen_stereokit_main() {
                     continue;
             }
             const float side=voxel.size*animated_scale(voxel);
+            const vec3 position=animation_position(voxel.position,animation_pivots[i],voxel.effect,animation_extents[i]);
+            // Rotate each voxel around its own vertical axis as the artwork revolves.
+            const quat rotation=voxel.effect==2
+                ? quat_from_angles(0.0f,animation_time*0.45f*57.2957795f,0.0f)
+                : quat_identity;
             material_t voxel_mat=gpu_materials[voxen_effects::valid(voxel.gpu_preset)?voxel.gpu_preset:0];
             render_add_mesh(shape_meshes[std::clamp(voxel.shape,0,voxen_shapes::count-1)],
                 voxel_mat?voxel_mat:material,
-                matrix_ts(voxel.position,{side,side,side}),
-                voxel_mat?voxel.tint:animated_tint(voxel));
+                matrix_trs(position,rotation,{side,side,side}),
+                voxel.tint);
         }
         update_brush();
         draw_selected_outline();
