@@ -63,3 +63,7 @@ Branch based directly on main. BACKGROUNDS contains OFF, AURORA and EMBER HORIZO
 ANIMATIONS now has eight modes: SOLID, BREATHE, RAINBOW, SHIMMER, SLOW PULSE, SOFT TIDE, RIPPLE, ORGANIC. These use bounded sine calculations per voxel and do not spawn extra objects. The old scene-overlay code is not initialized; main is unchanged. OpenXR compositor layer ordering is not yet refactored; skies are alpha-blended in the StereoKit projection layer rather than guaranteed strictly behind passthrough.
 
 **No Android APK build or Quest GPU profile was run in this environment.** Test with device GPU timing before merging. The earlier expensive Fireworks code is deliberately excluded.
+
+### Additional lightweight panoramas
+
+Added GALAXY (analytic Milky Way-style glow and sparse stars), AQUATIC (underwater teal illumination and caustic ripples), and RAINFOREST (layered green canopy, silhouettes, light shafts and mist). BACKGROUNDS now cycles among five skies with PREVIOUS/NEXT and intensity controls. Every effect uses a fixed number of ALU operations and a single sphere mesh; none uses procedural particle iteration or sampling textures. The backgrounds remain OFF at startup. Their silhouettes are stylized, not textured photoreal environments. Performance and visuals still need verification on Meta Quest 3.
