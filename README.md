@@ -67,3 +67,7 @@ ANIMATIONS now has eight modes: SOLID, BREATHE, RAINBOW, SHIMMER, SLOW PULSE, SO
 ### Additional lightweight panoramas
 
 Added GALAXY (analytic Milky Way-style glow and sparse stars), AQUATIC (underwater teal illumination and caustic ripples), and RAINFOREST (layered green canopy, silhouettes, light shafts and mist). BACKGROUNDS now cycles among five skies with PREVIOUS/NEXT and intensity controls. Every effect uses a fixed number of ALU operations and a single sphere mesh; none uses procedural particle iteration or sampling textures. The backgrounds remain OFF at startup. Their silhouettes are stylized, not textured photoreal environments. Performance and visuals still need verification on Meta Quest 3.
+
+### Geometry animations (latest)
+
+The ANIMATIONS menu now contains NONE, BREATHE, ROTATE, PINCH H, PINCH V and SPLIT 4. BREATHE changes uniform voxel size; ROTATE revolves each artwork around its shared center; PINCH H narrows the mid-height of an artwork along X; PINCH V compresses the middle width along Y; SPLIT 4 offsets the four XY quadrants outward and then brings them together. The deformation affects the rendered voxel transforms only, preserving unmodified stored artwork/placement geometry. For visible transformations, use a multi-voxel artwork (not a solitary voxel). These are procedural CPU transform animations with no additional geometry and no shader particle loops. New animations apply to strokes/works created with the selected animation, in line with existing app behavior. APK build and headset QA still required.
