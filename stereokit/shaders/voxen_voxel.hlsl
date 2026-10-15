@@ -5,7 +5,6 @@
 float4 color;
 float time;
 float mode;
-#include "materials/grass_wind.hlsli"
 struct vsIn {
     float4 pos : SV_Position;
     float3 norm : NORMAL0;
@@ -24,9 +23,7 @@ psIn vs(vsIn input, uint id : SV_InstanceID) {
     psIn o;
     o.view_id = id % sk_view_count;
     id /= sk_view_count;
-    float3 origin = mul(float4(0,0,0,1),sk_inst[id].world).xyz;
-    float3 localPosition = mode > 8.5 ? grass_displace(input.pos.xyz,origin,time) : input.pos.xyz;
-    float4 world = mul(float4(localPosition,1), sk_inst[id].world);
+    float4 world = mul(input.pos, sk_inst[id].world);
     o.pos = mul(world, sk_viewproj[o.view_id]);
     o.world = world.xyz;
     o.local = input.pos.xyz; // stable voxel-local position, independent of world scale
@@ -45,9 +42,7 @@ float4 ps(psIn input) : SV_TARGET {
     float3 p=input.local;
     float t=time;
     float3 c=input.tint.rgb;
-    if (mode > 8.5) {
-        c=grass_color(input.world,input.local.y,t);
-    } else if (mode > 7.5) {
+    if (mode > 7.5) {
         float n=collection_noise(p.xy*12.0-float2(t,0.0));
         c=float3(n,n,n);
     } else if (mode > 6.5) {
