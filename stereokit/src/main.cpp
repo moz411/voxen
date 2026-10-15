@@ -2,6 +2,7 @@
 #include <stereokit_ui.h>
 #include <openxr/openxr.h>
 #include "voxen_voxel.hlsl.h"
+#include "voxen_sky_light.hlsl.h"
 #include "voxel_shapes.h"
 #include "shader_registry.h"
 #include "artwork.h"
@@ -64,7 +65,12 @@ static shader_t voxel_shader = nullptr;
 static material_t gpu_materials[voxen_effects::count] = {};
 static std::array<material_t,32> background_materials{};
 static voxen_scene::Background scene_background;
-static int background_source_index = -1; // -1 = NONE; preset 0 ported
+static int background_source_index = -1; // legacy source list, no longer rendered
+static shader_t sky_shader=nullptr;
+static material_t sky_material=nullptr;
+static mesh_t sky_sphere=nullptr;
+static int sky_mode=-1;
+static float sky_opacity=0.28f;
 static uint32_t brush_step = 0;
 static bool volume_active = false;
 static bool save_confirmation = false;
@@ -1003,38 +1009,19 @@ static void draw_face(int page) {
             if(face_button(face,page,effects[i],0.105f-i*0.044f,effect_mode==i))
                 effect_mode=i;
     } else if(page==7) {
-        face_text(face,"META SCENE / SOURCE LIBRARY",0,0.152f);
-        char status[48];
-        std::snprintf(status,sizeof(status),"%d ANCHORS / %d PLANES",
-            scene_background.anchors_found,scene_background.plane_count());
-        face_text(face,scene_background.supported?status:scene_background.diagnostic,0,0.111f);
-        if(face_button(face,page,"SCAN AGAIN",0.071f)) scene_background.refresh();
-        // Source presets remain disabled until converted to native GPU materials.
-        // Explicitly avoid mapping unrelated voxel shaders to these names.
-        if(face_button(face,page,background_source_index<0?"SOURCE: NONE":"SOURCE: SELECTED",0.034f))
-            background_source_index = background_source_index<0?0:-1;
-        if(face_button(face,page,"PREVIOUS SOURCE",-0.004f))
-            background_source_index = background_source_index<0?0:
-                (background_source_index+(int)voxen_backgrounds::entries.size()-1)%
-                (int)voxen_backgrounds::entries.size();
-        if(face_button(face,page,"NEXT SOURCE",-0.042f))
-            background_source_index = background_source_index<0?0:
-                (background_source_index+1)%(int)voxen_backgrounds::entries.size();
-        if(background_source_index>=0) {
-            const auto& src=voxen_backgrounds::entries[background_source_index];
-            face_text(face,src.name,0,-0.074f);
-            face_text(face,background_source_index==0?"LIVE: PROCEDURAL NOISE":"NOT YET PORTED",0,-0.097f);
-        } else {
-            face_text(face,"NO BACKGROUND",0,-0.074f);
-        }
-        // Only the first imported shader has an actual material. Avoid fake previews.
-        scene_background.preset=(background_source_index==0 && background_materials[9])?9:-1;
-        if(face_button(face,page,"SCENE PLANE OVERLAY",-0.126f))
-            scene_background.opacity=scene_background.opacity>0.6f?0.35f:0.75f;
-        if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Walls)?"WALLS: ON":"WALLS: OFF",-0.160f))
-            scene_background.mask ^= voxen_scene::Background::Walls;
-        if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Floor)?"FLOOR: ON":"FLOOR: OFF",-0.193f))
-            scene_background.mask ^= voxen_scene::Background::Floor;
+        face_text(face,"LIGHT SKY / 360",0,0.152f);
+        face_text(face,"NO SCENE SCAN",0,0.104f);
+        if(face_button(face,page,sky_mode<0?"BACKGROUND: OFF":"BACKGROUND: ON",0.061f))
+            sky_mode=sky_mode<0?0:-1;
+        if(face_button(face,page,"AURORA",-0.002f,sky_mode==0)) sky_mode=0;
+        if(face_button(face,page,"EMBER HORIZON",-0.053f,sky_mode==1)) sky_mode=1;
+        char info[32];
+        std::snprintf(info,sizeof(info),"INTENSITY %d%%",(int)(sky_opacity*100));
+        face_text(face,info,0,-0.104f);
+        if(face_button(face,page,"LESS",-0.151f))
+            sky_opacity=std::max(0.05f,sky_opacity-0.05f);
+        if(face_button(face,page,"MORE",-0.193f))
+            sky_opacity=std::min(0.60f,sky_opacity+0.05f);
     } else if(page==6) {
         face_text(face,"SCENE SLOT 1",0,0.125f);
         face_text(face,storage_status,0,0.073f);
@@ -1323,6 +1310,16 @@ int voxen_stereokit_main() {
             }
         }
     }
+    sky_shader=shader_create_mem((void*)sks_voxen_sky_light_hlsl,
+        sizeof(sks_voxen_sky_light_hlsl));
+    if(sky_shader) {
+        sky_material=material_create(sky_shader);
+        if(sky_material) {
+            material_set_transparency(sky_material,transparency_blend);
+            material_set_cull(sky_material,cull_front);
+        }
+    }
+    sky_sphere=mesh_find(default_id_mesh_sphere);
     voxels.reserve(max_voxels);
     carousel_mat = material_copy(material_find(default_id_material));
     material_set_transparency(carousel_mat, transparency_blend);
@@ -1347,7 +1344,15 @@ int voxen_stereokit_main() {
                                                      "time",animation_time);
         for(int i=0;i<=9 && i<(int)background_materials.size();++i)
             if(background_materials[i]) material_set_float(background_materials[i],"time",animation_time);
-        scene_background.render(cube,background_materials);
+        // Constant-cost panoramic background; no mesh scan or GPU particle loop.
+        if(sky_mode>=0 && sky_material && sky_sphere) {
+            material_set_float(sky_material,"time",animation_time);
+            material_set_float(sky_material,"mode",(float)sky_mode);
+            material_set_float(sky_material,"strength",sky_opacity);
+            const pose_t* head=input_head();
+            if(head) render_add_mesh(sky_sphere,sky_material,
+                matrix_ts(head->position,{20,20,20}),{1,1,1,1});
+        }
         for(const PaintedVoxel& voxel:voxels) {
             if(voxel.reveal_duration>0.0f) {
                 const float elapsed=std::max(0.0f,animation_time-voxel.reveal_start);
@@ -1377,6 +1382,8 @@ int voxen_stereokit_main() {
             color_hsv(edge_hue, 1.0f, 1.0f, 1.0f));
     }, [] {
         scene_background.shutdown();
+        if(sky_material) material_release(sky_material);
+        if(sky_shader) shader_release(sky_shader);
         edge_passthrough.shutdown();
         for(mesh_t mesh:shape_meshes) if(mesh) mesh_release(mesh);
         material_release(material);
