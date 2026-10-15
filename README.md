@@ -55,3 +55,11 @@ On Windows the OpenXR passthrough extension is not requested. The scene uses the
 The StereoKit backend includes a **BACKGROUNDS** carousel page. It loads Meta Scene Model 2D planes through `XR_FB_scene` + `XR_FB_spatial_entity_query`, categorizes `WALL_FACE`, `FLOOR`, `CEILING`, and overlays one of the existing GPU materials on the detected surfaces. Default: **SHADER: NONE**. The Meta passthrough layer and its white edges remain independent of scene geometry. Re-scanning and per-surface category toggles are available from this page.
 
 On Quest, enable Space Setup for the room and grant Voxen spatial data access (`USE_SCENE`). If there are no planes, check the `[Voxen Scene]` log lines. Scene detection is device-dependent; this branch has not been built or tested on a Quest yet. The native OpenXR engine under `engine/` is unchanged; this experimental integration targets the StereoKit app under `stereokit/`.
+
+## Lightweight panoramic skies / animations (experimental)
+
+Branch based directly on main. BACKGROUNDS contains OFF, AURORA and EMBER HORIZON. Both are single-pass procedural 360-degree shaders with a constant number of arithmetic operations, no texture lookups, no noise octaves, no particle loops, no scene scans. Only one sky material and one sphere are rendered. They are disabled by default and the opacity is capped at 60%.
+
+ANIMATIONS now has eight modes: SOLID, BREATHE, RAINBOW, SHIMMER, SLOW PULSE, SOFT TIDE, RIPPLE, ORGANIC. These use bounded sine calculations per voxel and do not spawn extra objects. The old scene-overlay code is not initialized; main is unchanged. OpenXR compositor layer ordering is not yet refactored; skies are alpha-blended in the StereoKit projection layer rather than guaranteed strictly behind passthrough.
+
+**No Android APK build or Quest GPU profile was run in this environment.** Test with device GPU timing before merging. The earlier expensive Fireworks code is deliberately excluded.
