@@ -65,6 +65,7 @@ static mesh_t environment_sphere=nullptr;
 static shader_t environment_shader=nullptr;
 static material_t environment_material=nullptr;
 static bool environment_enabled=false;
+static int environment_mode=0;
 static float environment_opacity=0.30f;
 static uint32_t brush_step = 0;
 static bool volume_active = false;
@@ -999,9 +1000,12 @@ static void draw_face(int page) {
         face_text(face,"NO SCENE SCAN REQUIRED",0,0.104f);
         if(face_button(face,page,environment_enabled?"ENV: ON":"ENV: OFF",0.061f,environment_enabled))
             environment_enabled=!environment_enabled;
-        if(face_button(face,page,"CYBER FUJI DEMO",0.008f,environment_enabled))
-            environment_enabled=!environment_enabled;
-        face_text(face,"PROCEDURAL PREVIEW",-0.000f,-0.038f);
+        static const char* names[]={"CYBER FUJI DEMO","GRASS WIND","CLOUDY SKIES"};
+        for(int i=0;i<3;++i)
+            if(face_button(face,page,names[i],0.024f-i*0.052f,environment_enabled && environment_mode==i)) {
+                environment_mode=i;
+                environment_enabled=true;
+            }
         char strength_label[64];
         std::snprintf(strength_label,sizeof(strength_label),"STRENGTH %d%%",
             (int)(environment_opacity*100.0f));
@@ -1319,6 +1323,7 @@ int voxen_stereokit_main() {
         if(environment_enabled && environment_material && environment_sphere) {
             material_set_float(environment_material,"time",animation_time);
             material_set_float(environment_material,"strength",environment_opacity);
+            material_set_float(environment_material,"mode",(float)environment_mode);
             const pose_t* head=input_head();
             if(head) render_add_mesh(environment_sphere,environment_material,
                 matrix_ts(head->position,{20,20,20}),{1,1,1,1});
