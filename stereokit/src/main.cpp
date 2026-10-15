@@ -2,6 +2,7 @@
 #include <stereokit_ui.h>
 #include <openxr/openxr.h>
 #include "voxen_voxel.hlsl.h"
+#include "voxen_environment.hlsl.h"
 #include "voxel_shapes.h"
 #include "shader_registry.h"
 #include "artwork.h"
@@ -63,6 +64,11 @@ static shader_t voxel_shader = nullptr;
 static material_t gpu_materials[voxen_effects::count] = {};
 static std::array<material_t,32> background_materials{};
 static voxen_scene::Background scene_background;
+static mesh_t environment_sphere=nullptr;
+static shader_t environment_shader=nullptr;
+static material_t environment_material=nullptr;
+static bool environment_enabled=false;
+static float environment_opacity=0.30f;
 static uint32_t brush_step = 0;
 static bool volume_active = false;
 static bool save_confirmation = false;
@@ -992,39 +998,21 @@ static void draw_face(int page) {
             if(face_button(face,page,effects[i],0.085f-i*0.065f,effect_mode==i))
                 effect_mode=i;
     } else if(page==7) {
-        face_text(face,"META SCENE PLANES",0,0.152f);
-        if (!scene_background.supported) {
-            face_text(face,scene_background.diagnostic,0,0.105f);
-            face_text(face,"CHECK QUEST SPACE SETUP",0,0.053f);
-        } else {
-            char status[48];
-            std::snprintf(status,sizeof(status),"%d ANCHORS / %d PLANES",
-                scene_background.anchors_found,scene_background.plane_count());
-            face_text(face,status,0,0.111f);
-            face_text(face,scene_background.diagnostic,0,0.089f);
-            if(scene_background.last_result != XR_SUCCESS) {
-                char error_code[40];
-                std::snprintf(error_code,sizeof(error_code),"XR ERROR %d",(int)scene_background.last_result);
-                face_text(face,error_code,0,-0.207f);
-            }
-            if(face_button(face,page,"SCAN AGAIN",0.071f)) scene_background.refresh();
-            if(face_button(face,page,scene_background.preset<0?"SHADER: NONE":"SHADER: ACTIVE",0.034f))
-                scene_background.preset = scene_background.preset<0?0:-1;
-            if(face_button(face,page,"PREVIOUS SHADER",-0.004f))
-                scene_background.preset = scene_background.preset<0?0:
-                    (scene_background.preset+voxen_effects::count-1)%voxen_effects::count;
-            if(face_button(face,page,"NEXT SHADER",-0.042f))
-                scene_background.preset = scene_background.preset<0?0:
-                    (scene_background.preset+1)%voxen_effects::count;
-            if(scene_background.preset>=0)
-                face_text(face,voxen_effects::get(scene_background.preset).label,0,-0.074f);
-            if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Walls)?"WALLS: ON":"WALLS: OFF",-0.111f))
-                scene_background.mask ^= voxen_scene::Background::Walls;
-            if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Floor)?"FLOOR: ON":"FLOOR: OFF",-0.146f))
-                scene_background.mask ^= voxen_scene::Background::Floor;
-            if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Ceiling)?"CEILING: ON":"CEILING: OFF",-0.181f))
-                scene_background.mask ^= voxen_scene::Background::Ceiling;
-        }
+        face_text(face,"360 ENVIRONMENTS",0,0.148f);
+        face_text(face,"NO SCENE SCAN REQUIRED",0,0.104f);
+        if(face_button(face,page,environment_enabled?"ENV: ON":"ENV: OFF",0.061f,environment_enabled))
+            environment_enabled=!environment_enabled;
+        if(face_button(face,page,"CYBER FUJI DEMO",0.008f,environment_enabled))
+            environment_enabled=!environment_enabled;
+        face_text(face,"PROCEDURAL PREVIEW",-0.000f,-0.038f);
+        char strength_label[64];
+        std::snprintf(strength_label,sizeof(strength_label),"STRENGTH %d%%",
+            (int)(environment_opacity*100.0f));
+        face_text(face,strength_label,0,-0.088f);
+        if(face_button(face,page,"LESS",-0.128f))
+            environment_opacity=std::max(0.05f,environment_opacity-0.05f);
+        if(face_button(face,page,"MORE",-0.164f))
+            environment_opacity=std::min(0.85f,environment_opacity+0.05f);
     } else if(page==6) {
         face_text(face,"SCENE SLOT 1",0,0.125f);
         face_text(face,storage_status,0,0.073f);
@@ -1276,7 +1264,7 @@ int voxen_stereokit_main() {
     backend_openxr_ext_request(XR_FB_SCENE_EXTENSION_NAME);
     if (!sk_init(app_settings)) return 1;
     edge_passthrough.initialize();
-    scene_background.initialize();
+    // Environment rendering is independent of Meta Scene API.
     cube = mesh_find(default_id_mesh_cube);
     shape_meshes = voxen_shapes::create(cube);
     material = material_copy(material_find(default_id_material));
@@ -1313,6 +1301,18 @@ int voxen_stereokit_main() {
             }
         }
     }
+    environment_shader=shader_create_mem((void*)sks_voxen_environment_hlsl,
+        sizeof(sks_voxen_environment_hlsl));
+    if(environment_shader) {
+        environment_material=material_create(environment_shader);
+        if(environment_material) {
+            material_set_transparency(environment_material,transparency_blend);
+            material_set_cull(environment_material,cull_front);
+            material_set_depth_test(environment_material,depth_test_always);
+            material_set_queue_offset(environment_material,-100);
+        }
+    }
+    environment_sphere=mesh_find(default_id_mesh_sphere);
     voxels.reserve(max_voxels);
     carousel_mat = material_copy(material_find(default_id_material));
     material_set_transparency(carousel_mat, transparency_blend);
@@ -1337,7 +1337,13 @@ int voxen_stereokit_main() {
                                                      "time",animation_time);
         for(int i=0;i<voxen_effects::count && i<(int)background_materials.size();++i)
             if(background_materials[i]) material_set_float(background_materials[i],"time",animation_time);
-        scene_background.render(cube,background_materials);
+        if(environment_enabled && environment_material && environment_sphere) {
+            material_set_float(environment_material,"time",animation_time);
+            material_set_float(environment_material,"strength",environment_opacity);
+            const pose_t* head=input_head();
+            if(head) render_add_mesh(environment_sphere,environment_material,
+                matrix_ts(head->position,{20,20,20}),{1,1,1,1});
+        }
         for(const PaintedVoxel& voxel:voxels) {
             if(voxel.reveal_duration>0.0f) {
                 const float elapsed=std::max(0.0f,animation_time-voxel.reveal_start);
@@ -1366,7 +1372,8 @@ int voxen_stereokit_main() {
         edge_passthrough.frame(edges_enabled, camera_opacity,
             color_hsv(edge_hue, 1.0f, 1.0f, 1.0f));
     }, [] {
-        scene_background.shutdown();
+        if(environment_material) material_release(environment_material);
+        if(environment_shader) shader_release(environment_shader);
         edge_passthrough.shutdown();
         for(mesh_t mesh:shape_meshes) if(mesh) mesh_release(mesh);
         material_release(material);
