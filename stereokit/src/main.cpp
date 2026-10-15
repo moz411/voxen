@@ -6,7 +6,6 @@
 #include "voxel_shapes.h"
 #include "shader_registry.h"
 #include "artwork.h"
-#include "scene_background.h"
 #include <cstdio>
 #include <fstream>
 #include <cstdint>
@@ -62,8 +61,6 @@ static float rossler_a=0.2f, rossler_b=0.2f, rossler_c=5.7f;
 static float fibonacci_turns=5.0f, fibonacci_spacing=1.0f;
 static shader_t voxel_shader = nullptr;
 static material_t gpu_materials[voxen_effects::count] = {};
-static std::array<material_t,32> background_materials{};
-static voxen_scene::Background scene_background;
 static mesh_t environment_sphere=nullptr;
 static shader_t environment_shader=nullptr;
 static material_t environment_material=nullptr;
@@ -1287,16 +1284,6 @@ int voxen_stereokit_main() {
             if(gpu_materials[i]) material_set_float(gpu_materials[i],"mode",(float)i);
         }
     } else std::printf("[Voxen] GPU voxel shader unavailable; using default material\\n");
-    if(voxel_shader) {
-        for(int i=0;i<voxen_effects::count && i<(int)background_materials.size();++i) {
-            background_materials[i]=material_create(voxel_shader);
-            if(background_materials[i]) {
-                material_set_float(background_materials[i],"mode",(float)i);
-                material_set_transparency(background_materials[i],transparency_blend);
-                material_set_cull(background_materials[i],cull_none);
-            }
-        }
-    }
     environment_shader=shader_create_mem((void*)sks_voxen_environment_hlsl,
         sizeof(sks_voxen_environment_hlsl));
     if(environment_shader) {
@@ -1329,8 +1316,6 @@ int voxen_stereokit_main() {
         for(int i=0;i<voxen_effects::count;++i)
             if(gpu_materials[i]) material_set_float(gpu_materials[i],
                                                      "time",animation_time);
-        for(int i=0;i<voxen_effects::count && i<(int)background_materials.size();++i)
-            if(background_materials[i]) material_set_float(background_materials[i],"time",animation_time);
         if(environment_enabled && environment_material && environment_sphere) {
             material_set_float(environment_material,"time",animation_time);
             material_set_float(environment_material,"strength",environment_opacity);
@@ -1373,7 +1358,6 @@ int voxen_stereokit_main() {
         material_release(material);
         material_release(carousel_mat);
         for(material_t mat:gpu_materials) if(mat) material_release(mat);
-        for(material_t mat:background_materials) if(mat) material_release(mat);
         if(voxel_shader) shader_release(voxel_shader);
         if (click_sound) sound_release(click_sound);
         for (sound_t tone: tones) if(tone) sound_release(tone);
