@@ -1258,10 +1258,6 @@ int voxen_stereokit_main() {
     app_settings.blend_preference = display_blend_any_transparent;
     // Must happen before sk_init, which creates StereoKit's OpenXR instance.
     backend_openxr_ext_request(XR_FB_PASSTHROUGH_EXTENSION_NAME);
-    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME);
-    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
-    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_STORAGE_EXTENSION_NAME);
-    backend_openxr_ext_request(XR_FB_SCENE_EXTENSION_NAME);
     if (!sk_init(app_settings)) return 1;
     edge_passthrough.initialize();
     // Environment rendering is independent of Meta Scene API.
@@ -1308,8 +1304,6 @@ int voxen_stereokit_main() {
         if(environment_material) {
             material_set_transparency(environment_material,transparency_blend);
             material_set_cull(environment_material,cull_front);
-            material_set_depth_test(environment_material,depth_test_always);
-            material_set_queue_offset(environment_material,-100);
         }
     }
     environment_sphere=mesh_find(default_id_mesh_sphere);
