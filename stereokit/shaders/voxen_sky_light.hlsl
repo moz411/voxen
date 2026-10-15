@@ -16,6 +16,39 @@ psIn vs(vsIn v,uint id:SV_InstanceID) {
     o.dir=normalize(v.pos.xyz);
     return o;
 }
+// Matrix-style glyph rain: analytic 3-stroke symbols, no texture/particle loops.
+float matrix_hash(float2 p) {
+    return frac(sin(dot(p,float2(127.1,311.7)))*43758.5453);
+}
+float matrix_segment(float2 p,float2 a,float2 b,float width) {
+    float2 v=b-a;
+    float t=saturate(dot(p-a,v)/dot(v,v));
+    float2 q=p-a-v*t;
+    return 1.0-smoothstep(width,width+0.07,length(q));
+}
+float3 matrix_rain(float angle,float height,float t) {
+    float col=(angle/6.28318530718+0.5)*84.0;
+    float column=floor(col);
+    float drift=0.45+matrix_hash(float2(column,1.0))*0.85;
+    float row=(height*0.5+0.5)*46.0;
+    float scroll=row+t*drift*6.0+matrix_hash(float2(column,2.0))*32.0;
+    float glyphRow=floor(scroll);
+    float2 p=float2(frac(col),frac(scroll));
+    float seed=matrix_hash(float2(column,glyphRow));
+    // Pseudo-glyphs built from vertical, horizontal and diagonal strokes.
+    float glyph=matrix_segment(p,float2(0.25,0.18),float2(0.25,0.82),0.065);
+    glyph+=matrix_segment(p,float2(0.25,seed>0.5?0.25:0.72),float2(0.75,seed>0.5?0.25:0.72),0.063);
+    glyph+=matrix_segment(p,float2(0.75,0.18),float2(seed>0.32?0.75:0.45,0.82),0.06);
+    glyph=saturate(glyph);
+    float active=step(0.29,matrix_hash(float2(column,glyphRow+11.0)));
+    float trail=frac(t*drift*0.105+matrix_hash(float2(column,3.0)));
+    float falling=frac(scroll/46.0);
+    float tail=exp(-5.0*frac(falling-trail+1.0));
+    float bright=pow(saturate(tail),9.0);
+    float luminous=glyph*active*(0.12+0.65*tail);
+    return float3(0.003,0.015,0.008)+luminous*float3(0.035,0.78,0.19)
+        +glyph*active*bright*float3(0.28,0.20,0.16);
+}
 float4 ps(psIn input):SV_TARGET {
     float3 d=normalize(input.dir);
     float horizon=saturate(0.5+0.5*d.y);
@@ -55,7 +88,7 @@ float4 ps(psIn input):SV_TARGET {
         c+=float3(0.04,0.23,0.20)*saturate(caustic)*0.27;
         c+=float3(0.15,0.52,0.53)*shaft*0.32;
         c*=1.0-depth*0.25;
-    } else if(mode > 3.5) {
+    } else if(mode > 3.5 && mode < 4.5) {
         // Rainforest: layered canopy silhouettes, warm forest shafts and distant haze.
         float canopy=0.28+0.16*sin(angle*5.0)+0.08*sin(angle*13.0+0.5);
         float leaves=sin(angle*29.0+time*0.025)*sin(d.y*37.0-time*0.017);
@@ -68,5 +101,6 @@ float4 ps(psIn input):SV_TARGET {
         c=lerp(c,float3(0.012,0.045,0.026),tree*0.76);
         c+=float3(0.23,0.27,0.13)*mist*0.17+float3(0.45,0.40,0.20)*sun*0.17;
     }
+    if(mode > 4.5) c=matrix_rain(angle,d.y,time);
     return float4(saturate(c),saturate(strength));
 }
