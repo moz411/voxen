@@ -7,6 +7,7 @@ float strength;
 float mode;
 #include "materials/grass_wind.hlsli"
 #include "materials/cloudy_skies.hlsli"
+#include "materials/fireworks.hlsli"
 struct vsIn {
     float4 pos : SV_Position;
     float3 norm : NORMAL0;
@@ -41,7 +42,8 @@ float4 ps(psIn input) : SV_TARGET {
     float3 c=lerp(float3(0.20,0.02,0.36),float3(0.02,0.32,0.55),sky);
     c=lerp(c,float3(0.05,0.015,0.12),skyline);
     c+=float3(1.0,0.12,0.52)*neonGrid*0.16*(1.0-skyline);
-    if(mode > 1.5) c=environment_clouds(uv,time);
+    if(mode > 2.5) c=environment_fireworks(uv,time);
+    else if(mode > 1.5) c=environment_clouds(uv,time);
     else if(mode > 0.5) {
         float3 p=float3(dir.x*80.0,dir.y*8.0,dir.z*80.0);
         float3 vegetation=grass_color(p,dir.y*0.5,time);
