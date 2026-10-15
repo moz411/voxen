@@ -6,6 +6,7 @@
 #include "shader_registry.h"
 #include "artwork.h"
 #include "scene_background.h"
+#include "background_catalog.h"
 #include <cstdio>
 #include <fstream>
 #include <cstdint>
@@ -63,6 +64,7 @@ static shader_t voxel_shader = nullptr;
 static material_t gpu_materials[voxen_effects::count] = {};
 static std::array<material_t,32> background_materials{};
 static voxen_scene::Background scene_background;
+static int background_source_index = -1; // -1 = NONE; sources require porting
 static uint32_t brush_step = 0;
 static bool volume_active = false;
 static bool save_confirmation = false;
@@ -992,38 +994,37 @@ static void draw_face(int page) {
             if(face_button(face,page,effects[i],0.085f-i*0.065f,effect_mode==i))
                 effect_mode=i;
     } else if(page==7) {
-        face_text(face,"META SCENE PLANES",0,0.152f);
-        if (!scene_background.supported) {
-            face_text(face,scene_background.diagnostic,0,0.105f);
-            face_text(face,"CHECK QUEST SPACE SETUP",0,0.053f);
+        face_text(face,"META SCENE / SOURCE LIBRARY",0,0.152f);
+        char status[48];
+        std::snprintf(status,sizeof(status),"%d ANCHORS / %d PLANES",
+            scene_background.anchors_found,scene_background.plane_count());
+        face_text(face,scene_background.supported?status:scene_background.diagnostic,0,0.111f);
+        if(face_button(face,page,"SCAN AGAIN",0.071f)) scene_background.refresh();
+        // Source presets remain disabled until converted to native GPU materials.
+        // Explicitly avoid mapping unrelated voxel shaders to these names.
+        if(face_button(face,page,background_source_index<0?"SOURCE: NONE":"SOURCE: SELECTED",0.034f))
+            background_source_index = background_source_index<0?0:-1;
+        if(face_button(face,page,"PREVIOUS SOURCE",-0.004f))
+            background_source_index = background_source_index<0?0:
+                (background_source_index+(int)voxen_backgrounds::entries.size()-1)%
+                (int)voxen_backgrounds::entries.size();
+        if(face_button(face,page,"NEXT SOURCE",-0.042f))
+            background_source_index = background_source_index<0?0:
+                (background_source_index+1)%(int)voxen_backgrounds::entries.size();
+        if(background_source_index>=0) {
+            const auto& src=voxen_backgrounds::entries[background_source_index];
+            face_text(face,src.name,0,-0.074f);
+            face_text(face,"SOURCE ONLY - NOT PORTED",0,-0.097f);
         } else {
-            char status[48];
-            std::snprintf(status,sizeof(status),"%d ANCHORS / %d PLANES",
-                scene_background.anchors_found,scene_background.plane_count());
-            face_text(face,status,0,0.111f);
-            face_text(face,scene_background.diagnostic,0,0.089f);
-            if(scene_background.last_result != XR_SUCCESS) {
-                char error_code[40];
-                std::snprintf(error_code,sizeof(error_code),"XR ERROR %d",(int)scene_background.last_result);
-                face_text(face,error_code,0,-0.207f);
-            }
-            if(face_button(face,page,"SCAN AGAIN",0.071f)) scene_background.refresh();
-            if(face_button(face,page,scene_background.preset<0?"SHADER: NONE":"SHADER: ACTIVE",0.034f))
-                scene_background.preset = scene_background.preset<0?0:-1;
-            if(face_button(face,page,"PREVIOUS SHADER",-0.004f))
-                scene_background.preset = scene_background.preset<0?0:
-                    (scene_background.preset+voxen_effects::count-1)%voxen_effects::count;
-            if(face_button(face,page,"NEXT SHADER",-0.042f))
-                scene_background.preset = scene_background.preset<0?0:
-                    (scene_background.preset+1)%voxen_effects::count;
-            if(scene_background.preset>=0)
-                face_text(face,voxen_effects::get(scene_background.preset).label,0,-0.074f);
-            if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Walls)?"WALLS: ON":"WALLS: OFF",-0.111f))
-                scene_background.mask ^= voxen_scene::Background::Walls;
-            if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Floor)?"FLOOR: ON":"FLOOR: OFF",-0.146f))
-                scene_background.mask ^= voxen_scene::Background::Floor;
-            if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Ceiling)?"CEILING: ON":"CEILING: OFF",-0.181f))
-                scene_background.mask ^= voxen_scene::Background::Ceiling;
+            face_text(face,"NO BACKGROUND",0,-0.074f);
+        }
+        // Existing Scene plane shading remains separately accessible for testing.
+        if(face_button(face,page,scene_background.preset<0?"LEGACY EFFECT: OFF":"LEGACY EFFECT: ON",-0.126f))
+            scene_background.preset=scene_background.preset<0?0:-1;
+        if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Walls)?"WALLS: ON":"WALLS: OFF",-0.160f))
+            scene_background.mask ^= voxen_scene::Background::Walls;
+        if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Floor)?"FLOOR: ON":"FLOOR: OFF",-0.193f))
+            scene_background.mask ^= voxen_scene::Background::Floor;
         }
     } else if(page==6) {
         face_text(face,"SCENE SLOT 1",0,0.125f);
