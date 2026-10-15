@@ -1000,19 +1000,19 @@ static void draw_face(int page) {
         face_text(face,"NO SCENE SCAN REQUIRED",0,0.104f);
         if(face_button(face,page,environment_enabled?"ENV: ON":"ENV: OFF",0.061f,environment_enabled))
             environment_enabled=!environment_enabled;
-        static const char* names[]={"CYBER FUJI DEMO","GRASS WIND","CLOUDY SKIES"};
-        for(int i=0;i<3;++i)
-            if(face_button(face,page,names[i],0.039f-i*0.049f,environment_enabled && environment_mode==i)) {
+        static const char* names[]={"CYBER FUJI DEMO","GRASS WIND","CLOUDY SKIES","FIREWORKS"};
+        for(int i=0;i<4;++i)
+            if(face_button(face,page,names[i],0.045f-i*0.043f,environment_enabled && environment_mode==i)) {
                 environment_mode=i;
                 environment_enabled=true;
             }
         char strength_label[64];
         std::snprintf(strength_label,sizeof(strength_label),"STRENGTH %d%%",
             (int)(environment_opacity*100.0f));
-        face_text(face,strength_label,0,-0.122f);
-        if(face_button(face,page,"LESS",-0.160f))
+        face_text(face,strength_label,0,-0.145f);
+        if(face_button(face,page,"LESS",-0.177f))
             environment_opacity=std::max(0.05f,environment_opacity-0.05f);
-        if(face_button(face,page,"MORE",-0.195f))
+        if(face_button(face,page,"MORE",-0.207f))
             environment_opacity=std::min(0.85f,environment_opacity+0.05f);
     } else if(page==6) {
         face_text(face,"SCENE SLOT 1",0,0.125f);
