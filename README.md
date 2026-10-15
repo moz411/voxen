@@ -71,3 +71,7 @@ Added GALAXY (analytic Milky Way-style glow and sparse stars), AQUATIC (underwat
 ### Geometry animations (latest)
 
 The ANIMATIONS menu now contains NONE, BREATHE, ROTATE, PINCH H, PINCH V and SPLIT 4. BREATHE changes uniform voxel size; ROTATE revolves each artwork around its shared center; PINCH H narrows the mid-height of an artwork along X; PINCH V compresses the middle width along Y; SPLIT 4 offsets the four XY quadrants outward and then brings them together. The deformation affects the rendered voxel transforms only, preserving unmodified stored artwork/placement geometry. For visible transformations, use a multi-voxel artwork (not a solitary voxel). These are procedural CPU transform animations with no additional geometry and no shader particle loops. New animations apply to strokes/works created with the selected animation, in line with existing app behavior. APK build and headset QA still required.
+
+### MATRIX RAIN panoramic background
+
+Sixth background preset: green falling pseudo-glyph columns with varied speeds, lit heads and fading tails. Generated entirely from simple procedural strokes in a single fragment pass. No font atlas, texture fetches, particles, geometry duplication, or per-pixel iteration. This is stylized pseudo-writing, not readable Unicode text. OFF on launch, governed by the same opacity control. Android compilation and Quest GPU timing remain to be tested.
