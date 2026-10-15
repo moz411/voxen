@@ -64,7 +64,7 @@ static shader_t voxel_shader = nullptr;
 static material_t gpu_materials[voxen_effects::count] = {};
 static std::array<material_t,32> background_materials{};
 static voxen_scene::Background scene_background;
-static int background_source_index = -1; // -1 = NONE; sources require porting
+static int background_source_index = -1; // -1 = NONE; preset 0 ported
 static uint32_t brush_step = 0;
 static bool volume_active = false;
 static bool save_confirmation = false;
@@ -1014,13 +1014,14 @@ static void draw_face(int page) {
         if(background_source_index>=0) {
             const auto& src=voxen_backgrounds::entries[background_source_index];
             face_text(face,src.name,0,-0.074f);
-            face_text(face,"SOURCE ONLY - NOT PORTED",0,-0.097f);
+            face_text(face,background_source_index==0?"LIVE: PROCEDURAL NOISE":"NOT YET PORTED",0,-0.097f);
         } else {
             face_text(face,"NO BACKGROUND",0,-0.074f);
         }
-        // Existing Scene plane shading remains separately accessible for testing.
-        if(face_button(face,page,scene_background.preset<0?"LEGACY EFFECT: OFF":"LEGACY EFFECT: ON",-0.126f))
-            scene_background.preset=scene_background.preset<0?0:-1;
+        // Only the first imported shader has an actual material. Avoid fake previews.
+        scene_background.preset=(background_source_index==0 && background_materials[9])?9:-1;
+        if(face_button(face,page,"SCENE PLANE OVERLAY",-0.126f))
+            scene_background.opacity=scene_background.opacity>0.6f?0.35f:0.75f;
         if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Walls)?"WALLS: ON":"WALLS: OFF",-0.160f))
             scene_background.mask ^= voxen_scene::Background::Walls;
         if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Floor)?"FLOOR: ON":"FLOOR: OFF",-0.193f))
@@ -1304,7 +1305,7 @@ int voxen_stereokit_main() {
         }
     } else std::printf("[Voxen] GPU voxel shader unavailable; using default material\\n");
     if(voxel_shader) {
-        for(int i=0;i<voxen_effects::count && i<(int)background_materials.size();++i) {
+        for(int i=0;i<=9 && i<(int)background_materials.size();++i) {
             background_materials[i]=material_create(voxel_shader);
             if(background_materials[i]) {
                 material_set_float(background_materials[i],"mode",(float)i);
@@ -1335,7 +1336,7 @@ int voxen_stereokit_main() {
         for(int i=0;i<voxen_effects::count;++i)
             if(gpu_materials[i]) material_set_float(gpu_materials[i],
                                                      "time",animation_time);
-        for(int i=0;i<voxen_effects::count && i<(int)background_materials.size();++i)
+        for(int i=0;i<=9 && i<(int)background_materials.size();++i)
             if(background_materials[i]) material_set_float(background_materials[i],"time",animation_time);
         scene_background.render(cube,background_materials);
         for(const PaintedVoxel& voxel:voxels) {
