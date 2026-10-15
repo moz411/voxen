@@ -1025,7 +1025,6 @@ static void draw_face(int page) {
             scene_background.mask ^= voxen_scene::Background::Walls;
         if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Floor)?"FLOOR: ON":"FLOOR: OFF",-0.193f))
             scene_background.mask ^= voxen_scene::Background::Floor;
-        }
     } else if(page==6) {
         face_text(face,"SCENE SLOT 1",0,0.125f);
         face_text(face,storage_status,0,0.073f);
