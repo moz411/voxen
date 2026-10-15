@@ -68,8 +68,7 @@ float4 ps(psIn input):SV_TARGET {
         float sparks=pow(saturate(sin(angle*47.0+time*0.8)*sin(d.y*54.0-time*0.6)),16.0);
         c=lerp(float3(0.035,0.004,0.008),float3(0.10,0.025,0.02),horizon);
         c+=float3(1.0,0.20,0.035)*glow*0.65+float3(1.0,0.50,0.08)*sparks*0.17;
-    }
-    if(mode > 1.5 && mode < 2.5) {
+    } else if(mode < 2.5) {
         // Galaxy: a luminous Milky Way-like band plus sparse analytic stars.
         float band=exp(-14.0*abs(d.y+0.24*sin(angle*1.4+0.4)));
         float spiral=0.5+0.5*sin(angle*8.0+d.y*28.0-time*0.025);
@@ -78,7 +77,7 @@ float4 ps(psIn input):SV_TARGET {
         c=float3(0.025,0.035,0.13);
         c+=band*lerp(float3(0.35,0.19,0.85),float3(0.70,0.52,1.0),spiral)*0.95;
         c+=stars*float3(0.85,0.95,1.0)*0.95;
-    } else if(mode > 2.5 && mode < 3.5) {
+    } else if(mode < 3.5) {
         // Aquatic: underwater turquoise gradient, shallow light shafts, drifting caustics.
         float depth=saturate(0.5-0.5*d.y);
         float caustic=sin(angle*15.0+time*0.16+sin(d.y*12.0))
@@ -88,7 +87,7 @@ float4 ps(psIn input):SV_TARGET {
         c+=float3(0.30,0.76,0.78)*saturate(caustic)*0.48;
         c+=float3(0.42,0.85,0.78)*shaft*0.54;
         c*=1.0-depth*0.25;
-    } else if(mode > 3.5 && mode < 4.5) {
+    } else if(mode < 4.5) {
         // Rainforest: layered canopy silhouettes, warm forest shafts and distant haze.
         float canopy=0.28+0.16*sin(angle*5.0)+0.08*sin(angle*13.0+0.5);
         float leaves=sin(angle*29.0+time*0.025)*sin(d.y*37.0-time*0.017);
@@ -100,8 +99,9 @@ float4 ps(psIn input):SV_TARGET {
         c=lerp(c,float3(0.045,0.23,0.075)*(0.84+0.16*leaves),foliage*0.65);
         c=lerp(c,float3(0.03,0.13,0.04),tree*0.67);
         c+=float3(0.23,0.27,0.13)*mist*0.17+float3(0.45,0.40,0.20)*sun*0.17;
+    } else {
+        c=matrix_rain(angle,d.y,time);
     }
-    if(mode > 4.5) c=matrix_rain(angle,d.y,time);
     // Palette boosts compensate for compositing a transparent sky over passthrough.
     // Preserve the global opacity control and avoid extra geometry or loops.
     return float4(saturate(c),saturate(strength));
