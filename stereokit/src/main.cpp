@@ -1002,17 +1002,17 @@ static void draw_face(int page) {
             environment_enabled=!environment_enabled;
         static const char* names[]={"CYBER FUJI DEMO","GRASS WIND","CLOUDY SKIES"};
         for(int i=0;i<3;++i)
-            if(face_button(face,page,names[i],0.024f-i*0.052f,environment_enabled && environment_mode==i)) {
+            if(face_button(face,page,names[i],0.039f-i*0.049f,environment_enabled && environment_mode==i)) {
                 environment_mode=i;
                 environment_enabled=true;
             }
         char strength_label[64];
         std::snprintf(strength_label,sizeof(strength_label),"STRENGTH %d%%",
             (int)(environment_opacity*100.0f));
-        face_text(face,strength_label,0,-0.088f);
-        if(face_button(face,page,"LESS",-0.128f))
+        face_text(face,strength_label,0,-0.122f);
+        if(face_button(face,page,"LESS",-0.160f))
             environment_opacity=std::max(0.05f,environment_opacity-0.05f);
-        if(face_button(face,page,"MORE",-0.164f))
+        if(face_button(face,page,"MORE",-0.195f))
             environment_opacity=std::min(0.85f,environment_opacity+0.05f);
     } else if(page==6) {
         face_text(face,"SCENE SLOT 1",0,0.125f);
