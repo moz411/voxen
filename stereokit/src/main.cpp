@@ -1010,17 +1010,22 @@ static void draw_face(int page) {
                 effect_mode=i;
     } else if(page==7) {
         face_text(face,"LIGHT SKY / 360",0,0.152f);
-        face_text(face,"NO SCENE SCAN",0,0.104f);
-        if(face_button(face,page,sky_mode<0?"BACKGROUND: OFF":"BACKGROUND: ON",0.061f))
+        face_text(face,"SINGLE-PASS / NO SCAN",0,0.109f);
+        if(face_button(face,page,sky_mode<0?"BACKGROUND: OFF":"BACKGROUND: ON",0.064f))
             sky_mode=sky_mode<0?0:-1;
-        if(face_button(face,page,"AURORA",-0.002f,sky_mode==0)) sky_mode=0;
-        if(face_button(face,page,"EMBER HORIZON",-0.053f,sky_mode==1)) sky_mode=1;
+        static const char* sky_names[]={"AURORA","EMBER HORIZON","GALAXY","AQUATIC","RAINFOREST"};
+        if(sky_mode>=0) face_text(face,sky_names[sky_mode],0,0.015f);
+        else face_text(face,"NONE",0,0.015f);
+        if(face_button(face,page,"PREVIOUS",-0.033f))
+            sky_mode=sky_mode<0?4:(sky_mode+4)%5;
+        if(face_button(face,page,"NEXT",-0.077f))
+            sky_mode=sky_mode<0?0:(sky_mode+1)%5;
         char info[32];
         std::snprintf(info,sizeof(info),"INTENSITY %d%%",(int)(sky_opacity*100));
-        face_text(face,info,0,-0.104f);
-        if(face_button(face,page,"LESS",-0.151f))
+        face_text(face,info,0,-0.118f);
+        if(face_button(face,page,"LESS",-0.163f))
             sky_opacity=std::max(0.05f,sky_opacity-0.05f);
-        if(face_button(face,page,"MORE",-0.193f))
+        if(face_button(face,page,"MORE",-0.204f))
             sky_opacity=std::min(0.60f,sky_opacity+0.05f);
     } else if(page==6) {
         face_text(face,"SCENE SLOT 1",0,0.125f);
