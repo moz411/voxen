@@ -1016,13 +1016,13 @@ static void draw_face(int page) {
         face_text(face,"SINGLE-PASS / NO SCAN",0,0.109f);
         if(face_button(face,page,sky_mode<0?"BACKGROUND: OFF":"BACKGROUND: ON",0.064f))
             sky_mode=sky_mode<0?0:-1;
-        static const char* sky_names[]={"AURORA","EMBER HORIZON","GALAXY","AQUATIC","RAINFOREST"};
+        static const char* sky_names[]={"AURORA","EMBER HORIZON","GALAXY","AQUATIC","RAINFOREST","MATRIX RAIN"};
         if(sky_mode>=0) face_text(face,sky_names[sky_mode],0,0.015f);
         else face_text(face,"NONE",0,0.015f);
         if(face_button(face,page,"PREVIOUS",-0.033f))
-            sky_mode=sky_mode<0?4:(sky_mode+4)%5;
+            sky_mode=sky_mode<0?5:(sky_mode+5)%6;
         if(face_button(face,page,"NEXT",-0.077f))
-            sky_mode=sky_mode<0?0:(sky_mode+1)%5;
+            sky_mode=sky_mode<0?0:(sky_mode+1)%6;
         char info[32];
         std::snprintf(info,sizeof(info),"INTENSITY %d%%",(int)(sky_opacity*100));
         face_text(face,info,0,-0.118f);
