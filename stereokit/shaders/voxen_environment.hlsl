@@ -41,5 +41,6 @@ float4 ps(psIn input) : SV_TARGET {
     float3 c=lerp(float3(0.20,0.02,0.36),float3(0.02,0.32,0.55),sky);
     c=lerp(c,float3(0.05,0.015,0.12),skyline);
     c+=float3(1.0,0.12,0.52)*neonGrid*0.16*(1.0-skyline);
+    if(mode > 1.5) c=environment_clouds(uv,time);
     return float4(saturate(c),saturate(strength));
 }
