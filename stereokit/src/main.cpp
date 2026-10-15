@@ -463,33 +463,36 @@ static void load_scene() {
     last_paint_valid=false;
     storage_status="RESTORED";
 }
-static color128 animated_tint(const PaintedVoxel& v) {
-    if (v.effect==2) {
-        const float h=std::fmod(animation_time*0.09f + v.phase*0.035f,1.0f);
-        return color_hsv(h<0?h+1:h,0.9f,1.0f,1.0f);
-    }
-    if (v.effect==3 || v.effect==4 || v.effect==5 || v.effect==6 || v.effect==7) {
-        const float k=v.effect==4 ? (0.5f+0.5f*std::sin(animation_time*1.5f+v.phase*3.0f)) :
-            v.effect==5 ? (0.75f+0.25f*std::sin(animation_time*1.2f+v.position.y*3.0f)) :
-            v.effect==6 ? (0.55f+0.45f*std::sin(animation_time*4.0f+v.position.x*14.0f+v.position.z*14.0f)) :
-            v.effect==7 ? (0.7f+0.3f*std::sin(animation_time*2.0f+v.phase)) :
-            (0.65f+0.35f*std::sin(animation_time*5.0f+v.phase));
-        return {v.tint.r*k,v.tint.g*k,v.tint.b*k,1.0f};
-    }
-    return v.tint;
-}
+// Geometry animations are evaluated per artwork. All voxels in an artwork
+// share the same pivot, so the result is a coherent object transformation.
 static float animated_scale(const PaintedVoxel& v) {
-    // Keep the original grid collision geometry. Visual size never exceeds
-    // the collision/placement size, so neighboring cubes don't intersect.
-    if (v.effect==1 || v.effect==4 || v.effect==5 || v.effect==6 || v.effect==7) {
-        const float t=animation_time;
-        if(v.effect==4) return 0.85f+0.15f*std::sin(t*1.5f+v.phase*2.0f);
-        if(v.effect==5) return 0.9f+0.1f*std::sin(t*1.2f+v.position.y*3.0f);
-        if(v.effect==6) return 0.78f+0.22f*std::sin(t*4.0f+v.position.x*16.0f+v.position.z*16.0f);
-        if(v.effect==7) return 0.82f+0.18f*std::sin(t*2.0f+v.phase);
-        return 0.82f+0.18f*(0.5f+0.5f*std::sin(t*3.5f+v.phase));
-    }
+    if(v.effect==1) return 0.82f+0.18f*(0.5f+0.5f*std::sin(animation_time*2.2f));
     return 1.0f;
+}
+static vec3 animation_position(vec3 position,vec3 pivot,int mode,float extent) {
+    const float pulse=0.5f-0.5f*std::cos(animation_time*2.3f);
+    vec3 p={position.x-pivot.x,position.y-pivot.y,position.z-pivot.z};
+    if(mode==2) { // Rotate entire sculpture around its vertical axis
+        const float a=animation_time*0.45f;
+        const float c=std::cos(a),s=std::sin(a);
+        return {pivot.x+c*p.x+s*p.z,position.y,pivot.z-s*p.x+c*p.z};
+    }
+    if(mode==3) { // Hourglass: squeeze width at mid-height
+        const float h=std::max(0.12f,extent);
+        const float z=p.y/h;
+        const float influence=std::exp(-8.0f*z*z);
+        p.x*=1.0f-0.55f*pulse*influence;
+    } else if(mode==4) { // Vertical waist: squeeze height at center width
+        const float h=std::max(0.12f,extent);
+        const float z=p.x/h;
+        const float influence=std::exp(-8.0f*z*z);
+        p.y*=1.0f-0.55f*pulse*influence;
+    } else if(mode==5) { // 4 moving quadrants, reversible and deterministic
+        const float separation=std::min(0.10f,std::max(0.025f,extent*0.18f))*pulse;
+        p.x+=(p.x>=0?1.0f:-1.0f)*separation;
+        p.y+=(p.y>=0?1.0f:-1.0f)*separation;
+    }
+    return {pivot.x+p.x,pivot.y+p.y,pivot.z+p.z};
 }
 struct ArtworkBounds { vec3 lo,hi; };
 static ArtworkBounds artwork_bounds(const voxen::Artwork& a) {
@@ -1004,8 +1007,8 @@ static void draw_face(int page) {
         }
     } else if(page==5) {
         face_text(face,"VOXEL ANIMATION",0,0.145f);
-        static const char* effects[]={"SOLID","BREATHE","RAINBOW","SHIMMER","SLOW PULSE","SOFT TIDE","RIPPLE","ORGANIC"};
-        for(int i=0;i<8;++i)
+        static const char* effects[]={"NONE","BREATHE","ROTATE","PINCH H","PINCH V","SPLIT 4"};
+        for(int i=0;i<6;++i)
             if(face_button(face,page,effects[i],0.105f-i*0.044f,effect_mode==i))
                 effect_mode=i;
     } else if(page==7) {
