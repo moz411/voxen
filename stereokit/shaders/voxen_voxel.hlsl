@@ -54,7 +54,8 @@ float4 ps(psIn input) : SV_TARGET {
                          lerp(frac(d.x*d.y),frac(e.x*e.y),f.x),f.y);
             sum+=v*weight; total+=weight; weight*=0.5; uv*=2.0;
         }
-        c=(sum/total).xxx;
+        float noise_value=sum/max(total,0.0001);
+        c=float3(noise_value,noise_value,noise_value);
     } else if (mode > 7.5) {
         float n=collection_noise(p.xy*12.0-float2(t,0.0));
         c=float3(n,n,n);
