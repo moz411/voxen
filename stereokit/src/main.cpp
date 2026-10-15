@@ -2,7 +2,12 @@
 #include <stereokit_ui.h>
 #include <openxr/openxr.h>
 #include "voxen_voxel.hlsl.h"
-#include "voxen_sky_light.hlsl.h"
+#include "voxen_sky_0.hlsl.h"
+#include "voxen_sky_1.hlsl.h"
+#include "voxen_sky_2.hlsl.h"
+#include "voxen_sky_3.hlsl.h"
+#include "voxen_sky_4.hlsl.h"
+#include "voxen_sky_5.hlsl.h"
 #include "voxel_shapes.h"
 #include "shader_registry.h"
 #include "artwork.h"
@@ -69,8 +74,8 @@ static material_t gpu_materials[voxen_effects::count] = {};
 static std::array<material_t,32> background_materials{};
 static voxen_scene::Background scene_background;
 static int background_source_index = -1; // legacy source list, no longer rendered
-static shader_t sky_shader=nullptr;
-static material_t sky_material=nullptr;
+static shader_t sky_shaders[6]={};
+static material_t sky_materials[6]={};
 static mesh_t sky_sphere=nullptr;
 static int sky_mode=-1;
 static float sky_opacity=0.28f;
@@ -1329,13 +1334,15 @@ int voxen_stereokit_main() {
             }
         }
     }
-    sky_shader=shader_create_mem((void*)sks_voxen_sky_light_hlsl,
-        sizeof(sks_voxen_sky_light_hlsl));
-    if(sky_shader) {
-        sky_material=material_create(sky_shader);
-        if(sky_material) {
-            material_set_transparency(sky_material,transparency_blend);
-            material_set_cull(sky_material,cull_front);
+    const void* sky_binaries[6]={sks_voxen_sky_0_hlsl,sks_voxen_sky_1_hlsl,sks_voxen_sky_2_hlsl,sks_voxen_sky_3_hlsl,sks_voxen_sky_4_hlsl,sks_voxen_sky_5_hlsl};
+    const size_t sky_binary_sizes[6]={sizeof(sks_voxen_sky_0_hlsl),sizeof(sks_voxen_sky_1_hlsl),sizeof(sks_voxen_sky_2_hlsl),sizeof(sks_voxen_sky_3_hlsl),sizeof(sks_voxen_sky_4_hlsl),sizeof(sks_voxen_sky_5_hlsl)};
+    for(int i=0;i<6;++i) {
+        sky_shaders[i]=shader_create_mem((void*)sky_binaries[i],sky_binary_sizes[i]);
+        if(!sky_shaders[i]) continue;
+        sky_materials[i]=material_create(sky_shaders[i]);
+        if(sky_materials[i]) {
+            material_set_transparency(sky_materials[i],transparency_blend);
+            material_set_cull(sky_materials[i],cull_front);
         }
     }
     sky_sphere=mesh_find(default_id_mesh_sphere);
@@ -1364,12 +1371,12 @@ int voxen_stereokit_main() {
         for(int i=0;i<=9 && i<(int)background_materials.size();++i)
             if(background_materials[i]) material_set_float(background_materials[i],"time",animation_time);
         // Constant-cost panoramic background; no mesh scan or GPU particle loop.
-        if(sky_mode>=0 && sky_material && sky_sphere) {
-            material_set_float(sky_material,"time",animation_time);
-            material_set_float(sky_material,"mode",(float)sky_mode);
-            material_set_float(sky_material,"strength",sky_opacity);
+        if(sky_mode>=0 && sky_mode<6 && sky_materials[sky_mode] && sky_sphere) {
+            material_t selected_sky=sky_materials[sky_mode];
+            material_set_float(selected_sky,"time",animation_time);
+            material_set_float(selected_sky,"strength",sky_opacity);
             const pose_t* head=input_head();
-            if(head) render_add_mesh(sky_sphere,sky_material,
+            if(head) render_add_mesh(sky_sphere,selected_sky,
                 matrix_ts(head->position,{20,20,20}),{1,1,1,1});
         }
         // Cache one pivot and extent per voxel in O(voxel count) each frame.
@@ -1434,8 +1441,8 @@ int voxen_stereokit_main() {
             color_hsv(edge_hue, 1.0f, 1.0f, 1.0f));
     }, [] {
         scene_background.shutdown();
-        if(sky_material) material_release(sky_material);
-        if(sky_shader) shader_release(sky_shader);
+        for(material_t m:sky_materials) if(m) material_release(m);
+        for(shader_t shader:sky_shaders) if(shader) shader_release(shader);
         edge_passthrough.shutdown();
         for(mesh_t mesh:shape_meshes) if(mesh) mesh_release(mesh);
         material_release(material);
