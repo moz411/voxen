@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "default": "none",
+  "rendering": {
+    "mode": "behind-passthrough",
+    "fallback": "no-background",
+    "scene_mask": [
+      "wall",
+      "floor",
+      "ceiling"
+    ],
+    "preserve_passthrough": true,
+    "preserve_contours": true
+  },
+  "presets": [
+    {
+      "id": "procedural-noise",
+      "language": "HLSL",
+      "status": "port-required"
+    },
+    {
+      "id": "drive-home",
+      "language": "GLSL",
+      "status": "port-required",
+      "license": "CC BY-NC-SA 3.0"
+    },
+    {
+      "id": "guanabara",
+      "language": "Rust-GPU",
+      "status": "port-required",
+      "credit": "Danilo Guanabara"
+    },
+    {
+      "id": "seascape",
+      "language": "Rust-GPU",
+      "status": "port-required",
+      "license": "CC BY-NC-SA 3.0"
+    },
+    {
+      "id": "iquilez-procedural",
+      "language": "Rust-GPU",
+      "status": "port-required",
+      "credit": "Inigo Quilez"
+    },
+    {
+      "id": "pixelated-cloud",
+      "language": "GLSL",
+      "status": "port-required",
+      "texture": "uniformclouds-1.jpg"
+    },
+    {
+      "id": "into-you",
+      "language": "GLSL",
+      "status": "port-required",
+      "license": "CC BY-NC-SA 3.0"
+    },
+    {
+      "id": "seeded-noise",
+      "language": "GLSL",
+      "status": "port-required"
+    },
+    {
+      "id": "hlsl-pattern",
+      "language": "HLSL",
+      "status": "port-required"
+    },
+    {
+      "id": "twirl-sdf",
+      "language": "HLSL",
+      "status": "port-required"
+    }
+  ]
+}

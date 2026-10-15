@@ -5,6 +5,8 @@
 #include "voxel_shapes.h"
 #include "shader_registry.h"
 #include "artwork.h"
+#include "scene_background.h"
+#include "background_catalog.h"
 #include <cstdio>
 #include <fstream>
 #include <cstdint>
@@ -18,7 +20,7 @@ using namespace sk;
 sk_settings_t app_settings = {"Voxen StereoKit"};
 static pose_t palette = {{-0.25f, 0.0f, -0.55f}, quat_identity};
 static int menu_page = 0;
-static constexpr int page_count = 7;
+static constexpr int page_count = 8;
 static constexpr float menu_width = 0.17f;
 static constexpr float menu_height = 0.46f;
 static float carousel_angle = 0.0f;
@@ -60,6 +62,9 @@ static float rossler_a=0.2f, rossler_b=0.2f, rossler_c=5.7f;
 static float fibonacci_turns=5.0f, fibonacci_spacing=1.0f;
 static shader_t voxel_shader = nullptr;
 static material_t gpu_materials[voxen_effects::count] = {};
+static std::array<material_t,32> background_materials{};
+static voxen_scene::Background scene_background;
+static int background_source_index = -1; // -1 = NONE; preset 0 ported
 static uint32_t brush_step = 0;
 static bool volume_active = false;
 static bool save_confirmation = false;
@@ -724,8 +729,7 @@ static pose_t face_panel_pose(int page) {
                                   quat_from_angles(0,180.0f,0));
     const vec3 outward=quat_mul_vec(rotation,{0,0,0.005f});
     // ALGORITHMS and PARAMS are a paired side-by-side workspace.
-    const bool pair=menu_page==2 || menu_page==4;
-    const float shift=pair?(page==2?-0.087f:page==4?0.087f:0.0f):0.0f;
+    const float shift=0.0f;
     const vec3 lateral=quat_mul_vec(rotation,{shift,0,0});
     return {{carousel_base.position.x+outward.x+lateral.x,
              carousel_base.position.y+outward.y+lateral.y,
@@ -835,7 +839,7 @@ static void draw_face(int page) {
     face_rect(face,0,0,panel_width,panel_height,
         {0.012f,0.035f,0.025f,0.87f},0.003f);
     pixel_border(face);
-    static const char* titles[]={"COLORS","SHAPES","ALGORITHMS","SHADERS","PARAMS","ANIMATIONS","SAVE / LOAD"};
+    static const char* titles[]={"COLORS","SHAPES","ALGORITHMS","TEXTURES","PARAMS","ANIMATIONS","SAVE / LOAD","BACKGROUNDS"};
     pixel_title(face,titles[page],0.188f);
     if(page==0) {
         for(int i=0;i<16;++i) {
@@ -989,6 +993,39 @@ static void draw_face(int page) {
         for(int i=0;i<4;++i)
             if(face_button(face,page,effects[i],0.085f-i*0.065f,effect_mode==i))
                 effect_mode=i;
+    } else if(page==7) {
+        face_text(face,"META SCENE / SOURCE LIBRARY",0,0.152f);
+        char status[48];
+        std::snprintf(status,sizeof(status),"%d ANCHORS / %d PLANES",
+            scene_background.anchors_found,scene_background.plane_count());
+        face_text(face,scene_background.supported?status:scene_background.diagnostic,0,0.111f);
+        if(face_button(face,page,"SCAN AGAIN",0.071f)) scene_background.refresh();
+        // Source presets remain disabled until converted to native GPU materials.
+        // Explicitly avoid mapping unrelated voxel shaders to these names.
+        if(face_button(face,page,background_source_index<0?"SOURCE: NONE":"SOURCE: SELECTED",0.034f))
+            background_source_index = background_source_index<0?0:-1;
+        if(face_button(face,page,"PREVIOUS SOURCE",-0.004f))
+            background_source_index = background_source_index<0?0:
+                (background_source_index+(int)voxen_backgrounds::entries.size()-1)%
+                (int)voxen_backgrounds::entries.size();
+        if(face_button(face,page,"NEXT SOURCE",-0.042f))
+            background_source_index = background_source_index<0?0:
+                (background_source_index+1)%(int)voxen_backgrounds::entries.size();
+        if(background_source_index>=0) {
+            const auto& src=voxen_backgrounds::entries[background_source_index];
+            face_text(face,src.name,0,-0.074f);
+            face_text(face,background_source_index==0?"LIVE: PROCEDURAL NOISE":"NOT YET PORTED",0,-0.097f);
+        } else {
+            face_text(face,"NO BACKGROUND",0,-0.074f);
+        }
+        // Only the first imported shader has an actual material. Avoid fake previews.
+        scene_background.preset=(background_source_index==0 && background_materials[9])?9:-1;
+        if(face_button(face,page,"SCENE PLANE OVERLAY",-0.126f))
+            scene_background.opacity=scene_background.opacity>0.6f?0.35f:0.75f;
+        if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Walls)?"WALLS: ON":"WALLS: OFF",-0.160f))
+            scene_background.mask ^= voxen_scene::Background::Walls;
+        if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Floor)?"FLOOR: ON":"FLOOR: OFF",-0.193f))
+            scene_background.mask ^= voxen_scene::Background::Floor;
     } else if(page==6) {
         face_text(face,"SCENE SLOT 1",0,0.125f);
         face_text(face,storage_status,0,0.073f);
@@ -1063,7 +1100,7 @@ static void update_menu_ray() {
     // Intersect each face in its own local coordinates. This uses exactly
     // the same transforms as each rendered StereoKit panel.
     for (int page=0; page<page_count; ++page) {
-        if(page!=menu_page && !((menu_page==2 || menu_page==4) && (page==2 || page==4))) continue;
+        if(page!=menu_page) continue;
         const pose_t face = face_panel_pose(page);
         const quat inverse = quat_inverse(face.orientation);
         const vec3 face_origin = face.position;
@@ -1234,8 +1271,13 @@ int voxen_stereokit_main() {
     app_settings.blend_preference = display_blend_any_transparent;
     // Must happen before sk_init, which creates StereoKit's OpenXR instance.
     backend_openxr_ext_request(XR_FB_PASSTHROUGH_EXTENSION_NAME);
+    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME);
+    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
+    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_STORAGE_EXTENSION_NAME);
+    backend_openxr_ext_request(XR_FB_SCENE_EXTENSION_NAME);
     if (!sk_init(app_settings)) return 1;
     edge_passthrough.initialize();
+    scene_background.initialize();
     cube = mesh_find(default_id_mesh_cube);
     shape_meshes = voxen_shapes::create(cube);
     material = material_copy(material_find(default_id_material));
@@ -1262,6 +1304,16 @@ int voxen_stereokit_main() {
             if(gpu_materials[i]) material_set_float(gpu_materials[i],"mode",(float)i);
         }
     } else std::printf("[Voxen] GPU voxel shader unavailable; using default material\\n");
+    if(voxel_shader) {
+        for(int i=0;i<=9 && i<(int)background_materials.size();++i) {
+            background_materials[i]=material_create(voxel_shader);
+            if(background_materials[i]) {
+                material_set_float(background_materials[i],"mode",(float)i);
+                material_set_transparency(background_materials[i],transparency_blend);
+                material_set_cull(background_materials[i],cull_none);
+            }
+        }
+    }
     voxels.reserve(max_voxels);
     carousel_mat = material_copy(material_find(default_id_material));
     material_set_transparency(carousel_mat, transparency_blend);
@@ -1278,13 +1330,15 @@ int voxen_stereokit_main() {
         update_left_buttons();
         update_menu_ray();
         // Never render overlapping inactive pages.
-        if(menu_page==2 || menu_page==4) { draw_face(2); draw_face(4); }
-        else draw_face(menu_page);
+        draw_face(menu_page);
 
         animation_time += time_stepf();
         for(int i=0;i<voxen_effects::count;++i)
             if(gpu_materials[i]) material_set_float(gpu_materials[i],
                                                      "time",animation_time);
+        for(int i=0;i<=9 && i<(int)background_materials.size();++i)
+            if(background_materials[i]) material_set_float(background_materials[i],"time",animation_time);
+        scene_background.render(cube,background_materials);
         for(const PaintedVoxel& voxel:voxels) {
             if(voxel.reveal_duration>0.0f) {
                 const float elapsed=std::max(0.0f,animation_time-voxel.reveal_start);
@@ -1313,11 +1367,13 @@ int voxen_stereokit_main() {
         edge_passthrough.frame(edges_enabled, camera_opacity,
             color_hsv(edge_hue, 1.0f, 1.0f, 1.0f));
     }, [] {
+        scene_background.shutdown();
         edge_passthrough.shutdown();
         for(mesh_t mesh:shape_meshes) if(mesh) mesh_release(mesh);
         material_release(material);
         material_release(carousel_mat);
         for(material_t mat:gpu_materials) if(mat) material_release(mat);
+        for(material_t mat:background_materials) if(mat) material_release(mat);
         if(voxel_shader) shader_release(voxel_shader);
         if (click_sound) sound_release(click_sound);
         for (sound_t tone: tones) if(tone) sound_release(tone);

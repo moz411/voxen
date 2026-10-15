@@ -40,7 +40,23 @@ float4 ps(psIn input) : SV_TARGET {
     float3 p=input.local;
     float t=time;
     float3 c=input.tint.rgb;
-    if (mode > 7.5) {
+    if (mode > 8.5) {
+        // Port of the imported Procedural Noise shader (animated FBM value noise).
+        float2 uv=p.xy*12.0-float2(t,0.0);
+        float sum=0.0, weight=1.0, total=0.0;
+        [unroll] for(int octave=0;octave<6;++octave) {
+            float2 id=floor(uv), f=smoothstep(0.0,1.0,frac(uv));
+            float2 a=sin(id*float2(12.45,56.43))*64.7+12.34;
+            float2 b=sin((id+float2(1,0))*float2(12.45,56.43))*64.7+12.34;
+            float2 d=sin((id+float2(0,1))*float2(12.45,56.43))*64.7+12.34;
+            float2 e=sin((id+float2(1,1))*float2(12.45,56.43))*64.7+12.34;
+            float v=lerp(lerp(frac(a.x*a.y),frac(b.x*b.y),f.x),
+                         lerp(frac(d.x*d.y),frac(e.x*e.y),f.x),f.y);
+            sum+=v*weight; total+=weight; weight*=0.5; uv*=2.0;
+        }
+        float noise_value=sum/max(total,0.0001);
+        c=float3(noise_value,noise_value,noise_value);
+    } else if (mode > 7.5) {
         float n=collection_noise(p.xy*12.0-float2(t,0.0));
         c=float3(n,n,n);
     } else if (mode > 6.5) {
