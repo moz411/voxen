@@ -55,3 +55,9 @@ On Windows the OpenXR passthrough extension is not requested. The scene uses the
 The StereoKit backend includes a **BACKGROUNDS** carousel page. It loads Meta Scene Model 2D planes through `XR_FB_scene` + `XR_FB_spatial_entity_query`, categorizes `WALL_FACE`, `FLOOR`, `CEILING`, and overlays one of the existing GPU materials on the detected surfaces. Default: **SHADER: NONE**. The Meta passthrough layer and its white edges remain independent of scene geometry. Re-scanning and per-surface category toggles are available from this page.
 
 On Quest, enable Space Setup for the room and grant Voxen spatial data access (`USE_SCENE`). If there are no planes, check the `[Voxen Scene]` log lines. Scene detection is device-dependent; this branch has not been built or tested on a Quest yet. The native OpenXR engine under `engine/` is unchanged; this experimental integration targets the StereoKit app under `stereokit/`.
+
+## Panoramic backgrounds experiment
+
+The BACKGROUNDS carousel page now renders an animated inside-facing sphere centered on the headset. It is independent of scene recognition; no room scan or spatial permission prompt is required. The default is OFF. The first entry, **CYBER FUJI DEMO**, is a *new procedural preview*, not the original Cyber Fuji 2020 shader (its source is not bundled in this repository). More environment shaders can be added to this registry once their source files are available.
+
+**Compositor limitation:** this first implementation draws a translucent panorama in StereoKit's projection layer, which blends with passthrough behind that projection. It does **not** yet place a true environment OpenXR composition layer *under* the Meta passthrough layer; achieving strict environment -> passthrough -> voxels ordering requires separating projection content into composition layers. Test the visual layering and controls on Quest before merging.
