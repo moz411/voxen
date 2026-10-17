@@ -88,7 +88,13 @@ void MetaSceneProvider::request() {
     sceneLog("Scene bounded-2D local query result",static_cast<int>(result));
 }
 void MetaSceneProvider::onEvent(const XrEventDataBaseHeader* event) {
-    if(!pending_ || !event)return;
+    if(!event)return;
+    if(event->type==XR_TYPE_EVENT_DATA_SPACE_SET_STATUS_COMPLETE_FB) {
+        const auto* e=reinterpret_cast<const XrEventDataSpaceSetStatusCompleteFB*>(event);
+        sceneLog("Space component enable complete",static_cast<int>(e->result));
+        return;
+    }
+    if(!pending_)return;
     if(usingDiscovery_ && event->type==XR_TYPE_EVENT_DATA_SPACE_DISCOVERY_RESULTS_AVAILABLE_META) {
         const auto* e=reinterpret_cast<const XrEventDataSpaceDiscoveryResultsAvailableMETA*>(event);
         if(e->requestId!=requestId_)return;
