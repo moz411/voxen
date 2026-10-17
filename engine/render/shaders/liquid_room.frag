@@ -55,5 +55,5 @@ void main() {
     float light=max(0.0,dot(n,normalize(vec3(-0.5,1.0,-2.0))));
     float gray=pow(clamp(0.14+0.86*light,0.0,1.0),1.0/2.2);
     // Limited luminosity/opacity; preserve real-world perception.
-    outColor=vec4(vec3(gray)*vec3(0.30,0.85,0.98),0.42);
+    outColor=vec4(vec3(gray)*vec3(0.30,0.85,0.98),clamp(pc.parameters.w,0.0,0.6));
 }
