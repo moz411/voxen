@@ -44,6 +44,8 @@ public:
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
     // Provider output is empty until Meta OpenXR scene acquisition succeeds.
+    struct MeshGeometry { XrPosef pose{}; std::vector<XrVector3f> vertices; std::vector<uint32_t> indices; };
+    void setSceneMeshes(const std::vector<MeshGeometry>& meshes);
     void setEnvironmentSurfaces(std::vector<voxen::scene::EnvironmentSurface> surfaces) {
         environmentSurfaces_.replace(std::move(surfaces));
     }
@@ -103,6 +105,10 @@ private:
     VkPipeline fractalPipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
+    VkPipeline meshWirePipeline_ = VK_NULL_HANDLE;
+    VkBuffer meshWireBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory meshWireMemory_ = VK_NULL_HANDLE;
+    uint32_t meshWireVertexCount_ = 0;
     VkPipeline carouselPipeline_ = VK_NULL_HANDLE;
     int nativeMenuPage_ = 0;
     bool nativeMenuStickLatched_ = false;
