@@ -10,6 +10,7 @@
 #include <openxr/openxr.h>
 #include <voxen/scene/Scene.hpp>
 #include <voxen/audio/AmbientMusic.hpp>
+#include <voxen/audio/Mp3Library.hpp>
 #include <voxen/scene/EnvironmentSurface.hpp>
 #ifdef VOXEN_WITH_IMGUI
 #include <voxen/ui/CarouselUi.hpp>
@@ -44,6 +45,9 @@ public:
         VkQueue queue,
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
+#ifdef __ANDROID__
+    void configureMusicJavaVm(JavaVM* vm) {mp3Library_.initialize(vm);}
+#endif
     // Provider output is empty until Meta OpenXR scene acquisition succeeds.
     struct MeshGeometry { XrPosef pose{}; const std::vector<XrVector3f>* vertices=nullptr; const std::vector<uint32_t>* indices=nullptr; };
     void setSceneMeshes(const std::vector<MeshGeometry>& meshes);
@@ -86,6 +90,7 @@ private:
     void renderImage(EyeSwapchain& eye, uint32_t imageIndex, const XrView& view);
 
     voxen::audio::AmbientMusic ambientMusic_{};
+    voxen::audio::Mp3Library mp3Library_{};
     ::XrSession session_ = XR_NULL_HANDLE;
     VkDevice device_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
