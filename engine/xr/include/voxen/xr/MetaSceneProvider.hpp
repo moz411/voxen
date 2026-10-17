@@ -38,6 +38,10 @@ private:
     std::vector<XrSpace> requestedLabels_;
     std::vector<XrSpace> requestedBounds_;
     std::vector<XrSpace> requestedLocatable_;
+    struct UnsupportedComponent { XrSpace space; XrSpaceComponentTypeFB type; };
+    std::vector<UnsupportedComponent> unsupportedComponents_;
+    struct CachedPlane { XrSpace space; XrRect2Df rect; bool wall; };
+    std::vector<CachedPlane> cachedPlanes_;
     std::vector<XrSpace> requestedMesh_;
     std::vector<XrSpace> inspectedMesh_;
     std::vector<CapturedMesh> capturedMeshes_;
