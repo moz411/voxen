@@ -97,6 +97,9 @@ private:
     VkPipeline organicaPipeline_ = VK_NULL_HANDLE;
     VkPipeline fractalPipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
+    VkPipeline carouselPipeline_ = VK_NULL_HANDLE;
+    int nativeMenuPage_ = 0;
+    bool nativeMenuStickLatched_ = false;
     VkPipeline laserPipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
     voxen::scene::Scene scene_{};
