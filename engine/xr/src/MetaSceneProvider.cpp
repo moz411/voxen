@@ -200,6 +200,13 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
         constexpr XrSpaceLocationFlags valid=
             XR_SPACE_LOCATION_POSITION_VALID_BIT | XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
         mesh.located=XR_SUCCEEDED(res) && (location.locationFlags&valid)==valid;
+        static bool meshPoseLogged=false;
+        if(!meshPoseLogged) {
+            sceneLog("Mesh xrLocateSpace result",static_cast<int>(res));
+            sceneLog("Mesh location flags",static_cast<int>(location.locationFlags));
+            sceneLog("Mesh pose valid",mesh.located?1:0);
+            meshPoseLogged=true;
+        }
         if(mesh.located)mesh.pose=location.pose;
     }
     for(const auto& result:spaces_) {
