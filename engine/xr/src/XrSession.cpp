@@ -325,8 +325,8 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
             geometry.pose=mesh.pose;
             // Copy the geometry only for the first upload; future frames
             // currently share the mesh and refresh its anchor pose.
-            geometry.vertices=mesh.vertices;
-            geometry.indices=mesh.indices;
+            geometry.vertices=&mesh.vertices;
+            geometry.indices=&mesh.indices;
             meshes.push_back(std::move(geometry));
             break;
         }
