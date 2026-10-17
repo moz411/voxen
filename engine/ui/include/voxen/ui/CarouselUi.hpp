@@ -24,6 +24,8 @@ struct CarouselState {
     float voxelColor[3] = {0.10f,0.95f,0.78f};
     int voxelMaterial = 0;
     bool voxelBrushEnabled = false;
+    bool voxelClearRequested = false;
+    int voxelStrokeCount = 0;
     bool voxelSettingsOpen = false;
     bool visible = true;
     bool liquidRoom = true;
@@ -47,7 +49,7 @@ struct CarouselState {
     bool gpuAvailable = false;
 };
 inline constexpr std::array<std::string_view, 9> pages = {
-    "COLORS","SHAPES","ALGORITHMS","SHADERS",
+    "COLORS","VOXELS","ALGORITHMS","SHADERS",
     "PARAMS","ANIMATIONS","SAVE / LOAD","BACKGROUNDS","MUSIC"
 };
 // Caller owns ImGui frame lifecycle. Draws controls into ImDrawData; no XR
