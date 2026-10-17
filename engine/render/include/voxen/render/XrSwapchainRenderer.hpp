@@ -4,10 +4,12 @@
 #include <chrono>
 #include <cstdint>
 #include <vector>
+#include <utility>
 
 #include <vulkan/vulkan.h>
 #include <openxr/openxr.h>
 #include <voxen/scene/Scene.hpp>
+#include <voxen/scene/EnvironmentSurface.hpp>
 #ifdef _WIN32
 #include <windows.h>
 #include <unknwn.h>
@@ -36,6 +38,13 @@ public:
         VkQueue queue,
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
+    // Provider output is empty until Meta OpenXR scene acquisition succeeds.
+    void setEnvironmentSurfaces(std::vector<voxen::scene::EnvironmentSurface> surfaces) {
+        environmentSurfaces_.replace(std::move(surfaces));
+    }
+    [[nodiscard]] std::size_t trackedSurfaceCount() const noexcept {
+        return environmentSurfaces_.surfaces().size();
+    }
     [[nodiscard]] float lastGpuMs() const noexcept { return lastGpuMs_; }
     [[nodiscard]] bool gpuTimingAvailable() const noexcept { return gpuTimestampPool_ != VK_NULL_HANDLE; }
     void updateControllerInteraction(const std::array<XrPosef, 2>& poses,
@@ -90,6 +99,7 @@ private:
     VkPipeline laserPipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
     voxen::scene::Scene scene_{};
+    voxen::scene::EnvironmentSurfaceRegistry environmentSurfaces_{};
     std::array<int, 2> heldArtwork_{{-1, -1}};
     std::array<int, 2> hoveredArtwork_{{-1, -1}};
     std::array<XrPosef, 2> controllerPoses_{};
