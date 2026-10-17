@@ -807,6 +807,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     // NOT a detected wall. Spatial-surface binding comes in the next stage.
     bool showSceneMesh=false;
     bool sceneOcclusion=false;
+    float sceneDepthBias=0.002f;
     bool liquidEnabled=true;
     float liquidOpacity=0.42f;
     int maxLiquidWalls=3;
@@ -821,6 +822,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 #ifdef VOXEN_WITH_IMGUI
     showSceneMesh=imguiCarousel_.showSceneMesh;
     sceneOcclusion=imguiCarousel_.sceneOcclusion;
+    sceneDepthBias=std::clamp(imguiCarousel_.sceneDepthBias,0.f,0.01f);
     liquidEnabled=imguiCarousel_.liquidRoom;
     liquidOpacity=std::clamp(imguiCarousel_.liquidOpacity,0.0f,0.6f);
     maxLiquidWalls=std::clamp(imguiCarousel_.maxLiquidWalls,1,8);
@@ -840,7 +842,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         const VkDeviceSize offset=0;
         vkCmdBindVertexBuffers(commandBuffer_,0,1,&meshDepthBuffer_,&offset);
         const auto mvp=multiply(projView,meshPoseMatrix(meshWirePose_));
-        ProceduralPushConstants depthConstants{mvp,{0.f,0.f,0.f,0.f}};
+        ProceduralPushConstants depthConstants{mvp,{sceneDepthBias,0.f,0.f,0.f}};
         vkCmdPushConstants(commandBuffer_,pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(depthConstants),&depthConstants);
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
