@@ -302,11 +302,13 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
         if(!enabled(XR_SPACE_COMPONENT_TYPE_BOUNDED_2D_FB,requestedBounds_))continue;
         if(!enabled(XR_SPACE_COMPONENT_TYPE_LOCATABLE_FB,requestedLocatable_))continue;
         XrRect2Df rect{};
+        voxen::scene::SurfaceClass planeClass=voxen::scene::SurfaceClass::Unknown;
         const auto knownPlane=std::find_if(cachedPlanes_.begin(),cachedPlanes_.end(),
             [&](const auto& item){return item.space==result.space;});
         if(knownPlane!=cachedPlanes_.end()) {
             if(knownPlane->classification==voxen::scene::SurfaceClass::Unknown)continue;
             rect=knownPlane->rect;
+            planeClass=knownPlane->classification;
         } else {
             // Semantic labels and plane bounds are static for this capture:
             // read once per anchor, not 30 times on every XR frame.
@@ -329,6 +331,7 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
             if(classification!=voxen::scene::SurfaceClass::Unknown &&
                XR_FAILED(bounds_(session_,result.space,&rect)))continue;
             cachedPlanes_.push_back({result.space,rect,classification});
+            planeClass=classification;
             if(classification==voxen::scene::SurfaceClass::Unknown)continue;
         }
         XrSpaceLocation loc{XR_TYPE_SPACE_LOCATION};
@@ -346,8 +349,7 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
             uuidHash*=1099511628211ull;
         }
         wall.id=uuidHash;
-        wall.classification=(knownPlane!=cachedPlanes_.end()) ? knownPlane->classification :
-            cachedPlanes_.back().classification;
+        wall.classification=planeClass;
         wall.center={pose.position.x+delta.x,pose.position.y+delta.y,pose.position.z+delta.z};
         wall.orientation={pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w};
         wall.halfExtents={rect.extent.width*0.5f,rect.extent.height*0.5f};
