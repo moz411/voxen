@@ -12,13 +12,15 @@ struct CarouselState {
     bool liquidRoom = true;
     float liquidOpacity = 0.42f;
     float animationSpeed = 1.0f;
+    bool showArtworks = true;
+    bool animateArtworks = true;
     bool perfHud = true;
     float cpuMs = 0.0f;
     float gpuMs = 0.0f;
     bool gpuAvailable = false;
 };
 inline constexpr std::array<std::string_view, 8> pages = {
-    "COLORS","SHAPES","ALGORITHMS","TEXTURES",
+    "COLORS","SHAPES","ALGORITHMS","SHADERS",
     "PARAMS","ANIMATIONS","SAVE / LOAD","BACKGROUNDS"
 };
 // Caller owns ImGui frame lifecycle. Draws controls into ImDrawData; no XR
