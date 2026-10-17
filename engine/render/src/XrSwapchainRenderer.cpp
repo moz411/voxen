@@ -356,54 +356,61 @@ static Mat4 meshPoseMatrix(const XrPosef& pose) {
 }
 
 void XrSwapchainRenderer::setSceneMeshes(const std::vector<MeshGeometry>& meshes) {
-    // The current Quest scene returns a single large room mesh. Start by
-    // visualizing that mesh, leaving multi-anchor batching for a later pass.
     if(meshes.empty())return;
     const auto& mesh=meshes.front();
     meshWirePose_=mesh.pose;
-    if(meshWireBuffer_!=VK_NULL_HANDLE || !mesh.vertices || !mesh.indices ||
+    if(meshDepthBuffer_!=VK_NULL_HANDLE || !mesh.vertices || !mesh.indices ||
        mesh.vertices->empty() || mesh.indices->empty())return;
-    std::vector<XrVector3f> lines;
     const auto& indices=*mesh.indices;
     const auto& vertices=*mesh.vertices;
+    std::vector<XrVector3f> triangles;
+    std::vector<XrVector3f> lines;
+    triangles.reserve(indices.size());
     lines.reserve(indices.size()*2);
-    for(size_t i=0;i+2<indices.size();i+=3) {
-        const auto a=indices[i], b=indices[i+1], c=indices[i+2];
-        if(a>=vertices.size() || b>=vertices.size() || c>=vertices.size())continue;
+    for(size_t i=0;i+2<indices.size();i+=3){
+        uint32_t a=indices[i],b=indices[i+1],c=indices[i+2];
+        if(a>=vertices.size()||b>=vertices.size()||c>=vertices.size())continue;
+        triangles.push_back(vertices[a]);triangles.push_back(vertices[b]);triangles.push_back(vertices[c]);
         lines.push_back(vertices[a]);lines.push_back(vertices[b]);
         lines.push_back(vertices[b]);lines.push_back(vertices[c]);
         lines.push_back(vertices[c]);lines.push_back(vertices[a]);
     }
-    if(lines.empty())return;
-    const VkDeviceSize bytes=lines.size()*sizeof(XrVector3f);
-    VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    bi.size=bytes;bi.usage=VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;bi.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
-    checkVk(vkCreateBuffer(device_,&bi,nullptr,&meshWireBuffer_),"vkCreateBuffer(mesh)");
-    VkMemoryRequirements requirements{};
-    vkGetBufferMemoryRequirements(device_,meshWireBuffer_,&requirements);
-    VkPhysicalDeviceMemoryProperties memoryProperties{};
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice_,&memoryProperties);
-    uint32_t memoryType=UINT32_MAX;
-    for(uint32_t i=0;i<memoryProperties.memoryTypeCount;i++) {
-        const auto flags=memoryProperties.memoryTypes[i].propertyFlags;
-        if((requirements.memoryTypeBits&(1u<<i)) &&
-           (flags&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))==
-             (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
-            memoryType=i;break;
+    if(triangles.empty())return;
+    VkPhysicalDeviceMemoryProperties properties{};
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice_,&properties);
+    auto upload=[&](const std::vector<XrVector3f>& src,VkBuffer& buffer,VkDeviceMemory& memory) {
+        const VkDeviceSize bytes=src.size()*sizeof(XrVector3f);
+        VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        bi.size=bytes;bi.usage=VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;bi.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
+        checkVk(vkCreateBuffer(device_,&bi,nullptr,&buffer),"vkCreateBuffer(scene mesh)");
+        VkMemoryRequirements requirements{};
+        vkGetBufferMemoryRequirements(device_,buffer,&requirements);
+        uint32_t memoryType=UINT32_MAX;
+        for(uint32_t i=0;i<properties.memoryTypeCount;i++){
+            auto flags=properties.memoryTypes[i].propertyFlags;
+            if((requirements.memoryTypeBits&(1u<<i)) &&
+                (flags&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))==
+                (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)){
+                memoryType=i;break;
+            }
         }
-    }
-    if(memoryType==UINT32_MAX)throw std::runtime_error("No coherent mesh vertex memory");
-    VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-    ai.allocationSize=requirements.size;ai.memoryTypeIndex=memoryType;
-    checkVk(vkAllocateMemory(device_,&ai,nullptr,&meshWireMemory_),"vkAllocateMemory(mesh)");
-    checkVk(vkBindBufferMemory(device_,meshWireBuffer_,meshWireMemory_,0),"vkBindBufferMemory(mesh)");
-    void* mapped=nullptr;
-    checkVk(vkMapMemory(device_,meshWireMemory_,0,bytes,0,&mapped),"vkMapMemory(mesh)");
-    std::memcpy(mapped,lines.data(),static_cast<size_t>(bytes));
-    vkUnmapMemory(device_,meshWireMemory_);
+        if(memoryType==UINT32_MAX)throw std::runtime_error("No coherent scene mesh memory");
+        VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+        ai.allocationSize=requirements.size;ai.memoryTypeIndex=memoryType;
+        checkVk(vkAllocateMemory(device_,&ai,nullptr,&memory),"vkAllocateMemory(scene mesh)");
+        checkVk(vkBindBufferMemory(device_,buffer,memory,0),"vkBindBufferMemory(scene mesh)");
+        void* mapped=nullptr;
+        checkVk(vkMapMemory(device_,memory,0,bytes,0,&mapped),"vkMapMemory(scene mesh)");
+        std::memcpy(mapped,src.data(),static_cast<size_t>(bytes));
+        vkUnmapMemory(device_,memory);
+    };
+    upload(triangles,meshDepthBuffer_,meshDepthMemory_);
+    meshDepthVertexCount_=static_cast<uint32_t>(triangles.size());
+    upload(lines,meshWireBuffer_,meshWireMemory_);
     meshWireVertexCount_=static_cast<uint32_t>(lines.size());
 #ifdef __ANDROID__
-    __android_log_print(ANDROID_LOG_INFO,"VoxenScene","Wireframe GPU upload: %u vertices",meshWireVertexCount_);
+    __android_log_print(ANDROID_LOG_INFO,"VoxenScene",
+        "Scene depth upload: triangles=%u wire=%u",meshDepthVertexCount_/3,meshWireVertexCount_);
 #endif
 }
 
