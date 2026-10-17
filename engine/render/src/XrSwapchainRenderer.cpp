@@ -1205,10 +1205,16 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.gpuAvailable=gpuTimingAvailable() && completedGpuSamples_>0;
         ImGui_ImplVulkan_NewFrame();
         ImGui::NewFrame();
+        imguiCarousel_.voxelStrokeCount=static_cast<int>(voxelStamps_.size());
         imguiCarousel_.musicReady=ambientMusic_.ready();
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         voxen::ui::drawCarousel(imguiCarousel_);
+        if(imguiCarousel_.voxelClearRequested){
+            voxelStamps_.clear();
+            lastVoxelTipValid_=false;
+            imguiCarousel_.voxelClearRequested=false;
+        }
         if(imguiCarousel_.musicRescan){
             imguiCarousel_.musicRescan=false;
             mp3Library_.shutdown();
