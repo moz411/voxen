@@ -81,6 +81,7 @@ add_library(voxen_engine STATIC
     core/src/Engine.cpp
     xr/src/XrContext.cpp
     xr/src/XrSession.cpp
+    xr/src/MetaSceneProvider.cpp
     render/src/VulkanContext.cpp
     render/src/XrSwapchainRenderer.cpp
     ${VOXEN_SHADER_HEADERS}
