@@ -2,12 +2,21 @@
 #include <stereokit_ui.h>
 #include <openxr/openxr.h>
 #include "voxen_voxel.hlsl.h"
+#include "voxen_sky_0.hlsl.h"
+#include "voxen_sky_1.hlsl.h"
+#include "voxen_sky_2.hlsl.h"
+#include "voxen_sky_3.hlsl.h"
+#include "voxen_sky_4.hlsl.h"
+#include "voxen_sky_5.hlsl.h"
 #include "voxel_shapes.h"
 #include "shader_registry.h"
 #include "artwork.h"
 #include "scene_background.h"
 #include "background_catalog.h"
 #include <cstdio>
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
 #include <fstream>
 #include <cstdint>
 #include <cstring>
@@ -64,7 +73,12 @@ static shader_t voxel_shader = nullptr;
 static material_t gpu_materials[voxen_effects::count] = {};
 static std::array<material_t,32> background_materials{};
 static voxen_scene::Background scene_background;
-static int background_source_index = -1; // -1 = NONE; preset 0 ported
+static int background_source_index = -1; // legacy source list, no longer rendered
+static shader_t sky_shaders[6]={};
+static material_t sky_materials[6]={};
+static mesh_t sky_sphere=nullptr;
+static int sky_mode=-1;
+static float sky_opacity=0.28f;
 static uint32_t brush_step = 0;
 static bool volume_active = false;
 static bool save_confirmation = false;
@@ -457,24 +471,36 @@ static void load_scene() {
     last_paint_valid=false;
     storage_status="RESTORED";
 }
-static color128 animated_tint(const PaintedVoxel& v) {
-    if (v.effect==2) {
-        const float h=std::fmod(animation_time*0.09f + v.phase*0.035f,1.0f);
-        return color_hsv(h<0?h+1:h,0.9f,1.0f,1.0f);
-    }
-    if (v.effect==3) {
-        const float k=0.65f+0.35f*std::sin(animation_time*5.0f+v.phase);
-        return {v.tint.r*k,v.tint.g*k,v.tint.b*k,1.0f};
-    }
-    return v.tint;
-}
+// Geometry animations are evaluated per artwork. All voxels in an artwork
+// share the same pivot, so the result is a coherent object transformation.
 static float animated_scale(const PaintedVoxel& v) {
-    // Keep the original grid collision geometry. Visual size never exceeds
-    // the collision/placement size, so neighboring cubes don't intersect.
-    if (v.effect==1)
-        return 0.82f+0.18f*(0.5f+0.5f*
-            std::sin(animation_time*3.5f+v.phase));
+    if(v.effect==1) return 0.82f+0.18f*(0.5f+0.5f*std::sin(animation_time*2.2f));
     return 1.0f;
+}
+static vec3 animation_position(vec3 position,vec3 pivot,int mode,float extent) {
+    const float pulse=0.5f-0.5f*std::cos(animation_time*2.3f);
+    vec3 p={position.x-pivot.x,position.y-pivot.y,position.z-pivot.z};
+    if(mode==2) { // Rotate entire sculpture around its vertical axis
+        const float a=animation_time*0.45f;
+        const float c=std::cos(a),s=std::sin(a);
+        return {pivot.x+c*p.x+s*p.z,position.y,pivot.z-s*p.x+c*p.z};
+    }
+    if(mode==3) { // Hourglass: squeeze width at mid-height
+        const float h=std::max(0.12f,extent);
+        const float z=p.y/h;
+        const float influence=std::exp(-8.0f*z*z);
+        p.x*=1.0f-0.55f*pulse*influence;
+    } else if(mode==4) { // Vertical waist: squeeze height at center width
+        const float h=std::max(0.12f,extent);
+        const float z=p.x/h;
+        const float influence=std::exp(-8.0f*z*z);
+        p.y*=1.0f-0.55f*pulse*influence;
+    } else if(mode==5) { // 4 moving quadrants, reversible and deterministic
+        const float separation=std::min(0.10f,std::max(0.025f,extent*0.18f))*pulse;
+        p.x+=(p.x>=0?1.0f:-1.0f)*separation;
+        p.y+=(p.y>=0?1.0f:-1.0f)*separation;
+    }
+    return {pivot.x+p.x,pivot.y+p.y,pivot.z+p.z};
 }
 struct ArtworkBounds { vec3 lo,hi; };
 static ArtworkBounds artwork_bounds(const voxen::Artwork& a) {
@@ -989,43 +1015,37 @@ static void draw_face(int page) {
         }
     } else if(page==5) {
         face_text(face,"VOXEL ANIMATION",0,0.145f);
-        static const char* effects[]={"SOLID","BREATHE","RAINBOW","SHIMMER"};
-        for(int i=0;i<4;++i)
-            if(face_button(face,page,effects[i],0.085f-i*0.065f,effect_mode==i))
+        static const char* effects[]={"NONE","BREATHE","ROTATE","PINCH H","PINCH V","SPLIT 4"};
+        for(int i=0;i<6;++i)
+            if(face_button(face,page,effects[i],0.105f-i*0.044f,effect_mode==i))
                 effect_mode=i;
     } else if(page==7) {
-        face_text(face,"META SCENE / SOURCE LIBRARY",0,0.152f);
-        char status[48];
-        std::snprintf(status,sizeof(status),"%d ANCHORS / %d PLANES",
-            scene_background.anchors_found,scene_background.plane_count());
-        face_text(face,scene_background.supported?status:scene_background.diagnostic,0,0.111f);
-        if(face_button(face,page,"SCAN AGAIN",0.071f)) scene_background.refresh();
-        // Source presets remain disabled until converted to native GPU materials.
-        // Explicitly avoid mapping unrelated voxel shaders to these names.
-        if(face_button(face,page,background_source_index<0?"SOURCE: NONE":"SOURCE: SELECTED",0.034f))
-            background_source_index = background_source_index<0?0:-1;
-        if(face_button(face,page,"PREVIOUS SOURCE",-0.004f))
-            background_source_index = background_source_index<0?0:
-                (background_source_index+(int)voxen_backgrounds::entries.size()-1)%
-                (int)voxen_backgrounds::entries.size();
-        if(face_button(face,page,"NEXT SOURCE",-0.042f))
-            background_source_index = background_source_index<0?0:
-                (background_source_index+1)%(int)voxen_backgrounds::entries.size();
-        if(background_source_index>=0) {
-            const auto& src=voxen_backgrounds::entries[background_source_index];
-            face_text(face,src.name,0,-0.074f);
-            face_text(face,background_source_index==0?"LIVE: PROCEDURAL NOISE":"NOT YET PORTED",0,-0.097f);
-        } else {
-            face_text(face,"NO BACKGROUND",0,-0.074f);
+        face_text(face,"LIGHT SKY / 360",0,0.152f);
+        face_text(face,"SINGLE-PASS / NO SCAN",0,0.109f);
+        if(face_button(face,page,sky_mode<0?"BACKGROUND: OFF":"BACKGROUND: ON",0.064f))
+            sky_mode=sky_mode<0?0:-1;
+        static const char* sky_names[]={"AURORA","EMBER HORIZON","GALAXY","AQUATIC","RAINFOREST","MATRIX RAIN"};
+        if(sky_mode>=0 && sky_mode<6) face_text(face,sky_names[sky_mode],0,0.015f);
+        else face_text(face,"NONE",0,0.015f);
+        if(face_button(face,page,"PREVIOUS",-0.033f)) {
+            sky_mode=sky_mode<0?5:(sky_mode+5)%6;
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_INFO,"VoxenSky","PREVIOUS -> %d",sky_mode);
+#endif
         }
-        // Only the first imported shader has an actual material. Avoid fake previews.
-        scene_background.preset=(background_source_index==0 && background_materials[9])?9:-1;
-        if(face_button(face,page,"SCENE PLANE OVERLAY",-0.126f))
-            scene_background.opacity=scene_background.opacity>0.6f?0.35f:0.75f;
-        if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Walls)?"WALLS: ON":"WALLS: OFF",-0.160f))
-            scene_background.mask ^= voxen_scene::Background::Walls;
-        if(face_button(face,page,(scene_background.mask&voxen_scene::Background::Floor)?"FLOOR: ON":"FLOOR: OFF",-0.193f))
-            scene_background.mask ^= voxen_scene::Background::Floor;
+        if(face_button(face,page,"NEXT",-0.077f)) {
+            sky_mode=sky_mode<0?0:(sky_mode+1)%6;
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_INFO,"VoxenSky","NEXT -> %d",sky_mode);
+#endif
+        }
+        char info[32];
+        std::snprintf(info,sizeof(info),"MODE %d / INTENSITY %d%%",sky_mode,(int)(sky_opacity*100));
+        face_text(face,info,0,-0.118f);
+        if(face_button(face,page,"LESS",-0.163f))
+            sky_opacity=std::max(0.05f,sky_opacity-0.05f);
+        if(face_button(face,page,"MORE",-0.204f))
+            sky_opacity=std::min(0.60f,sky_opacity+0.05f);
     } else if(page==6) {
         face_text(face,"SCENE SLOT 1",0,0.125f);
         face_text(face,storage_status,0,0.073f);
@@ -1271,13 +1291,13 @@ int voxen_stereokit_main() {
     app_settings.blend_preference = display_blend_any_transparent;
     // Must happen before sk_init, which creates StereoKit's OpenXR instance.
     backend_openxr_ext_request(XR_FB_PASSTHROUGH_EXTENSION_NAME);
-    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME);
-    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
-    backend_openxr_ext_request(XR_FB_SPATIAL_ENTITY_STORAGE_EXTENSION_NAME);
-    backend_openxr_ext_request(XR_FB_SCENE_EXTENSION_NAME);
+    // Scene extensions remain optional but are not requested for sky backgrounds.
+
+
+
     if (!sk_init(app_settings)) return 1;
     edge_passthrough.initialize();
-    scene_background.initialize();
+    // No Scene API query for panoramic backgrounds.
     cube = mesh_find(default_id_mesh_cube);
     shape_meshes = voxen_shapes::create(cube);
     material = material_copy(material_find(default_id_material));
@@ -1314,6 +1334,18 @@ int voxen_stereokit_main() {
             }
         }
     }
+    const void* sky_binaries[6]={sks_voxen_sky_0_hlsl,sks_voxen_sky_1_hlsl,sks_voxen_sky_2_hlsl,sks_voxen_sky_3_hlsl,sks_voxen_sky_4_hlsl,sks_voxen_sky_5_hlsl};
+    const size_t sky_binary_sizes[6]={sizeof(sks_voxen_sky_0_hlsl),sizeof(sks_voxen_sky_1_hlsl),sizeof(sks_voxen_sky_2_hlsl),sizeof(sks_voxen_sky_3_hlsl),sizeof(sks_voxen_sky_4_hlsl),sizeof(sks_voxen_sky_5_hlsl)};
+    for(int i=0;i<6;++i) {
+        sky_shaders[i]=shader_create_mem((void*)sky_binaries[i],sky_binary_sizes[i]);
+        if(!sky_shaders[i]) continue;
+        sky_materials[i]=material_create(sky_shaders[i]);
+        if(sky_materials[i]) {
+            material_set_transparency(sky_materials[i],transparency_blend);
+            material_set_cull(sky_materials[i],cull_front);
+        }
+    }
+    sky_sphere=mesh_find(default_id_mesh_sphere);
     voxels.reserve(max_voxels);
     carousel_mat = material_copy(material_find(default_id_material));
     material_set_transparency(carousel_mat, transparency_blend);
@@ -1338,8 +1370,44 @@ int voxen_stereokit_main() {
                                                      "time",animation_time);
         for(int i=0;i<=9 && i<(int)background_materials.size();++i)
             if(background_materials[i]) material_set_float(background_materials[i],"time",animation_time);
-        scene_background.render(cube,background_materials);
-        for(const PaintedVoxel& voxel:voxels) {
+        // Constant-cost panoramic background; no mesh scan or GPU particle loop.
+        if(sky_mode>=0 && sky_mode<6 && sky_materials[sky_mode] && sky_sphere) {
+            material_t selected_sky=sky_materials[sky_mode];
+            material_set_float(selected_sky,"time",animation_time);
+            material_set_float(selected_sky,"strength",sky_opacity);
+            const pose_t* head=input_head();
+            if(head) render_add_mesh(sky_sphere,selected_sky,
+                matrix_ts(head->position,{20,20,20}),{1,1,1,1});
+        }
+        // Cache one pivot and extent per voxel in O(voxel count) each frame.
+        // The pivot belongs to the whole artwork, not the individual cube.
+        static std::vector<vec3> animation_pivots;
+        static std::vector<float> animation_extents;
+        animation_pivots.resize(voxels.size());
+        animation_extents.resize(voxels.size());
+        for(size_t i=0;i<voxels.size();++i) {
+            animation_pivots[i]=voxels[i].position;
+            animation_extents[i]=0.12f;
+        }
+        for(const voxen::Artwork& artwork:artworks) {
+            const size_t begin=std::min((size_t)artwork.first_voxel,voxels.size());
+            const size_t end=std::min(begin+(size_t)artwork.voxel_count,voxels.size());
+            if(end<=begin) continue;
+            vec3 lo=voxels[begin].position,hi=lo;
+            for(size_t i=begin+1;i<end;++i) {
+                const vec3 p=voxels[i].position;
+                lo.x=std::min(lo.x,p.x);lo.y=std::min(lo.y,p.y);lo.z=std::min(lo.z,p.z);
+                hi.x=std::max(hi.x,p.x);hi.y=std::max(hi.y,p.y);hi.z=std::max(hi.z,p.z);
+            }
+            const vec3 pivot={(lo.x+hi.x)*0.5f,(lo.y+hi.y)*0.5f,(lo.z+hi.z)*0.5f};
+            const float extent=std::max(0.12f,std::max(hi.x-lo.x,hi.y-lo.y));
+            for(size_t i=begin;i<end;++i) {
+                animation_pivots[i]=pivot;
+                animation_extents[i]=extent;
+            }
+        }
+        for(size_t i=0;i<voxels.size();++i) {
+            const PaintedVoxel& voxel=voxels[i];
             if(voxel.reveal_duration>0.0f) {
                 const float elapsed=std::max(0.0f,animation_time-voxel.reveal_start);
                 const float progress_time=voxel.reveal_loop
@@ -1348,11 +1416,16 @@ int voxen_stereokit_main() {
                     continue;
             }
             const float side=voxel.size*animated_scale(voxel);
+            const vec3 position=animation_position(voxel.position,animation_pivots[i],voxel.effect,animation_extents[i]);
+            // Rotate each voxel around its own vertical axis as the artwork revolves.
+            const quat rotation=voxel.effect==2
+                ? quat_from_angles(0.0f,animation_time*0.45f*57.2957795f,0.0f)
+                : quat_identity;
             material_t voxel_mat=gpu_materials[voxen_effects::valid(voxel.gpu_preset)?voxel.gpu_preset:0];
             render_add_mesh(shape_meshes[std::clamp(voxel.shape,0,voxen_shapes::count-1)],
                 voxel_mat?voxel_mat:material,
-                matrix_ts(voxel.position,{side,side,side}),
-                voxel_mat?voxel.tint:animated_tint(voxel));
+                matrix_trs(position,rotation,{side,side,side}),
+                voxel.tint);
         }
         update_brush();
         draw_selected_outline();
@@ -1368,6 +1441,8 @@ int voxen_stereokit_main() {
             color_hsv(edge_hue, 1.0f, 1.0f, 1.0f));
     }, [] {
         scene_background.shutdown();
+        for(material_t m:sky_materials) if(m) material_release(m);
+        for(shader_t shader:sky_shaders) if(shader) shader_release(shader);
         edge_passthrough.shutdown();
         for(mesh_t mesh:shape_meshes) if(mesh) mesh_release(mesh);
         material_release(material);

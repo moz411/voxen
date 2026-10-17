@@ -55,3 +55,23 @@ On Windows the OpenXR passthrough extension is not requested. The scene uses the
 The StereoKit backend includes a **BACKGROUNDS** carousel page. It loads Meta Scene Model 2D planes through `XR_FB_scene` + `XR_FB_spatial_entity_query`, categorizes `WALL_FACE`, `FLOOR`, `CEILING`, and overlays one of the existing GPU materials on the detected surfaces. Default: **SHADER: NONE**. The Meta passthrough layer and its white edges remain independent of scene geometry. Re-scanning and per-surface category toggles are available from this page.
 
 On Quest, enable Space Setup for the room and grant Voxen spatial data access (`USE_SCENE`). If there are no planes, check the `[Voxen Scene]` log lines. Scene detection is device-dependent; this branch has not been built or tested on a Quest yet. The native OpenXR engine under `engine/` is unchanged; this experimental integration targets the StereoKit app under `stereokit/`.
+
+## Lightweight panoramic skies / animations (experimental)
+
+Branch based directly on main. BACKGROUNDS contains OFF, AURORA and EMBER HORIZON. Both are single-pass procedural 360-degree shaders with a constant number of arithmetic operations, no texture lookups, no noise octaves, no particle loops, no scene scans. Only one sky material and one sphere are rendered. They are disabled by default and the opacity is capped at 60%.
+
+ANIMATIONS now has eight modes: SOLID, BREATHE, RAINBOW, SHIMMER, SLOW PULSE, SOFT TIDE, RIPPLE, ORGANIC. These use bounded sine calculations per voxel and do not spawn extra objects. The old scene-overlay code is not initialized; main is unchanged. OpenXR compositor layer ordering is not yet refactored; skies are alpha-blended in the StereoKit projection layer rather than guaranteed strictly behind passthrough.
+
+**No Android APK build or Quest GPU profile was run in this environment.** Test with device GPU timing before merging. The earlier expensive Fireworks code is deliberately excluded.
+
+### Additional lightweight panoramas
+
+Added GALAXY (analytic Milky Way-style glow and sparse stars), AQUATIC (underwater teal illumination and caustic ripples), and RAINFOREST (layered green canopy, silhouettes, light shafts and mist). BACKGROUNDS now cycles among five skies with PREVIOUS/NEXT and intensity controls. Every effect uses a fixed number of ALU operations and a single sphere mesh; none uses procedural particle iteration or sampling textures. The backgrounds remain OFF at startup. Their silhouettes are stylized, not textured photoreal environments. Performance and visuals still need verification on Meta Quest 3.
+
+### Geometry animations (latest)
+
+The ANIMATIONS menu now contains NONE, BREATHE, ROTATE, PINCH H, PINCH V and SPLIT 4. BREATHE changes uniform voxel size; ROTATE revolves each artwork around its shared center; PINCH H narrows the mid-height of an artwork along X; PINCH V compresses the middle width along Y; SPLIT 4 offsets the four XY quadrants outward and then brings them together. The deformation affects the rendered voxel transforms only, preserving unmodified stored artwork/placement geometry. For visible transformations, use a multi-voxel artwork (not a solitary voxel). These are procedural CPU transform animations with no additional geometry and no shader particle loops. New animations apply to strokes/works created with the selected animation, in line with existing app behavior. APK build and headset QA still required.
+
+### MATRIX RAIN panoramic background
+
+Sixth background preset: green falling pseudo-glyph columns with varied speeds, lit heads and fading tails. Generated entirely from simple procedural strokes in a single fragment pass. No font atlas, texture fetches, particles, geometry duplication, or per-pixel iteration. This is stylized pseudo-writing, not readable Unicode text. OFF on launch, governed by the same opacity control. Android compilation and Quest GPU timing remain to be tested.

@@ -65,7 +65,13 @@ if(VOXEN_USE_STEREOKIT)
         skshaderc_compile_headers(voxen
             ${CMAKE_CURRENT_BINARY_DIR}/voxen_shaders/
             "-O3 -f -e -t e -i ${stereokitc_SOURCE_DIR}/tools/include -i ${CMAKE_CURRENT_SOURCE_DIR}/stereokit/shaders"
-            stereokit/shaders/voxen_voxel.hlsl)
+            stereokit/shaders/voxen_voxel.hlsl
+            stereokit/shaders/voxen_sky_0.hlsl
+            stereokit/shaders/voxen_sky_1.hlsl
+            stereokit/shaders/voxen_sky_2.hlsl
+            stereokit/shaders/voxen_sky_3.hlsl
+            stereokit/shaders/voxen_sky_4.hlsl
+            stereokit/shaders/voxen_sky_5.hlsl)
         target_include_directories(voxen PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/voxen_shaders/)
     else()
         add_executable(voxen_stereokit stereokit/src/main.cpp)
