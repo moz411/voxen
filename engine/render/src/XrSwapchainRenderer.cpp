@@ -283,6 +283,28 @@ Mat4 modelMatrix(float x = 0.0F, float y = 0.0F, float scale = 0.25F, float z = 
     return m;
 }
 
+// Room surfaces arrive from the Scene provider in LOCAL space (meters).
+// Transform the quad's local XY coordinates into the oriented tracked plane.
+Mat4 surfaceModel(const voxen::scene::EnvironmentSurface& surface) {
+    const auto& q=surface.orientation;
+    const float x=q[0],y=q[1],z=q[2],w=q[3];
+    Mat4 m{};
+    m.m[0]=(1.f-2.f*(y*y+z*z))*surface.halfExtents[0];
+    m.m[1]=(2.f*(x*y+z*w))*surface.halfExtents[0];
+    m.m[2]=(2.f*(x*z-y*w))*surface.halfExtents[0];
+    m.m[4]=(2.f*(x*y-z*w))*surface.halfExtents[1];
+    m.m[5]=(1.f-2.f*(x*x+z*z))*surface.halfExtents[1];
+    m.m[6]=(2.f*(y*z+x*w))*surface.halfExtents[1];
+    m.m[8]=2.f*(x*z+y*w);
+    m.m[9]=2.f*(y*z-x*w);
+    m.m[10]=1.f-2.f*(x*x+y*y);
+    m.m[12]=surface.center[0];
+    m.m[13]=surface.center[1];
+    m.m[14]=surface.center[2];
+    m.m[15]=1.f;
+    return m;
+}
+
 // A slender cube aligned with the controller's local -Z aiming direction.
 Mat4 laserMatrix(const XrPosef& pose, float distance) {
     const auto& q = pose.orientation;
@@ -706,12 +728,32 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 #endif
     if (liquidEnabled && liquidOpacity>0.001f && liquidRoomPipeline_ != VK_NULL_HANDLE) {
         vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, liquidRoomPipeline_);
-        const Mat4 planeMvp=multiply(projView,modelMatrix(0.0F,-0.35F,0.65F,-2.25F,0.0F));
-        ProceduralPushConstants liquid{planeMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
-        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            0,sizeof(liquid),&liquid);
-        vkCmdDraw(commandBuffer_,6,1,0,0);
+        // Only verified/tracked wall planes receive a room projection.
+        // The synthetic development quad remains a fallback until the native
+        // Scene query provider populates EnvironmentSurfaceRegistry.
+        bool wallRendered=false;
+        for(const auto& surface:environmentSurfaces_.surfaces()) {
+            if(!surface.tracked || surface.classification!=voxen::scene::SurfaceClass::Wall)
+                continue;
+            if(surface.halfExtents[0]<=0.05f || surface.halfExtents[1]<=0.05f)
+                continue;
+            const Mat4 wallMvp=multiply(projView,surfaceModel(surface));
+            ProceduralPushConstants liquid{wallMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,sizeof(liquid),&liquid);
+            vkCmdDraw(commandBuffer_,6,1,0,0);
+            wallRendered=true;
+        }
+        if(!wallRendered) {
+            const Mat4 planeMvp=multiply(projView,
+                modelMatrix(0.0F,-0.35F,0.65F,-2.25F,0.0F));
+            ProceduralPushConstants liquid{planeMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,sizeof(liquid),&liquid);
+            vkCmdDraw(commandBuffer_,6,1,0,0);
+        }
     }
     if (artworksVisible) for (const auto& artwork : scene_.artworks()) {
         VkPipeline artPipeline = pipeline_;
