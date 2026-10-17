@@ -39,8 +39,8 @@ void drawCarousel(CarouselState& state) {
         }
         case 7:
             ImGui::Checkbox("Wall effect",&state.liquidRoom);
-            static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN"};
-            ImGui::Combo("Wall shader",&state.wallShaderMode,effects,3);
+            static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW"};
+            ImGui::Combo("Wall shader",&state.wallShaderMode,effects,4);
             if(state.wallShaderMode==1) {
                 ImGui::ColorEdit3("Wall color",state.wallColor);
                 ImGui::SliderFloat("Solid opacity",&state.wallSolidOpacity,0.1f,1.0f);
@@ -48,6 +48,7 @@ void drawCarousel(CarouselState& state) {
                 ImGui::SliderFloat("Opacity",&state.liquidOpacity,0.0f,0.6f);
             }
             ImGui::SliderInt("Max walls",&state.maxLiquidWalls,1,8);
+            if(state.wallShaderMode==3)ImGui::TextDisabled("Hepp Maccoy 2019 / CC BY-NC-SA 3.0");
             ImGui::Checkbox("Scene mesh wireframe",&state.showSceneMesh);
             ImGui::Checkbox("Occlude walls with scene mesh",&state.sceneOcclusion);
             if(state.sceneOcclusion) ImGui::SliderFloat("Occlusion bias",&state.sceneDepthBias,0.0f,0.01f,"%.4f");
