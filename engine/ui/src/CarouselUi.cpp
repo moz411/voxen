@@ -28,10 +28,15 @@ void drawCarousel(CarouselState& state) {
             ImGui::SliderFloat("Time multiplier",&state.animationSpeed,0.1f,3.0f);
             ImGui::Checkbox("Performance metrics",&state.perfHud);
             break;
-        case 5:
+        case 5: {
             ImGui::Checkbox("Animate artworks",&state.animateArtworks);
+            static constexpr const char* motions[]={"NONE","BREATHE","ROTATE","FLOAT","ORBIT"};
+            ImGui::Combo("Motion",&state.artworkMotion,motions,5);
             ImGui::SliderFloat("Animation speed",&state.animationSpeed,0.1f,3.0f);
+            ImGui::SliderFloat("Amplitude",&state.motionAmplitude,0.0f,0.5f);
+            ImGui::TextDisabled("Applies to the 4 native demo artworks");
             break;
+        }
         case 7:
             ImGui::Checkbox("Liquid Room",&state.liquidRoom);
             ImGui::SliderFloat("Opacity",&state.liquidOpacity,0.0f,0.6f);
