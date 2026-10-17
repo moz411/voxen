@@ -30,6 +30,9 @@ private:
     std::vector<XrSpace> requestedLabels_;
     std::vector<XrSpace> requestedBounds_;
     std::vector<XrSpace> requestedLocatable_;
+    std::vector<XrSpace> requestedMesh_;
+    std::vector<XrSpace> inspectedMesh_;
+    PFN_xrGetSpaceTriangleMeshMETA getTriangleMesh_ = nullptr;
     PFN_xrRetrieveSpaceQueryResultsFB retrieve_ = nullptr;
     PFN_xrGetSpaceBoundingBox2DFB bounds_ = nullptr;
     PFN_xrGetSpaceSemanticLabelsFB labels_ = nullptr;
