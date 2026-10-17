@@ -209,10 +209,14 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
             info.timeout=0;
             XrAsyncRequestIdFB id=0;
             const XrResult requestResult=setStatus_(result.space,&info,&id);
-            sceneLog("Enable scene component request",static_cast<int>(requestResult));
-            if(XR_SUCCEEDED(requestResult) ||
-               requestResult==XR_ERROR_SPACE_COMPONENT_STATUS_PENDING_FB)
-                requested.push_back(result.space);
+            // A failed request must not be retried every XR frame: some
+            // anchors do not support all optional components. Keep probing
+            // status (above) so components enabled externally still work.
+            requested.push_back(result.space);
+            if(XR_FAILED(requestResult)) {
+                sceneLog("Scene component enable rejected (once)",static_cast<int>(requestResult));
+                sceneLog("Rejected component type",static_cast<int>(type));
+            }
             return false;
         };
         if(!enabled(XR_SPACE_COMPONENT_TYPE_SEMANTIC_LABELS_FB,requestedLabels_))continue;
