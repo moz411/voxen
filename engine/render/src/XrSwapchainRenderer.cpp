@@ -659,10 +659,25 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     // Minimal native eight-page carousel scaffold, left-hand anchored.
     if (controllerTracked_[0] && carouselPipeline_ != VK_NULL_HANDLE) {
         const auto& cp=controllerPoses_[0].position;
-        const float yaw=std::atan2(xrView.pose.position.x-cp.x,
-                                   xrView.pose.position.z-(cp.z-0.12f));
+        // Keep the panel at a readable distance from both eyes, rather than
+        // having the left controller push it through the headset near plane.
+        const auto& eye=xrView.pose.position;
+        float px=cp.x, py=cp.y+0.17f, pz=cp.z;
+        const float dx=px-eye.x, dz=pz-eye.z;
+        const float distance=std::sqrt(dx*dx+dz*dz);
+        if (distance<0.55f) {
+            // Eye/controller coincidence: use the tracked eye's forward direction.
+            const auto& q=xrView.pose.orientation;
+            const float fx=-2.0f*(q.x*q.z+q.w*q.y);
+            const float fz=-(1.0f-2.0f*(q.x*q.x+q.y*q.y));
+            const float inv=distance>0.05f ? 1.0f/distance : 0.0f;
+            px=eye.x+(inv>0.0f?dx*inv:fx)*0.55f;
+            pz=eye.z+(inv>0.0f?dz*inv:fz)*0.55f;
+        }
+        // Normal faces the eyes. 22 cm high, with base near the controller.
+        const float yaw=std::atan2(eye.x-px,eye.z-pz);
         const Mat4 menuMvp=multiply(projView,
-            modelMatrix(cp.x,cp.y+0.20f,0.16f,cp.z-0.12f,yaw));
+            modelMatrix(px,py,0.11f,pz,yaw));
         ProceduralPushConstants menu{menuMvp,{seconds,1.0f,1.0f,float(nativeMenuPage_)}};
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,carouselPipeline_);
         vkCmdPushConstants(commandBuffer_,pipelineLayout_,
