@@ -108,6 +108,8 @@ private:
 #ifdef VOXEN_WITH_IMGUI
     voxen::ui::CarouselState imguiCarousel_{};
     bool imguiContextOwned_ = false;
+    bool uiTrigger_[2]{};
+    bool panelAimed_ = false;
     voxen::ui::ImGuiSurface imguiSurface_{};
     VkPipeline imguiPanelPipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout imguiPanelPipelineLayout_ = VK_NULL_HANDLE;
