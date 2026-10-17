@@ -28,6 +28,9 @@
 #include "solidWallFrag.spv.hpp"
 #include "meshWireVert.spv.hpp"
 #include "meshWireFrag.spv.hpp"
+#include "meshDepthVert.spv.hpp"
+#include "meshDepthFrag.spv.hpp"
+#include "matrixRainFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "imguiPanelFrag.spv.hpp"
 
@@ -481,7 +484,7 @@ void XrSwapchainRenderer::createPipeline() {
         ia.topology = (&out==&meshWirePipeline_) ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         VkVertexInputBindingDescription binding{0,sizeof(XrVector3f),VK_VERTEX_INPUT_RATE_VERTEX};
         VkVertexInputAttributeDescription attribute{0,0,VK_FORMAT_R32G32B32_SFLOAT,0};
-        if(&out==&meshWirePipeline_) {
+        if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_) {
             vi.vertexBindingDescriptionCount=1;
             vi.pVertexBindingDescriptions=&binding;
             vi.vertexAttributeDescriptionCount=1;
@@ -506,9 +509,13 @@ void XrSwapchainRenderer::createPipeline() {
             || &out == &imguiPanelPipeline_
 #endif
         ) ds.depthTestEnable=VK_FALSE;
-        ds.depthCompareOp = VK_COMPARE_OP_LESS;
+        if(&out==&meshDepthPipeline_){
+            ds.depthTestEnable=VK_TRUE;
+            ds.depthWriteEnable=VK_TRUE;
+        }
+        ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -520,6 +527,10 @@ void XrSwapchainRenderer::createPipeline() {
             blend.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;
             blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
             blend.alphaBlendOp=VK_BLEND_OP_ADD;
+        }
+        if(&out==&meshDepthPipeline_) {
+            blend.colorWriteMask=0;
+            blend.blendEnable=VK_FALSE;
         }
         VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
         cb.attachmentCount=1; cb.pAttachments=&blend;
@@ -546,6 +557,8 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, solidWallFrag, solidWallFragSize, solidWallPipeline_);
     buildPipeline(meshWireVert, meshWireVertSize, meshWireFrag, meshWireFragSize, meshWirePipeline_);
+    buildPipeline(meshDepthVert, meshDepthVertSize, meshDepthFrag, meshDepthFragSize, meshDepthPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, matrixRainFrag, matrixRainFragSize, matrixRainPipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
 #ifdef VOXEN_WITH_IMGUI
     buildPipeline(fractalVert, fractalVertSize, imguiPanelFrag, imguiPanelFragSize, imguiPanelPipeline_);
@@ -793,6 +806,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     // First visible Liquid Room demonstration: a synthetic, labelled quad,
     // NOT a detected wall. Spatial-surface binding comes in the next stage.
     bool showSceneMesh=false;
+    bool sceneOcclusion=false;
     bool liquidEnabled=true;
     float liquidOpacity=0.42f;
     int maxLiquidWalls=3;
@@ -806,6 +820,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     float motionAmplitude=0.25f;
 #ifdef VOXEN_WITH_IMGUI
     showSceneMesh=imguiCarousel_.showSceneMesh;
+    sceneOcclusion=imguiCarousel_.sceneOcclusion;
     liquidEnabled=imguiCarousel_.liquidRoom;
     liquidOpacity=std::clamp(imguiCarousel_.liquidOpacity,0.0f,0.6f);
     maxLiquidWalls=std::clamp(imguiCarousel_.maxLiquidWalls,1,8);
@@ -818,10 +833,23 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     motionMode=imguiCarousel_.artworkMotion;
     motionAmplitude=std::clamp(imguiCarousel_.motionAmplitude,0.0f,0.5f);
 #endif
-    if (liquidEnabled && (wallShaderMode==1 || liquidOpacity>0.001f) &&
-        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE) {
+    // Depth-only static real-world mesh: occludes wall fragments behind
+    // furniture, but never writes opaque pixels over the passthrough layer.
+    if(sceneOcclusion && meshDepthVertexCount_>0 && meshDepthBuffer_!=VK_NULL_HANDLE) {
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,meshDepthPipeline_);
+        const VkDeviceSize offset=0;
+        vkCmdBindVertexBuffers(commandBuffer_,0,1,&meshDepthBuffer_,&offset);
+        const auto mvp=multiply(projView,meshPoseMatrix(meshWirePose_));
+        ProceduralPushConstants depthConstants{mvp,{0.f,0.f,0.f,0.f}};
+        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(depthConstants),&depthConstants);
+        vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
+    }
+    if (liquidEnabled && (wallShaderMode!=0 || liquidOpacity>0.001f) &&
+        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE) {
         vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          wallShaderMode==1 ? solidWallPipeline_ : liquidRoomPipeline_);
+                          wallShaderMode==1 ? solidWallPipeline_ :
+                          wallShaderMode==2 ? matrixRainPipeline_ : liquidRoomPipeline_);
         // Only verified/tracked wall planes receive a room projection.
         // The synthetic development quad remains a fallback until the native
         // Scene query provider populates EnvironmentSurfaceRegistry.
@@ -852,6 +880,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 liquid.parameters[1]=wallColor[1];
                 liquid.parameters[2]=wallColor[2];
                 liquid.parameters[3]=solidOpacity;
+            } else if(wallShaderMode==2) {
+                liquid.parameters[3]=0.7f;
             }
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -1178,6 +1208,11 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
     if (solidWallPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,solidWallPipeline_,nullptr); solidWallPipeline_=VK_NULL_HANDLE; }
     if (meshWirePipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,meshWirePipeline_,nullptr); meshWirePipeline_=VK_NULL_HANDLE; }
+    if(meshDepthPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,meshDepthPipeline_,nullptr);meshDepthPipeline_=VK_NULL_HANDLE;}
+    if(matrixRainPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,matrixRainPipeline_,nullptr);matrixRainPipeline_=VK_NULL_HANDLE;}
+    if(meshDepthBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,meshDepthBuffer_,nullptr);meshDepthBuffer_=VK_NULL_HANDLE;}
+    if(meshDepthMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,meshDepthMemory_,nullptr);meshDepthMemory_=VK_NULL_HANDLE;}
+    meshDepthVertexCount_=0;
     if(meshWireBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,meshWireBuffer_,nullptr);meshWireBuffer_=VK_NULL_HANDLE;}
     if(meshWireMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,meshWireMemory_,nullptr);meshWireMemory_=VK_NULL_HANDLE;}
     meshWireVertexCount_=0;
