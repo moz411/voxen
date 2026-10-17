@@ -881,7 +881,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 liquid.parameters[2]=wallColor[2];
                 liquid.parameters[3]=solidOpacity;
             } else if(wallShaderMode==2) {
-                liquid.parameters[3]=0.7f;
+                liquid.parameters[3]=liquidOpacity;
             }
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
