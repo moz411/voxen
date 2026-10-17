@@ -3,6 +3,7 @@
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <voxen/ui/CarouselUi.hpp>
+#include <voxen/ui/SpatialPanelInput.hpp>
 #endif
 
 #ifdef _WIN32
@@ -30,6 +31,7 @@
 #include <algorithm>
 #include <cmath>
 #include <array>
+#include <cfloat>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -532,6 +534,9 @@ void XrSwapchainRenderer::updateControllerInteraction(
     const auto& artworks = scene_.artworks();
     controllerPoses_ = poses;
     controllerTracked_ = tracked;
+#ifdef VOXEN_WITH_IMGUI
+    uiTrigger_[0]=pressed[0]; uiTrigger_[1]=pressed[1];
+#endif
     if (tracked[0] && heldArtwork_[0] < 0) {
         const float axis=thumbsticks[0].x;
         if (std::fabs(axis)<0.3f) nativeMenuStickLatched_=false;
@@ -801,6 +806,36 @@ void XrSwapchainRenderer::render(
         lastUiFrame_=now;
         auto& io=ImGui::GetIO();
         io.DeltaTime=dt;
+        // Project the right-hand aim ray to the same left-controller panel
+        // transform used by the stereo pass.
+        bool aiming=false;
+        if(controllerTracked_[0] && controllerTracked_[1]) {
+            const auto& cp=controllerPoses_[0].position;
+            const auto& eye=views[0].pose.position;
+            float px=cp.x,py=cp.y+0.17f,pz=cp.z;
+            const float dx=px-eye.x,dz=pz-eye.z;
+            const float distance=std::sqrt(dx*dx+dz*dz);
+            if(distance<0.55f) {
+                const auto& q=views[0].pose.orientation;
+                const float fx=-2.f*(q.x*q.z+q.w*q.y);
+                const float fz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
+                const float inv=distance>0.05f?1.f/distance:0.f;
+                px=eye.x+(inv>0?dx*inv:fx)*0.55f;
+                pz=eye.z+(inv>0?dz*inv:fz)*0.55f;
+            }
+            const float yaw=std::atan2(eye.x-px,eye.z-pz);
+            XrPosef panel{};
+            panel.position={px,py,pz};
+            panel.orientation={0.f,std::sin(yaw*0.5f),0.f,std::cos(yaw*0.5f)};
+            auto hit=voxen::ui::rayToPanel(controllerPoses_[1],panel,0.22f,0.22f);
+            if(hit.valid) {
+                aiming=true;
+                io.AddMousePosEvent(hit.u*512.f,hit.v*672.f);
+            }
+        }
+        if(!aiming) io.AddMousePosEvent(-FLT_MAX,-FLT_MAX);
+        io.AddMouseButtonEvent(0,aiming && uiTrigger_[1]);
+        panelAimed_=aiming;
         imguiCarousel_.page=nativeMenuPage_;
         imguiCarousel_.gpuMs=lastGpuMs_;
         imguiCarousel_.gpuAvailable=gpuTimingAvailable() && completedGpuSamples_>0;
