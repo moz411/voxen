@@ -1,5 +1,24 @@
 # Voxen
 
+## Android renderer selection (Liquid Room experiment)
+
+The Android Gradle build now selects **native OpenXR + Vulkan** by default on `feature/mr-layered-environments`. This path renders an experimental, synthetic Liquid Room quad in front of the user and preserves Meta passthrough. It does **not** yet detect room walls or implement the StereoKit carousel.
+
+```bash
+cd android
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb logcat -s Voxen:I VoxenPerf:I AndroidRuntime:E
+```
+
+To build the older StereoKit application with its carousel instead:
+```bash
+./gradlew assembleDebug -PvoxenStereoKit=true
+```
+
+Because the two backends share the same Android package name, installing either APK replaces the other. This change has not been compiled or tested on the Quest hardware in this environment. The latest GPU timestamp output is reported through `VoxenPerf`, not a native head-locked HUD.
+
+
 C++20 + OpenXR + Vulkan. Builds are **local on Windows**; no GitHub Actions.
 
 ## Quest 3 / Android APK

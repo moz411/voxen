@@ -14,6 +14,7 @@
 #include "scene_background.h"
 #include "background_catalog.h"
 #include <cstdio>
+#include <chrono>
 #ifdef __ANDROID__
 #include <android/log.h>
 #endif
@@ -86,6 +87,41 @@ static bool restore_confirmation = false;
 static const char* storage_status = "NOT SAVED";
 static vec3 volume_start{};
 static vec3 volume_end{};
+
+
+// Head-locked diagnostic HUD. CPU measures only Voxen's application callback;
+// GPU time requires native Vulkan timestamp queries (not exposed here).
+static bool perf_hud_visible = true;
+static text_style_t perf_ok_style = 0;
+static text_style_t perf_warn_style = 0;
+static float app_cpu_ms = 0.0f;
+// Rotate a vector by a unit quaternion without depending on StereoKit helper names.
+static vec3 perf_rotate(quat q, vec3 v) {
+    const vec3 u{q.x, q.y, q.z};
+    const vec3 t{2.0f * (u.y*v.z-u.z*v.y),
+                 2.0f * (u.z*v.x-u.x*v.z),
+                 2.0f * (u.x*v.y-u.y*v.x)};
+    return {v.x + q.w*t.x + (u.y*t.z-u.z*t.y),
+            v.y + q.w*t.y + (u.z*t.x-u.x*t.z),
+            v.z + q.w*t.z + (u.x*t.y-u.y*t.x)};
+}
+static void draw_performance_hud() {
+    if (!perf_hud_visible) return;
+    const pose_t* head = input_head();
+    if (!head) return;
+    const vec3 right = perf_rotate(head->orientation, {1,0,0});
+    const vec3 up = perf_rotate(head->orientation, {0,1,0});
+    const vec3 forward = perf_rotate(head->orientation, {0,0,-1});
+    const vec3 anchor = head->position + forward*0.70f + right*0.205f + up*0.135f;
+    // StereoKit text glyphs face the opposite convention to the camera-facing panel.
+    const quat facing = quat_mul(head->orientation, quat_from_angles(0,180,0));
+    char cpu_label[48];
+    constexpr float frame_budget_ms = 1000.0f / 72.0f;
+    const bool cpu_warning = app_cpu_ms >= frame_budget_ms*0.80f;
+    std::snprintf(cpu_label,sizeof(cpu_label),"CPU %.1f / %.1f ms",app_cpu_ms,frame_budget_ms);
+    text_add_at(cpu_label,matrix_trs(anchor,facing,{1,1,1}),cpu_warning?perf_warn_style:perf_ok_style);
+    text_add_at("GPU N/A",matrix_trs(anchor-up*0.014f,facing,{1,1,1}),perf_warn_style);
+}
 
 static float hue = 0.45f;
 static bool painting = true;
@@ -1047,6 +1083,8 @@ static void draw_face(int page) {
         if(face_button(face,page,"MORE",-0.204f))
             sky_opacity=std::min(0.60f,sky_opacity+0.05f);
     } else if(page==6) {
+        if(face_button(face,page,perf_hud_visible?"PERF HUD: ON":"PERF HUD: OFF",-0.176f))
+            perf_hud_visible=!perf_hud_visible;
         face_text(face,"SCENE SLOT 1",0,0.125f);
         face_text(face,storage_status,0,0.073f);
         if(face_button(face,page,save_confirmation?"CONFIRM SAVE":"SAVE",0.015f)) {
@@ -1357,7 +1395,10 @@ int voxen_stereokit_main() {
     ui_enable_far_interact(false);
     panel_text_style=text_make_style(font_find(default_id_font),0.0085f,
         {0.55f,1.0f,0.66f,1});
+    perf_ok_style=text_make_style(font_find(default_id_font),0.007f,{0.30f,1.0f,0.45f,1});
+    perf_warn_style=text_make_style(font_find(default_id_font),0.007f,{1.0f,0.69f,0.28f,1});
     sk_run([] {
+        const auto cpu_start = std::chrono::steady_clock::now();
         update_controller_palette();
         update_left_buttons();
         update_menu_ray();
@@ -1439,6 +1480,12 @@ int voxen_stereokit_main() {
         }
         edge_passthrough.frame(edges_enabled, camera_opacity,
             color_hsv(edge_hue, 1.0f, 1.0f, 1.0f));
+        const auto cpu_end = std::chrono::steady_clock::now();
+        const float elapsed_ms =
+            std::chrono::duration<float,std::milli>(cpu_end-cpu_start).count();
+        app_cpu_ms = app_cpu_ms == 0.0f ? elapsed_ms
+            : app_cpu_ms*0.90f + elapsed_ms*0.10f;
+        draw_performance_hud();
     }, [] {
         scene_background.shutdown();
         for(material_t m:sky_materials) if(m) material_release(m);

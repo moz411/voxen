@@ -47,6 +47,7 @@ void android_main(android_app* app) {
         renderer.initialize(
             xr.instance(),
             xr.systemId(),
+            vulkan.instance(),
             session.handle(),
             vulkan.device(),
             vulkan.physicalDevice(),

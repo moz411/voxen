@@ -1,4 +1,10 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
+#ifdef VOXEN_WITH_IMGUI
+#include <imgui.h>
+#include <backends/imgui_impl_vulkan.h>
+#include <voxen/ui/CarouselUi.hpp>
+#include <voxen/ui/SpatialPanelInput.hpp>
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -18,10 +24,14 @@
 #include "fractalFrag.spv.hpp"
 #include "fractalVert.spv.hpp"
 #include "laserFrag.spv.hpp"
+#include "liquidRoomFrag.spv.hpp"
+#include "carouselFrag.spv.hpp"
+#include "imguiPanelFrag.spv.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <array>
+#include <cfloat>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -50,6 +60,7 @@ XrSwapchainRenderer::~XrSwapchainRenderer() {
 void XrSwapchainRenderer::initialize(
     XrInstance instance,
     XrSystemId systemId,
+    VkInstance vulkanInstance,
     ::XrSession session,
     VkDevice device,
     VkPhysicalDevice physicalDevice,
@@ -71,8 +82,40 @@ void XrSwapchainRenderer::initialize(
     if (depthFormat_ == VK_FORMAT_UNDEFINED) throw std::runtime_error("No Vulkan depth attachment format supported");
     queueFamilyIndex_ = queueFamilyIndex;
 
+    VkPhysicalDeviceProperties gpuProps{};
+    vkGetPhysicalDeviceProperties(physicalDevice_, &gpuProps);
+    uint32_t familyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &familyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> families(familyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &familyCount, families.data());
+    if (queueFamilyIndex_ < familyCount &&
+        families[queueFamilyIndex_].timestampValidBits != 0 &&
+        gpuProps.limits.timestampComputeAndGraphics == VK_TRUE) {
+        VkQueryPoolCreateInfo qi{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+        qi.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        qi.queryCount = 2;
+        if (vkCreateQueryPool(device_, &qi, nullptr, &gpuTimestampPool_) == VK_SUCCESS)
+            timestampPeriodNs_ = gpuProps.limits.timestampPeriod;
+    }
     createCommandResources();
     createSwapchains(instance, systemId, session);
+#ifdef VOXEN_WITH_IMGUI
+    // CPU-side ImGui lifecycle only. GPU texture compositing is a separate step.
+    // Do not claim the temporary GLSL panel has been replaced yet.
+    if (ImGui::GetCurrentContext() == nullptr) {
+        ImGui::CreateContext();
+        imguiContextOwned_ = true;
+    }
+    ImGui::StyleColorsDark();
+    auto& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(512.0f, 672.0f);
+    io.DeltaTime = 1.f / 72.f;
+    io.IniFilename = nullptr;
+    // Fetch the rasterized font atlas before the backend uploads it.
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+    imguiSurface_.initialize(vulkanInstance,physicalDevice_,device_,queue_,queueFamilyIndex_);
+#endif
     createPipeline();
     createFramebuffers();
 }
@@ -317,6 +360,17 @@ void XrSwapchainRenderer::createPipeline() {
     pli.pushConstantRangeCount = 1; pli.pPushConstantRanges = &push;
     checkVk(vkCreatePipelineLayout(device_, &pli, nullptr, &pipelineLayout_), "vkCreatePipelineLayout");
 
+#ifdef VOXEN_WITH_IMGUI
+    // The offscreen texture descriptor layout is created by ImGuiSurface.
+    VkPushConstantRange panelPush{};
+    panelPush.stageFlags=VK_SHADER_STAGE_VERTEX_BIT;
+    panelPush.size=sizeof(ProceduralPushConstants);
+    VkDescriptorSetLayout uiSetLayout=imguiSurface_.descriptorLayout();
+    VkPipelineLayoutCreateInfo panelInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    panelInfo.setLayoutCount=1; panelInfo.pSetLayouts=&uiSetLayout;
+    panelInfo.pushConstantRangeCount=1;panelInfo.pPushConstantRanges=&panelPush;
+    checkVk(vkCreatePipelineLayout(device_,&panelInfo,nullptr,&imguiPanelPipelineLayout_),"vkCreatePipelineLayout(imgui)");
+#endif
     // All three pipelines share a render pass and one 80-byte push constant layout.
     auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
                              const std::uint8_t* fb, std::size_t fsz,
@@ -340,9 +394,31 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_) ? VK_FALSE : VK_TRUE;
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &carouselPipeline_
+#ifdef VOXEN_WITH_IMGUI
+        || &out == &imguiPanelPipeline_
+#endif
+        ) ? VK_FALSE : VK_TRUE;
+        if (&out == &carouselPipeline_
+#ifdef VOXEN_WITH_IMGUI
+            || &out == &imguiPanelPipeline_
+#endif
+        ) ds.depthTestEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
+        if (&out == &liquidRoomPipeline_ || &out == &carouselPipeline_
+#ifdef VOXEN_WITH_IMGUI
+            || &out == &imguiPanelPipeline_
+#endif
+        ) {
+            blend.blendEnable=VK_TRUE;
+            blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
+            blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.colorBlendOp=VK_BLEND_OP_ADD;
+            blend.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;
+            blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.alphaBlendOp=VK_BLEND_OP_ADD;
+        }
         VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
         cb.attachmentCount=1; cb.pAttachments=&blend;
         VkDynamicState dyns[]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR};
@@ -352,7 +428,11 @@ void XrSwapchainRenderer::createPipeline() {
         VkGraphicsPipelineCreateInfo pi{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
         pi.stageCount=2; pi.pStages=stages; pi.pVertexInputState=&vi; pi.pInputAssemblyState=&ia;
         pi.pViewportState=&vp; pi.pRasterizationState=&rs; pi.pMultisampleState=&ms;
-        pi.pColorBlendState=&cb; pi.pDepthStencilState=&ds; pi.pDynamicState=&dyn; pi.layout=pipelineLayout_; pi.renderPass=renderPass_;
+        pi.pColorBlendState=&cb; pi.pDepthStencilState=&ds; pi.pDynamicState=&dyn; pi.layout=pipelineLayout_;
+#ifdef VOXEN_WITH_IMGUI
+        if(&out==&imguiPanelPipeline_)pi.layout=imguiPanelPipelineLayout_;
+#endif
+        pi.renderPass=renderPass_;
         checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &out), "vkCreateGraphicsPipelines");
         vkDestroyShaderModule(device_, fs, nullptr);
         vkDestroyShaderModule(device_, vs, nullptr);
@@ -361,6 +441,11 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
+#ifdef VOXEN_WITH_IMGUI
+    buildPipeline(fractalVert, fractalVertSize, imguiPanelFrag, imguiPanelFragSize, imguiPanelPipeline_);
+#endif
 }
 
 void XrSwapchainRenderer::createFramebuffers() {
@@ -449,6 +534,17 @@ void XrSwapchainRenderer::updateControllerInteraction(
     const auto& artworks = scene_.artworks();
     controllerPoses_ = poses;
     controllerTracked_ = tracked;
+#ifdef VOXEN_WITH_IMGUI
+    uiTrigger_[0]=pressed[0]; uiTrigger_[1]=pressed[1];
+#endif
+    if (tracked[0] && heldArtwork_[0] < 0) {
+        const float axis=thumbsticks[0].x;
+        if (std::fabs(axis)<0.3f) nativeMenuStickLatched_=false;
+        if (!nativeMenuStickLatched_ && std::fabs(axis)>0.70f) {
+            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:7))%8;
+            nativeMenuStickLatched_=true;
+        }
+    }
 
     for (std::size_t hand = 0; hand < 2; ++hand) {
         hoveredArtwork_[hand] = -1;
@@ -457,6 +553,15 @@ void XrSwapchainRenderer::updateControllerInteraction(
             previousPress_[hand] = pressed[hand];
             continue;
         }
+#ifdef VOXEN_WITH_IMGUI
+        // A UI trigger must not also grab a voxel artwork.
+        if(hand==1 && panelAimed_) {
+            hoveredArtwork_[hand]=-1;
+            heldArtwork_[hand]=-1;
+            previousPress_[hand]=pressed[hand];
+            continue;
+        }
+#endif
         const auto& pose = poses[hand];
         const auto& q = pose.orientation;
         const float dx = -2.0F * (q.x*q.z + q.w*q.y);
@@ -539,6 +644,15 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     checkVk(vkBeginCommandBuffer(commandBuffer_, &begin), "vkBeginCommandBuffer");
 
+    if (gpuTimestampPool_ != VK_NULL_HANDLE) {
+        vkCmdResetQueryPool(commandBuffer_, gpuTimestampPool_, 0, 2);
+        vkCmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpuTimestampPool_, 0);
+    }
+
+#ifdef VOXEN_WITH_IMGUI
+    if (imguiSurface_.ready() && ImGui::GetDrawData()!=nullptr && &eye==&eyes_[0])
+        imguiSurface_.render(commandBuffer_,ImGui::GetDrawData());
+#endif
     auto& layout=eye.layouts.at(imageIndex);
     if (layout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
         VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -572,7 +686,34 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     const float seconds = std::chrono::duration<float>(
         std::chrono::steady_clock::now() - animationStart_).count();
     const Mat4 projView = multiply(projection(xrView.fov, 0.05F, 100.0F), viewMatrix(xrView.pose));
-    for (const auto& artwork : scene_.artworks()) {
+    // First visible Liquid Room demonstration: a synthetic, labelled quad,
+    // NOT a detected wall. Spatial-surface binding comes in the next stage.
+    bool liquidEnabled=true;
+    float liquidOpacity=0.42f;
+    float globalSpeed=1.0f;
+    bool artworksVisible=true;
+    bool artworksAnimated=true;
+    int motionMode=0;
+    float motionAmplitude=0.25f;
+#ifdef VOXEN_WITH_IMGUI
+    liquidEnabled=imguiCarousel_.liquidRoom;
+    liquidOpacity=std::clamp(imguiCarousel_.liquidOpacity,0.0f,0.6f);
+    globalSpeed=imguiCarousel_.animationSpeed;
+    artworksVisible=imguiCarousel_.showArtworks;
+    artworksAnimated=imguiCarousel_.animateArtworks;
+    motionMode=imguiCarousel_.artworkMotion;
+    motionAmplitude=std::clamp(imguiCarousel_.motionAmplitude,0.0f,0.5f);
+#endif
+    if (liquidEnabled && liquidOpacity>0.001f && liquidRoomPipeline_ != VK_NULL_HANDLE) {
+        vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, liquidRoomPipeline_);
+        const Mat4 planeMvp=multiply(projView,modelMatrix(0.0F,-0.35F,0.65F,-2.25F,0.0F));
+        ProceduralPushConstants liquid{planeMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
+        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            0,sizeof(liquid),&liquid);
+        vkCmdDraw(commandBuffer_,6,1,0,0);
+    }
+    if (artworksVisible) for (const auto& artwork : scene_.artworks()) {
         VkPipeline artPipeline = pipeline_;
         uint32_t vertices = 36;
         float shape = 0.0F;
@@ -595,19 +736,77 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         }
         vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, artPipeline);
         const auto& t = artwork.transform;
-        const Mat4 mvp = multiply(projView, modelMatrix(
-            t.position[0], t.position[1], t.scale, t.position[2], t.yawRadians));
-        ProceduralPushConstants constants{mvp, {seconds, artwork.animationSpeed, 1.0F, shape}};
+        float x=t.position[0],y=t.position[1],z=t.position[2];
+        float scale=t.scale,yaw=t.yawRadians;
+        const float phase=seconds*globalSpeed*artwork.animationSpeed;
+        if (artworksAnimated) {
+            switch (motionMode) {
+            case 1: // Breathe uniformly, without changing the stored artwork.
+                scale*=1.0f+motionAmplitude*std::sin(phase*2.0f);
+                break;
+            case 2: // Rotate in world space around its own center.
+                yaw+=phase;
+                break;
+            case 3: // Float vertically.
+                y+=motionAmplitude*std::sin(phase);
+                break;
+            case 4: // Orbit around the artwork's saved position.
+                x+=motionAmplitude*std::cos(phase);
+                z+=motionAmplitude*std::sin(phase);
+                break;
+            default: break;
+            }
+        }
+        const Mat4 mvp=multiply(projView,modelMatrix(x,y,scale,z,yaw));
+        ProceduralPushConstants constants{mvp, {artworksAnimated ? seconds : 0.0f, artwork.animationSpeed*globalSpeed, 1.0F, shape}};
         vkCmdPushConstants(commandBuffer_, pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0, sizeof(constants), &constants);
         vkCmdDraw(commandBuffer_, vertices, 1, 0, 0);
     }
+#ifdef VOXEN_WITH_IMGUI
+    // Minimal native eight-page carousel scaffold, left-hand anchored.
+    if (controllerTracked_[0] && imguiSurface_.ready() && imguiPanelPipeline_ != VK_NULL_HANDLE) {
+        const auto& cp=controllerPoses_[0].position;
+        // Keep the panel at a readable distance from both eyes, rather than
+        // having the left controller push it through the headset near plane.
+        const auto& eye=xrView.pose.position;
+        float px=cp.x, py=cp.y+0.17f, pz=cp.z;
+        const float dx=px-eye.x, dz=pz-eye.z;
+        const float distance=std::sqrt(dx*dx+dz*dz);
+        if (distance<0.55f) {
+            // Eye/controller coincidence: use the tracked eye's forward direction.
+            const auto& q=xrView.pose.orientation;
+            const float fx=-2.0f*(q.x*q.z+q.w*q.y);
+            const float fz=-(1.0f-2.0f*(q.x*q.x+q.y*q.y));
+            const float inv=distance>0.05f ? 1.0f/distance : 0.0f;
+            px=eye.x+(inv>0.0f?dx*inv:fx)*0.70f;
+            pz=eye.z+(inv>0.0f?dz*inv:fz)*0.70f;
+        }
+        // Normal faces the eyes. 22 cm high, with base near the controller.
+        const float yaw=std::atan2(eye.x-px,eye.z-pz);
+        Mat4 menuModel=modelMatrix(px,py,0.22f,pz,yaw);
+        menuModel.m[5]*=(672.f/512.f);
+        const Mat4 menuMvp=multiply(projView,menuModel);
+        ProceduralPushConstants menu{menuMvp,{seconds,1.0f,1.0f,float(nativeMenuPage_)}};
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,imguiPanelPipeline_);
+        VkDescriptorSet textureSet=imguiSurface_.descriptor();
+        vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+            imguiPanelPipelineLayout_,0,1,&textureSet,0,nullptr);
+        vkCmdPushConstants(commandBuffer_,imguiPanelPipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT,
+            0,sizeof(menu),&menu);
+        vkCmdDraw(commandBuffer_,6,1,0,0);
+    }
+#endif
     // Draw the visible controller rays last; depth testing hides them behind artwork.
     vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, laserPipeline_);
     for (std::size_t hand = 0; hand < controllerTracked_.size(); ++hand) {
         if (!controllerTracked_[hand]) continue;
         float length = 2.5F;
+#ifdef VOXEN_WITH_IMGUI
+        if(hand==1 && panelAimed_)length=std::max(0.05f,panelHitDistance_);
+#endif
         const int target = hoveredArtwork_[hand];
         if (target >= 0) {
             const auto& q = controllerPoses_[hand].orientation;
@@ -615,10 +814,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const float dy = -2.0F * (q.y*q.z - q.w*q.x);
             const float dz = -(1.0F - 2.0F * (q.x*q.x + q.y*q.y));
             const auto& c = scene_.artworks()[target].transform.position;
-            length = std::clamp(
+            length = std::min(length,std::clamp(
                 (c[0]-controllerPoses_[hand].position.x)*dx +
                 (c[1]-controllerPoses_[hand].position.y)*dy +
-                (c[2]-controllerPoses_[hand].position.z)*dz, 0.1F, 2.5F);
+                (c[2]-controllerPoses_[hand].position.z)*dz, 0.1F, 2.5F));
         }
         const Mat4 beamMvp = multiply(projView, laserMatrix(controllerPoses_[hand], length));
         ProceduralPushConstants constants{beamMvp, {seconds, 1.0F, 1.0F, 0.0F}};
@@ -628,15 +827,85 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_, 36, 1, 0, 0);
     }
     vkCmdEndRenderPass(commandBuffer_);
+    if (gpuTimestampPool_ != VK_NULL_HANDLE)
+        vkCmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpuTimestampPool_, 1);
     checkVk(vkEndCommandBuffer(commandBuffer_), "vkEndCommandBuffer");
     VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO}; submit.commandBufferCount=1; submit.pCommandBuffers=&commandBuffer_;
     checkVk(vkQueueSubmit(queue_,1,&submit,fence_), "vkQueueSubmit");
     checkVk(vkWaitForFences(device_,1,&fence_,VK_TRUE,UINT64_MAX), "vkWaitForFences");
+    if (gpuTimestampPool_ != VK_NULL_HANDLE) {
+        uint64_t ts[2]{};
+        if (vkGetQueryPoolResults(device_,gpuTimestampPool_,0,2,sizeof(ts),ts,sizeof(uint64_t),
+                VK_QUERY_RESULT_64_BIT) == VK_SUCCESS && ts[1] >= ts[0]) {
+            const float ms = static_cast<float>(ts[1]-ts[0])*timestampPeriodNs_*1e-6f;
+            lastGpuMs_ = completedGpuSamples_++ == 0 ? ms : lastGpuMs_*0.9f+ms*0.1f;
+        }
+    }
 }
 
 void XrSwapchainRenderer::render(
     const std::array<XrView, 2>& views,
     std::array<XrCompositionLayerProjectionView, 2>& projectionViews) {
+#ifdef VOXEN_WITH_IMGUI
+    if (ImGui::GetCurrentContext() != nullptr) {
+        const auto now=std::chrono::steady_clock::now();
+        const float dt=lastUiFrame_.time_since_epoch().count() == 0
+            ? 1.f/72.f
+            : std::clamp(std::chrono::duration<float>(now-lastUiFrame_).count(),1.f/240.f,0.1f);
+        lastUiFrame_=now;
+        auto& io=ImGui::GetIO();
+        io.DeltaTime=dt;
+        // Project the right-hand aim ray to the same left-controller panel
+        // transform used by the stereo pass.
+        bool aiming=false;
+        float cursorX=0.f,cursorY=0.f;
+        if(controllerTracked_[0] && controllerTracked_[1]) {
+            const auto& cp=controllerPoses_[0].position;
+            const auto& eye=views[0].pose.position;
+            float px=cp.x,py=cp.y+0.29f,pz=cp.z;
+            const float dx=px-eye.x,dz=pz-eye.z;
+            const float distance=std::sqrt(dx*dx+dz*dz);
+            if(distance<0.70f) {
+                const auto& q=views[0].pose.orientation;
+                const float fx=-2.f*(q.x*q.z+q.w*q.y);
+                const float fz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
+                const float inv=distance>0.05f?1.f/distance:0.f;
+                px=eye.x+(inv>0?dx*inv:fx)*0.70f;
+                pz=eye.z+(inv>0?dz*inv:fz)*0.70f;
+            }
+            const float yaw=std::atan2(eye.x-px,eye.z-pz);
+            XrPosef panel{};
+            panel.position={px,py,pz};
+            panel.orientation={0.f,std::sin(yaw*0.5f),0.f,std::cos(yaw*0.5f)};
+            auto hit=voxen::ui::rayToPanel(controllerPoses_[1],panel,0.44f,0.44f*672.f/512.f);
+            if(hit.valid) {
+                aiming=true;
+                panelHitDistance_=hit.distance;
+                cursorX=hit.u*512.f;cursorY=hit.v*672.f;
+                io.AddMousePosEvent(cursorX,cursorY);
+            }
+        }
+        if(!aiming) io.AddMousePosEvent(-FLT_MAX,-FLT_MAX);
+        io.AddMouseButtonEvent(0,aiming && uiTrigger_[1]);
+        panelAimed_=aiming;
+        if (!aiming) panelHitDistance_=0.0f;
+        imguiCarousel_.page=nativeMenuPage_;
+        imguiCarousel_.gpuMs=lastGpuMs_;
+        imguiCarousel_.gpuAvailable=gpuTimingAvailable() && completedGpuSamples_>0;
+        ImGui_ImplVulkan_NewFrame();
+        ImGui::NewFrame();
+        voxen::ui::drawCarousel(imguiCarousel_);
+        // Visible cursor proves that ray → panel UV mapping reaches ImGui.
+        if(aiming) {
+            ImGui::GetForegroundDrawList()->AddCircleFilled(
+                ImVec2(cursorX,cursorY),7.f,IM_COL32(100,255,150,255));
+        }
+        ImGui::Render();
+        nativeMenuPage_=imguiCarousel_.page;
+        // ImDrawData is now available for a future offscreen VkImage renderer.
+        // For now the old phosphor GLSL panel is still rendered below.
+    }
+#endif
     if (!firstFrameLogged_) {
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO, "Voxen", "Rendering first stereo projection frame");
@@ -670,6 +939,24 @@ void XrSwapchainRenderer::render(
         projection.subImage.imageArrayIndex = 0;
     }
 
+    // Throttled diagnostic while the native Vulkan HUD is under construction.
+    // GPU timestamp is measured per eye; this value is the last eye rendered.
+    static auto lastStatsLog = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    if (now - lastStatsLog >= std::chrono::seconds(2)) {
+        lastStatsLog = now;
+#ifdef __ANDROID__
+        if (gpuTimestampPool_ != VK_NULL_HANDLE && completedGpuSamples_ > 0)
+            __android_log_print(ANDROID_LOG_INFO,"VoxenPerf","GPU last-eye %.2f ms",lastGpuMs_);
+        else
+            __android_log_print(ANDROID_LOG_INFO,"VoxenPerf","GPU N/A (timestamps unsupported)");
+#else
+        if (gpuTimestampPool_ != VK_NULL_HANDLE && completedGpuSamples_ > 0)
+            std::printf("[VoxenPerf] GPU last-eye %.2f ms\\n",lastGpuMs_);
+        else
+            std::printf("[VoxenPerf] GPU N/A (timestamps unsupported)\\n");
+#endif
+    }
     if (!firstFrameLogged_) {
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO, "Voxen", "First stereo projection frame rendered");
@@ -681,6 +968,14 @@ void XrSwapchainRenderer::render(
 }
 
 void XrSwapchainRenderer::shutdown() noexcept {
+    if (device_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
+#ifdef VOXEN_WITH_IMGUI
+    imguiSurface_.shutdown();
+    if (imguiContextOwned_ && ImGui::GetCurrentContext() != nullptr) {
+        ImGui::DestroyContext();
+        imguiContextOwned_=false;
+    }
+#endif
     if (device_ != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(device_);
     }
@@ -704,9 +999,19 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (organicaPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, organicaPipeline_, nullptr); organicaPipeline_ = VK_NULL_HANDLE; }
     if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
+    if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
+    if (carouselPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,carouselPipeline_,nullptr); carouselPipeline_=VK_NULL_HANDLE; }
+#ifdef VOXEN_WITH_IMGUI
+    if (imguiPanelPipeline_ != VK_NULL_HANDLE) {vkDestroyPipeline(device_,imguiPanelPipeline_,nullptr);imguiPanelPipeline_=VK_NULL_HANDLE;}
+    if (imguiPanelPipelineLayout_ != VK_NULL_HANDLE) {vkDestroyPipelineLayout(device_,imguiPanelPipelineLayout_,nullptr);imguiPanelPipelineLayout_=VK_NULL_HANDLE;}
+#endif
     if (pipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr); pipelineLayout_ = VK_NULL_HANDLE; }
     if (renderPass_ != VK_NULL_HANDLE) { vkDestroyRenderPass(device_, renderPass_, nullptr); renderPass_ = VK_NULL_HANDLE; }
 
+    if (gpuTimestampPool_ != VK_NULL_HANDLE) {
+        vkDestroyQueryPool(device_, gpuTimestampPool_, nullptr);
+        gpuTimestampPool_ = VK_NULL_HANDLE;
+    }
     if (fence_ != VK_NULL_HANDLE) {
         vkDestroyFence(device_, fence_, nullptr);
         fence_ = VK_NULL_HANDLE;

@@ -39,6 +39,42 @@ if(ANDROID OR WIN32)
     voxen_embed_shader(fractalFrag fractal.frag)
     voxen_embed_shader(fractalVert fractal.vert)
     voxen_embed_shader(laserFrag laser.frag)
+    voxen_embed_shader(liquidRoomFrag liquid_room.frag)
+    voxen_embed_shader(carouselFrag carousel.frag)
+    voxen_embed_shader(imguiPanelFrag imgui_panel.frag)
+endif()
+
+
+# Native Vulkan UI implementation. Dear ImGui is compiled as a library so that
+# the XR spatial-panel renderer can consume ImDrawData independently of input.
+# Pin a tag for reproducibility; no SDL/GLFW backend in the Quest application.
+option(VOXEN_WITH_IMGUI "Build native Dear ImGui core and Vulkan backend" ON)
+if(VOXEN_WITH_IMGUI)
+    include(FetchContent)
+    FetchContent_Declare(voxen_dear_imgui
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG v1.91.9b
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(voxen_dear_imgui)
+    add_library(voxen_imgui STATIC
+        ${voxen_dear_imgui_SOURCE_DIR}/imgui.cpp
+        ${voxen_dear_imgui_SOURCE_DIR}/imgui_draw.cpp
+        ${voxen_dear_imgui_SOURCE_DIR}/imgui_tables.cpp
+        ${voxen_dear_imgui_SOURCE_DIR}/imgui_widgets.cpp
+        ${voxen_dear_imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
+        ui/src/CarouselUi.cpp
+        ui/src/ImGuiSurface.cpp
+    )
+    target_include_directories(voxen_imgui PUBLIC
+        ${voxen_dear_imgui_SOURCE_DIR}
+        ${voxen_dear_imgui_SOURCE_DIR}/backends
+        ${CMAKE_CURRENT_SOURCE_DIR}/ui/include)
+    if(ANDROID)
+        target_link_libraries(voxen_imgui PUBLIC vulkan)
+    elseif(WIN32)
+        target_link_libraries(voxen_imgui PUBLIC Vulkan::Vulkan)
+    endif()
 endif()
 
 add_library(voxen_engine STATIC
@@ -72,3 +108,8 @@ if(WIN32)
 endif()
 
 target_compile_features(voxen_engine PUBLIC cxx_std_20)
+
+if(VOXEN_WITH_IMGUI)
+    target_link_libraries(voxen_engine PUBLIC voxen_imgui)
+    target_compile_definitions(voxen_engine PUBLIC VOXEN_WITH_IMGUI=1)
+endif()

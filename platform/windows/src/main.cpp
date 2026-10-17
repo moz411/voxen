@@ -31,6 +31,7 @@ int main() {
         renderer.initialize(
             xr.instance(),
             xr.systemId(),
+            vulkan.instance(),
             session.handle(),
             vulkan.device(),
             vulkan.physicalDevice(),

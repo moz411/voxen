@@ -1,4 +1,4 @@
-val voxenStereoKit = providers.gradleProperty("voxenStereoKit").orNull?.toBoolean() ?: true
+val voxenStereoKit = providers.gradleProperty("voxenStereoKit").orNull?.toBoolean() ?: false
 
 plugins { id("com.android.application") }
 
