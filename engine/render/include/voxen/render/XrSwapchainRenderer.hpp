@@ -109,6 +109,7 @@ private:
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipeline organicaPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxelBrushPipeline_ = VK_NULL_HANDLE;
     VkPipeline fractalPipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
@@ -146,6 +147,16 @@ private:
     voxen::scene::EnvironmentSurfaceRegistry environmentSurfaces_{};
     std::array<int, 2> heldArtwork_{{-1, -1}};
     std::array<int, 2> hoveredArtwork_{{-1, -1}};
+    struct VoxelStrokeStamp {
+        std::array<float,3> position{};
+        std::array<float,3> color{};
+        float sizeMeters=0.08f;
+        int shape=0;
+        int material=0;
+    };
+    std::vector<VoxelStrokeStamp> voxelStamps_;
+    std::array<float,3> lastVoxelTip_{};
+    bool lastVoxelTipValid_=false;
     std::array<XrPosef, 2> controllerPoses_{};
     std::array<bool, 2> controllerTracked_{};
     std::array<bool, 2> previousPress_{};
