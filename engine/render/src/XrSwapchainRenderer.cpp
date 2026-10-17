@@ -1,4 +1,8 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
+#ifdef VOXEN_WITH_IMGUI
+#include <imgui.h>
+#include <voxen/ui/CarouselUi.hpp>
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -92,6 +96,21 @@ void XrSwapchainRenderer::initialize(
     createSwapchains(instance, systemId, session);
     createPipeline();
     createFramebuffers();
+#ifdef VOXEN_WITH_IMGUI
+    // CPU-side ImGui lifecycle only. GPU texture compositing is a separate step.
+    // Do not claim the temporary GLSL panel has been replaced yet.
+    if (ImGui::GetCurrentContext() == nullptr) {
+        ImGui::CreateContext();
+        imguiContextOwned_ = true;
+    }
+    ImGui::StyleColorsDark();
+    auto& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(512.0f, 672.0f);
+    io.DeltaTime = 1.f / 72.f;
+    io.IniFilename = nullptr;
+    // Fetch the rasterized font atlas before the backend uploads it.
+    io.Fonts->AddFontDefault();
+#endif
 }
 
 void XrSwapchainRenderer::createCommandResources() {
@@ -729,6 +748,26 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 void XrSwapchainRenderer::render(
     const std::array<XrView, 2>& views,
     std::array<XrCompositionLayerProjectionView, 2>& projectionViews) {
+#ifdef VOXEN_WITH_IMGUI
+    if (ImGui::GetCurrentContext() != nullptr) {
+        const auto now=std::chrono::steady_clock::now();
+        const float dt=lastUiFrame_.time_since_epoch().count() == 0
+            ? 1.f/72.f
+            : std::clamp(std::chrono::duration<float>(now-lastUiFrame_).count(),1.f/240.f,0.1f);
+        lastUiFrame_=now;
+        auto& io=ImGui::GetIO();
+        io.DeltaTime=dt;
+        imguiCarousel_.page=nativeMenuPage_;
+        imguiCarousel_.gpuMs=lastGpuMs_;
+        imguiCarousel_.gpuAvailable=gpuTimingAvailable() && completedGpuSamples_>0;
+        ImGui::NewFrame();
+        voxen::ui::drawCarousel(imguiCarousel_);
+        ImGui::Render();
+        nativeMenuPage_=imguiCarousel_.page;
+        // ImDrawData is now available for a future offscreen VkImage renderer.
+        // For now the old phosphor GLSL panel is still rendered below.
+    }
+#endif
     if (!firstFrameLogged_) {
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO, "Voxen", "Rendering first stereo projection frame");
@@ -791,6 +830,12 @@ void XrSwapchainRenderer::render(
 }
 
 void XrSwapchainRenderer::shutdown() noexcept {
+#ifdef VOXEN_WITH_IMGUI
+    if (imguiContextOwned_ && ImGui::GetCurrentContext() != nullptr) {
+        ImGui::DestroyContext();
+        imguiContextOwned_=false;
+    }
+#endif
     if (device_ != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(device_);
     }
