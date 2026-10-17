@@ -50,6 +50,7 @@ void drawCarousel(CarouselState& state) {
             ImGui::SliderInt("Max walls",&state.maxLiquidWalls,1,8);
             ImGui::Checkbox("Scene mesh wireframe",&state.showSceneMesh);
             ImGui::Checkbox("Occlude walls with scene mesh",&state.sceneOcclusion);
+            if(state.sceneOcclusion) ImGui::SliderFloat("Occlusion bias",&state.sceneDepthBias,0.0f,0.01f,"%.4f");
             ImGui::TextDisabled("Quest fast mode: nearest tracked walls");
             break;
         default:
