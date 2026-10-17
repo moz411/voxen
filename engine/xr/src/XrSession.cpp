@@ -39,13 +39,15 @@ void XrSession::initialize(
     VkPhysicalDevice physicalDevice,
     VkDevice device,
     uint32_t queueFamilyIndex,
-    bool enablePassthrough) {
+    bool enablePassthrough,
+    bool enableScene) {
     if (session_ != XR_NULL_HANDLE) {
         throw std::logic_error("OpenXR session is already initialized");
     }
 
     instance_ = instance;
     enablePassthrough_ = enablePassthrough;
+    enableScene_ = enableScene;
 
     XrGraphicsBindingVulkan2KHR binding{XR_TYPE_GRAPHICS_BINDING_VULKAN2_KHR};
     binding.instance = vkInstance;
@@ -64,6 +66,7 @@ void XrSession::initialize(
     spaceInfo.poseInReferenceSpace.orientation.w = 1.0F;
     checkXr(xrCreateReferenceSpace(session_, &spaceInfo, &localSpace_), "xrCreateReferenceSpace(LOCAL)");
     initializeActions();
+    if(enableScene_) metaScene_.initialize(instance_,session_);
     if (enablePassthrough_) {
         initializePassthrough();
 #ifdef __ANDROID__
@@ -238,6 +241,7 @@ bool XrSession::pollEvents() {
         }
         checkXr(result, "xrPollEvent");
 
+        if(enableScene_) metaScene_.onEvent(reinterpret_cast<const XrEventDataBaseHeader*>(&event));
         switch (event.type) {
         case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED:
             handleSessionStateChanged(*reinterpret_cast<const XrEventDataSessionStateChanged*>(&event));
@@ -268,6 +272,7 @@ void XrSession::handleSessionStateChanged(const XrEventDataSessionStateChanged& 
         beginInfo.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
         checkXr(xrBeginSession(session_, &beginInfo), "xrBeginSession");
         running_ = true;
+        if(enableScene_) metaScene_.request();
         if (passthrough_ != XR_NULL_HANDLE) {
             checkXr(startPassthrough_(passthrough_), "xrPassthroughStartFB");
 #ifdef __ANDROID__
@@ -310,6 +315,10 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
         }
     }
     renderer.updateControllerInteraction(aimPoses, aimTracked, selectionPressed_, thumbstickValues_);
+    if(enableScene_) {
+        metaScene_.refresh(localSpace_,frameState.predictedDisplayTime);
+        renderer.setEnvironmentSurfaces(metaScene_.surfaces());
+    }
 
     XrFrameBeginInfo beginInfo{XR_TYPE_FRAME_BEGIN_INFO};
     checkXr(xrBeginFrame(session_, &beginInfo), "xrBeginFrame");
@@ -383,6 +392,7 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
 }
 
 void XrSession::shutdown() noexcept {
+    metaScene_.shutdown();
     destroyPassthrough();
     for (auto& space : aimSpaces_) {
         if (space != XR_NULL_HANDLE) xrDestroySpace(space);
