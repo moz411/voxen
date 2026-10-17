@@ -6,17 +6,17 @@
 namespace voxen::ui {
 void drawCarousel(CarouselState& state) {
     if (!state.visible) return;
-    state.page=std::clamp(state.page,0,7);
+    state.page=std::clamp(state.page,0,8);
     ImGui::SetNextWindowPos(ImVec2(8,8),ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(500,660),ImGuiCond_Always);
     constexpr ImGuiWindowFlags flags=ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse;
     if (ImGui::Begin("VOXEN",nullptr,flags)) {
-        if (ImGui::Button("< PREV")) state.page=(state.page+7)%8;
+        if (ImGui::Button("< PREV")) state.page=(state.page+8)%9;
         ImGui::SameLine();
         ImGui::Text("%.*s",static_cast<int>(pages[state.page].size()),pages[state.page].data());
         ImGui::SameLine();
-        if (ImGui::Button("NEXT >")) state.page=(state.page+1)%8;
+        if (ImGui::Button("NEXT >")) state.page=(state.page+1)%9;
         ImGui::Separator();
         switch(state.page) {
         case 3:
@@ -54,6 +54,17 @@ void drawCarousel(CarouselState& state) {
             if(state.sceneOcclusion) ImGui::SliderFloat("Occlusion bias",&state.sceneDepthBias,0.0f,0.01f,"%.4f");
             ImGui::TextDisabled("Quest fast mode: nearest tracked walls");
             break;
+        case 8: {
+            ImGui::TextUnformatted("AMBIENT SOUND");
+            static constexpr const char* tracks[]={"COSMOS / Drone","OCEAN / Waves","FOREST / Air & birds"};
+            ImGui::Combo("Atmosphere",&state.musicTrack,tracks,3);
+            if(ImGui::Button(state.musicPlaying ? "PAUSE" : "PLAY"))
+                state.musicPlaying=!state.musicPlaying;
+            ImGui::SliderFloat("Music volume",&state.musicVolume,0.f,1.f);
+            ImGui::TextDisabled("Procedural loops - no audio files needed");
+            if(!state.musicReady)ImGui::TextDisabled("Audio output unavailable");
+            break;
+        }
         default:
             ImGui::TextDisabled("Legacy controls: port pending");
             break;
