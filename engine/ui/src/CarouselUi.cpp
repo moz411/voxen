@@ -35,6 +35,8 @@ void drawCarousel(CarouselState& state) {
             }
             ImGui::Columns(1);
             ImGui::Checkbox("Voxel brush enabled",&state.voxelBrushEnabled);
+            ImGui::Text("Painted voxels: %d / 2048",state.voxelStrokeCount);
+            if(ImGui::Button("CLEAR VOXELS"))state.voxelClearRequested=true;
             ImGui::TextDisabled("Select a shape to open its parameters.");
             break;
         }
@@ -46,7 +48,7 @@ void drawCarousel(CarouselState& state) {
             ImGui::ColorEdit3("Color",&state.voxelColor[0]);
             ImGui::Combo("Material",&state.voxelMaterial,materials,3);
             ImGui::Checkbox("Voxel brush enabled",&state.voxelBrushEnabled);
-            if(ImGui::Button("< SHAPES"))state.page=1;
+            if(ImGui::Button("< VOXELS"))state.page=1;
             ImGui::Separator();
             ImGui::TextDisabled("Animations, deformation and spatial sound: next iteration.");
             break;
