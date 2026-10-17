@@ -402,6 +402,9 @@ void XrSwapchainRenderer::setSceneMeshes(const std::vector<MeshGeometry>& meshes
     std::memcpy(mapped,lines.data(),static_cast<size_t>(bytes));
     vkUnmapMemory(device_,meshWireMemory_);
     meshWireVertexCount_=static_cast<uint32_t>(lines.size());
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO,"VoxenScene","Wireframe GPU upload: %u vertices",meshWireVertexCount_);
+#endif
 }
 
 void XrSwapchainRenderer::createPipeline() {
@@ -859,6 +862,16 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             vkCmdDraw(commandBuffer_,6,1,0,0);
         }
     }
+#ifdef __ANDROID__
+    static bool wireframeStateLogged=false;
+    if(showSceneMesh && !wireframeStateLogged) {
+        __android_log_print(ANDROID_LOG_INFO,"VoxenScene",
+            "Wireframe draw requested: vertices=%u pipeline=%d buffer=%d",
+            meshWireVertexCount_,meshWirePipeline_!=VK_NULL_HANDLE,
+            meshWireBuffer_!=VK_NULL_HANDLE);
+        wireframeStateLogged=true;
+    }
+#endif
     if(showSceneMesh && meshWireVertexCount_>0 && meshWireBuffer_!=VK_NULL_HANDLE) {
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,meshWirePipeline_);
         const VkDeviceSize offset=0;
