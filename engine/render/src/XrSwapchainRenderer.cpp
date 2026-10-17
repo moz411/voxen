@@ -712,6 +712,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     // NOT a detected wall. Spatial-surface binding comes in the next stage.
     bool liquidEnabled=true;
     float liquidOpacity=0.42f;
+    int maxLiquidWalls=3;
     float globalSpeed=1.0f;
     bool artworksVisible=true;
     bool artworksAnimated=true;
@@ -720,6 +721,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 #ifdef VOXEN_WITH_IMGUI
     liquidEnabled=imguiCarousel_.liquidRoom;
     liquidOpacity=std::clamp(imguiCarousel_.liquidOpacity,0.0f,0.6f);
+    maxLiquidWalls=std::clamp(imguiCarousel_.maxLiquidWalls,1,8);
     globalSpeed=imguiCarousel_.animationSpeed;
     artworksVisible=imguiCarousel_.showArtworks;
     artworksAnimated=imguiCarousel_.animateArtworks;
@@ -732,12 +734,26 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         // The synthetic development quad remains a fallback until the native
         // Scene query provider populates EnvironmentSurfaceRegistry.
         bool wallRendered=false;
+        struct WallCandidate { const voxen::scene::EnvironmentSurface* surface; float distanceSquared; };
+        std::vector<WallCandidate> candidates;
+        const auto& camera=xrView.pose.position;
         for(const auto& surface:environmentSurfaces_.surfaces()) {
-            if(!surface.tracked || surface.classification!=voxen::scene::SurfaceClass::Wall)
+            if(!surface.tracked || surface.classification!=voxen::scene::SurfaceClass::Wall ||
+               surface.halfExtents[0]<=0.05f || surface.halfExtents[1]<=0.05f)
                 continue;
-            if(surface.halfExtents[0]<=0.05f || surface.halfExtents[1]<=0.05f)
-                continue;
-            const Mat4 wallMvp=multiply(projView,surfaceModel(surface));
+            const float dx=surface.center[0]-camera.x;
+            const float dy=surface.center[1]-camera.y;
+            const float dz=surface.center[2]-camera.z;
+            candidates.push_back({&surface,dx*dx+dy*dy+dz*dz});
+        }
+        // Limit fragment-shader fill cost. Same stable ordering in both eyes.
+        std::sort(candidates.begin(),candidates.end(),[](const auto& a,const auto& b) {
+            if(a.distanceSquared!=b.distanceSquared)return a.distanceSquared<b.distanceSquared;
+            return a.surface->id<b.surface->id;
+        });
+        const size_t budget=std::min(candidates.size(),static_cast<size_t>(maxLiquidWalls));
+        for(size_t i=0;i<budget;i++) {
+            const Mat4 wallMvp=multiply(projView,surfaceModel(*candidates[i].surface));
             ProceduralPushConstants liquid{wallMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
