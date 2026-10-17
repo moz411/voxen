@@ -44,7 +44,7 @@ public:
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
     // Provider output is empty until Meta OpenXR scene acquisition succeeds.
-    struct MeshGeometry { XrPosef pose{}; std::vector<XrVector3f> vertices; std::vector<uint32_t> indices; };
+    struct MeshGeometry { XrPosef pose{}; const std::vector<XrVector3f>* vertices=nullptr; const std::vector<uint32_t>* indices=nullptr; };
     void setSceneMeshes(const std::vector<MeshGeometry>& meshes);
     void setEnvironmentSurfaces(std::vector<voxen::scene::EnvironmentSurface> surfaces) {
         environmentSurfaces_.replace(std::move(surfaces));
