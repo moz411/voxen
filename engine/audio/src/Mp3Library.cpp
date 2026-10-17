@@ -18,8 +18,11 @@ bool isMp3(const std::filesystem::path& path){
 JNIEnv* envFor(JavaVM* vm){
     if(!vm)return nullptr;
     JNIEnv* env=nullptr;
-    if(vm->GetEnv(reinterpret_cast<void**>(&env),JNI_VERSION_1_6)!=JNI_OK)return nullptr;
-    return env; // Caller is the attached android_main thread.
+    const jint status=vm->GetEnv(reinterpret_cast<void**>(&env),JNI_VERSION_1_6);
+    if(status==JNI_EDETACHED){
+        if(vm->AttachCurrentThread(&env,nullptr)!=JNI_OK)return nullptr;
+    } else if(status!=JNI_OK) return nullptr;
+    return env; // Android native app thread remains attached for its lifetime.
 }
 bool check(JNIEnv* env){
     if(!env->ExceptionCheck())return true;
