@@ -700,6 +700,24 @@ void XrSwapchainRenderer::render(
         projection.subImage.imageArrayIndex = 0;
     }
 
+    // Throttled diagnostic while the native Vulkan HUD is under construction.
+    // GPU timestamp is measured per eye; this value is the last eye rendered.
+    static auto lastStatsLog = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    if (now - lastStatsLog >= std::chrono::seconds(2)) {
+        lastStatsLog = now;
+#ifdef __ANDROID__
+        if (gpuTimestampPool_ != VK_NULL_HANDLE && completedGpuSamples_ > 0)
+            __android_log_print(ANDROID_LOG_INFO,"VoxenPerf","GPU last-eye %.2f ms",lastGpuMs_);
+        else
+            __android_log_print(ANDROID_LOG_INFO,"VoxenPerf","GPU N/A (timestamps unsupported)");
+#else
+        if (gpuTimestampPool_ != VK_NULL_HANDLE && completedGpuSamples_ > 0)
+            std::printf("[VoxenPerf] GPU last-eye %.2f ms\\n",lastGpuMs_);
+        else
+            std::printf("[VoxenPerf] GPU N/A (timestamps unsupported)\\n");
+#endif
+    }
     if (!firstFrameLogged_) {
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO, "Voxen", "First stereo projection frame rendered");
