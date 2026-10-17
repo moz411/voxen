@@ -109,6 +109,7 @@ private:
     VkBuffer meshWireBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory meshWireMemory_ = VK_NULL_HANDLE;
     uint32_t meshWireVertexCount_ = 0;
+    XrPosef meshWirePose_{};
     VkPipeline carouselPipeline_ = VK_NULL_HANDLE;
     int nativeMenuPage_ = 0;
     bool nativeMenuStickLatched_ = false;
