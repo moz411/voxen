@@ -330,6 +330,17 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
             meshes.push_back(std::move(geometry));
             break;
         }
+#ifdef __ANDROID__
+        static bool meshAvailabilityLogged=false;
+        if(!meshAvailabilityLogged && !metaScene_.meshes().empty()) {
+            const auto& first=metaScene_.meshes().front();
+            __android_log_print(ANDROID_LOG_INFO,"VoxenScene",
+                "Mesh bridge: captured=%zu located=%d vertices=%zu indices=%zu",
+                metaScene_.meshes().size(),first.located?1:0,
+                first.vertices.size(),first.indices.size());
+            meshAvailabilityLogged=true;
+        }
+#endif
         if(!meshes.empty())renderer.setSceneMeshes(meshes);
     }
 
