@@ -553,6 +553,15 @@ void XrSwapchainRenderer::updateControllerInteraction(
             previousPress_[hand] = pressed[hand];
             continue;
         }
+#ifdef VOXEN_WITH_IMGUI
+        // A UI trigger must not also grab a voxel artwork.
+        if(hand==1 && panelAimed_) {
+            hoveredArtwork_[hand]=-1;
+            heldArtwork_[hand]=-1;
+            previousPress_[hand]=pressed[hand];
+            continue;
+        }
+#endif
         const auto& pose = poses[hand];
         const auto& q = pose.orientation;
         const float dx = -2.0F * (q.x*q.z + q.w*q.y);
@@ -735,12 +744,12 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const float fx=-2.0f*(q.x*q.z+q.w*q.y);
             const float fz=-(1.0f-2.0f*(q.x*q.x+q.y*q.y));
             const float inv=distance>0.05f ? 1.0f/distance : 0.0f;
-            px=eye.x+(inv>0.0f?dx*inv:fx)*0.55f;
-            pz=eye.z+(inv>0.0f?dz*inv:fz)*0.55f;
+            px=eye.x+(inv>0.0f?dx*inv:fx)*0.70f;
+            pz=eye.z+(inv>0.0f?dz*inv:fz)*0.70f;
         }
         // Normal faces the eyes. 22 cm high, with base near the controller.
         const float yaw=std::atan2(eye.x-px,eye.z-pz);
-        Mat4 menuModel=modelMatrix(px,py,0.11f,pz,yaw);
+        Mat4 menuModel=modelMatrix(px,py,0.22f,pz,yaw);
         menuModel.m[5]*=(672.f/512.f);
         const Mat4 menuMvp=multiply(projView,menuModel);
         ProceduralPushConstants menu{menuMvp,{seconds,1.0f,1.0f,float(nativeMenuPage_)}};
@@ -816,22 +825,22 @@ void XrSwapchainRenderer::render(
         if(controllerTracked_[0] && controllerTracked_[1]) {
             const auto& cp=controllerPoses_[0].position;
             const auto& eye=views[0].pose.position;
-            float px=cp.x,py=cp.y+0.17f,pz=cp.z;
+            float px=cp.x,py=cp.y+0.29f,pz=cp.z;
             const float dx=px-eye.x,dz=pz-eye.z;
             const float distance=std::sqrt(dx*dx+dz*dz);
-            if(distance<0.55f) {
+            if(distance<0.70f) {
                 const auto& q=views[0].pose.orientation;
                 const float fx=-2.f*(q.x*q.z+q.w*q.y);
                 const float fz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
                 const float inv=distance>0.05f?1.f/distance:0.f;
-                px=eye.x+(inv>0?dx*inv:fx)*0.55f;
-                pz=eye.z+(inv>0?dz*inv:fz)*0.55f;
+                px=eye.x+(inv>0?dx*inv:fx)*0.70f;
+                pz=eye.z+(inv>0?dz*inv:fz)*0.70f;
             }
             const float yaw=std::atan2(eye.x-px,eye.z-pz);
             XrPosef panel{};
             panel.position={px,py,pz};
             panel.orientation={0.f,std::sin(yaw*0.5f),0.f,std::cos(yaw*0.5f)};
-            auto hit=voxen::ui::rayToPanel(controllerPoses_[1],panel,0.22f,0.22f*672.f/512.f);
+            auto hit=voxen::ui::rayToPanel(controllerPoses_[1],panel,0.44f,0.44f*672.f/512.f);
             if(hit.valid) {
                 aiming=true;
                 panelHitDistance_=hit.distance;
