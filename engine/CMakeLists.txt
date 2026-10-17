@@ -90,6 +90,7 @@ endif()
 add_library(voxen_engine STATIC
     core/src/Engine.cpp
     audio/src/AmbientMusic.cpp
+    audio/src/Mp3Library.cpp
     xr/src/XrContext.cpp
     xr/src/XrSession.cpp
     xr/src/MetaSceneProvider.cpp
