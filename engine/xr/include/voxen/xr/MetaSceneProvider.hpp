@@ -25,6 +25,11 @@ private:
     PFN_xrDiscoverSpacesMETA discover_ = nullptr;
     PFN_xrRetrieveSpaceDiscoveryResultsMETA retrieveDiscovery_ = nullptr;
     bool usingDiscovery_ = false;
+    PFN_xrGetSpaceComponentStatusFB getStatus_ = nullptr;
+    PFN_xrSetSpaceComponentStatusFB setStatus_ = nullptr;
+    std::vector<XrSpace> requestedLabels_;
+    std::vector<XrSpace> requestedBounds_;
+    std::vector<XrSpace> requestedLocatable_;
     PFN_xrRetrieveSpaceQueryResultsFB retrieve_ = nullptr;
     PFN_xrGetSpaceBoundingBox2DFB bounds_ = nullptr;
     PFN_xrGetSpaceSemanticLabelsFB labels_ = nullptr;
