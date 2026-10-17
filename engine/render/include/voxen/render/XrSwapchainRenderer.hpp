@@ -10,6 +10,9 @@
 #include <openxr/openxr.h>
 #include <voxen/scene/Scene.hpp>
 #include <voxen/scene/EnvironmentSurface.hpp>
+#ifdef VOXEN_WITH_IMGUI
+#include <voxen/ui/CarouselUi.hpp>
+#endif
 #ifdef _WIN32
 #include <windows.h>
 #include <unknwn.h>
@@ -100,6 +103,11 @@ private:
     VkPipeline carouselPipeline_ = VK_NULL_HANDLE;
     int nativeMenuPage_ = 0;
     bool nativeMenuStickLatched_ = false;
+#ifdef VOXEN_WITH_IMGUI
+    voxen::ui::CarouselState imguiCarousel_{};
+    bool imguiContextOwned_ = false;
+    std::chrono::steady_clock::time_point lastUiFrame_{};
+#endif
     VkPipeline laserPipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
     voxen::scene::Scene scene_{};
