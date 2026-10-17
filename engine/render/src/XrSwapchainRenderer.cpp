@@ -693,12 +693,16 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     float globalSpeed=1.0f;
     bool artworksVisible=true;
     bool artworksAnimated=true;
+    int motionMode=0;
+    float motionAmplitude=0.25f;
 #ifdef VOXEN_WITH_IMGUI
     liquidEnabled=imguiCarousel_.liquidRoom;
     liquidOpacity=std::clamp(imguiCarousel_.liquidOpacity,0.0f,0.6f);
     globalSpeed=imguiCarousel_.animationSpeed;
     artworksVisible=imguiCarousel_.showArtworks;
     artworksAnimated=imguiCarousel_.animateArtworks;
+    motionMode=imguiCarousel_.artworkMotion;
+    motionAmplitude=std::clamp(imguiCarousel_.motionAmplitude,0.0f,0.5f);
 #endif
     if (liquidEnabled && liquidOpacity>0.001f && liquidRoomPipeline_ != VK_NULL_HANDLE) {
         vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, liquidRoomPipeline_);
@@ -732,8 +736,28 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         }
         vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, artPipeline);
         const auto& t = artwork.transform;
-        const Mat4 mvp = multiply(projView, modelMatrix(
-            t.position[0], t.position[1], t.scale, t.position[2], t.yawRadians));
+        float x=t.position[0],y=t.position[1],z=t.position[2];
+        float scale=t.scale,yaw=t.yawRadians;
+        const float phase=seconds*globalSpeed*artwork.animationSpeed;
+        if (artworksAnimated) {
+            switch (motionMode) {
+            case 1: // Breathe uniformly, without changing the stored artwork.
+                scale*=1.0f+motionAmplitude*std::sin(phase*2.0f);
+                break;
+            case 2: // Rotate in world space around its own center.
+                yaw+=phase;
+                break;
+            case 3: // Float vertically.
+                y+=motionAmplitude*std::sin(phase);
+                break;
+            case 4: // Orbit around the artwork's saved position.
+                x+=motionAmplitude*std::cos(phase);
+                z+=motionAmplitude*std::sin(phase);
+                break;
+            default: break;
+            }
+        }
+        const Mat4 mvp=multiply(projView,modelMatrix(x,y,scale,z,yaw));
         ProceduralPushConstants constants{mvp, {artworksAnimated ? seconds : 0.0f, artwork.animationSpeed*globalSpeed, 1.0F, shape}};
         vkCmdPushConstants(commandBuffer_, pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
