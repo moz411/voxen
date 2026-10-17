@@ -19,6 +19,7 @@
 #include "fractalVert.spv.hpp"
 #include "laserFrag.spv.hpp"
 #include "liquidRoomFrag.spv.hpp"
+#include "carouselFrag.spv.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -356,10 +357,11 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_) ? VK_FALSE : VK_TRUE;
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &carouselPipeline_) ? VK_FALSE : VK_TRUE;
+        if (&out == &carouselPipeline_) ds.depthTestEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_) {
+        if (&out == &liquidRoomPipeline_ || &out == &carouselPipeline_) {
             blend.blendEnable=VK_TRUE;
             blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
             blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
@@ -387,6 +389,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
 }
 
 void XrSwapchainRenderer::createFramebuffers() {
@@ -475,6 +478,14 @@ void XrSwapchainRenderer::updateControllerInteraction(
     const auto& artworks = scene_.artworks();
     controllerPoses_ = poses;
     controllerTracked_ = tracked;
+    if (tracked[0] && heldArtwork_[0] < 0) {
+        const float axis=thumbsticks[0].x;
+        if (std::fabs(axis)<0.3f) nativeMenuStickLatched_=false;
+        if (!nativeMenuStickLatched_ && std::fabs(axis)>0.70f) {
+            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:7))%8;
+            nativeMenuStickLatched_=true;
+        }
+    }
 
     for (std::size_t hand = 0; hand < 2; ++hand) {
         hoveredArtwork_[hand] = -1;
@@ -645,6 +656,20 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             0, sizeof(constants), &constants);
         vkCmdDraw(commandBuffer_, vertices, 1, 0, 0);
     }
+    // Minimal native eight-page carousel scaffold, left-hand anchored.
+    if (controllerTracked_[0] && carouselPipeline_ != VK_NULL_HANDLE) {
+        const auto& cp=controllerPoses_[0].position;
+        const float yaw=std::atan2(xrView.pose.position.x-cp.x,
+                                   xrView.pose.position.z-(cp.z-0.12f));
+        const Mat4 menuMvp=multiply(projView,
+            modelMatrix(cp.x,cp.y+0.20f,0.16f,cp.z-0.12f,yaw));
+        ProceduralPushConstants menu{menuMvp,{seconds,1.0f,1.0f,float(nativeMenuPage_)}};
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,carouselPipeline_);
+        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            0,sizeof(menu),&menu);
+        vkCmdDraw(commandBuffer_,6,1,0,0);
+    }
     // Draw the visible controller rays last; depth testing hides them behind artwork.
     vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, laserPipeline_);
     for (std::size_t hand = 0; hand < controllerTracked_.size(); ++hand) {
@@ -775,6 +800,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
     if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
+    if (carouselPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,carouselPipeline_,nullptr); carouselPipeline_=VK_NULL_HANDLE; }
     if (pipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr); pipelineLayout_ = VK_NULL_HANDLE; }
     if (renderPass_ != VK_NULL_HANDLE) { vkDestroyRenderPass(device_, renderPass_, nullptr); renderPass_ = VK_NULL_HANDLE; }
 
