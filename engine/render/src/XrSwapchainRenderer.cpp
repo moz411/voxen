@@ -105,6 +105,7 @@ void XrSwapchainRenderer::initialize(
         if (vkCreateQueryPool(device_, &qi, nullptr, &gpuTimestampPool_) == VK_SUCCESS)
             timestampPeriodNs_ = gpuProps.limits.timestampPeriod;
     }
+    ambientMusic_.start();
     createCommandResources();
     createSwapchains(instance, systemId, session);
 #ifdef VOXEN_WITH_IMGUI
@@ -660,7 +661,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         const float axis=thumbsticks[0].x;
         if (std::fabs(axis)<0.3f) nativeMenuStickLatched_=false;
         if (!nativeMenuStickLatched_ && std::fabs(axis)>0.70f) {
-            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:7))%8;
+            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:8))%9;
             nativeMenuStickLatched_=true;
         }
     }
@@ -1105,7 +1106,9 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.gpuAvailable=gpuTimingAvailable() && completedGpuSamples_>0;
         ImGui_ImplVulkan_NewFrame();
         ImGui::NewFrame();
+        imguiCarousel_.musicReady=ambientMusic_.ready();
         voxen::ui::drawCarousel(imguiCarousel_);
+        ambientMusic_.configure(imguiCarousel_.musicTrack,imguiCarousel_.musicPlaying,imguiCarousel_.musicVolume);
         // Visible cursor proves that ray → panel UV mapping reaches ImGui.
         if(aiming) {
             ImGui::GetForegroundDrawList()->AddCircleFilled(
@@ -1179,6 +1182,7 @@ void XrSwapchainRenderer::render(
 }
 
 void XrSwapchainRenderer::shutdown() noexcept {
+    ambientMusic_.stop();
     if (device_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
 #ifdef VOXEN_WITH_IMGUI
     imguiSurface_.shutdown();
