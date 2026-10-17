@@ -293,6 +293,11 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
                 }
             }
         }
+        // Mesh anchors need LOCATABLE too, even when they have no semantic
+        // labels or 2D bounds (unlike WALL_FACE anchors).
+        if(std::any_of(capturedMeshes_.begin(),capturedMeshes_.end(),
+                       [&](const auto& mesh){return mesh.space==result.space;}))
+            enabled(XR_SPACE_COMPONENT_TYPE_LOCATABLE_FB,requestedLocatable_);
         if(!enabled(XR_SPACE_COMPONENT_TYPE_SEMANTIC_LABELS_FB,requestedLabels_))continue;
         if(!enabled(XR_SPACE_COMPONENT_TYPE_BOUNDED_2D_FB,requestedBounds_))continue;
         if(!enabled(XR_SPACE_COMPONENT_TYPE_LOCATABLE_FB,requestedLocatable_))continue;
