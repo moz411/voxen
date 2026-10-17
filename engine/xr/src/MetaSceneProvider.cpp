@@ -42,6 +42,8 @@ void MetaSceneProvider::initialize(XrInstance instance,XrSession session) {
         sceneLog("Scene query functions unavailable",0);
     }
     load("xrGetSpaceComponentStatusFB",reinterpret_cast<PFN_xrVoidFunction*>(&getStatus_));
+    if(load("xrGetSpaceTriangleMeshMETA",reinterpret_cast<PFN_xrVoidFunction*>(&getTriangleMesh_)))
+        sceneLog("Triangle mesh function available",1);
     load("xrSetSpaceComponentStatusFB",reinterpret_cast<PFN_xrVoidFunction*>(&setStatus_));
     if(load("xrDiscoverSpacesMETA",reinterpret_cast<PFN_xrVoidFunction*>(&discover_)) &&
        load("xrRetrieveSpaceDiscoveryResultsMETA",
@@ -190,15 +192,38 @@ void MetaSceneProvider::onEvent(const XrEventDataBaseHeader* event) {
 void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
     if(!bounds_ || !labels_)return;
     std::vector<voxen::scene::EnvironmentSurface> walls;
+    // Mesh vertices are anchor-local. Refresh their poses in the same
+    // reference space/time used by both stereo eyes.
+    for(auto& mesh:capturedMeshes_) {
+        XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
+        const XrResult res=xrLocateSpace(mesh.space,localSpace,time,&location);
+        constexpr XrSpaceLocationFlags valid=
+            XR_SPACE_LOCATION_POSITION_VALID_BIT | XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
+        mesh.located=XR_SUCCEEDED(res) && (location.locationFlags&valid)==valid;
+        static bool meshPoseLogged=false;
+        if(!meshPoseLogged) {
+            sceneLog("Mesh xrLocateSpace result",static_cast<int>(res));
+            sceneLog("Mesh location flags",static_cast<int>(location.locationFlags));
+            sceneLog("Mesh pose valid",mesh.located?1:0);
+            meshPoseLogged=true;
+        }
+        if(mesh.located)mesh.pose=location.pose;
+    }
     for(const auto& result:spaces_) {
         // Scene anchors are discovered before their components are enabled.
         // Schedule at most one asynchronous enable per space/component and
         // poll component status on later frames. Do not block XR frame loop.
         auto enabled=[&](XrSpaceComponentTypeFB type,std::vector<XrSpace>& requested) {
             if(!getStatus_ || !setStatus_)return false;
+            if(std::any_of(unsupportedComponents_.begin(),unsupportedComponents_.end(),
+                [&](const auto& item){return item.space==result.space && item.type==type;}))
+                return false;
             XrSpaceComponentStatusFB status{XR_TYPE_SPACE_COMPONENT_STATUS_FB};
             const XrResult statusResult=getStatus_(result.space,type,&status);
-            if(XR_FAILED(statusResult))return false;
+            if(XR_FAILED(statusResult)) {
+                unsupportedComponents_.push_back({result.space,type});
+                return false;
+            }
             if(status.enabled==XR_TRUE)return true;
             if(status.changePending==XR_TRUE ||
                 std::find(requested.begin(),requested.end(),result.space)!=requested.end())
@@ -219,28 +244,86 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
             }
             return false;
         };
+        // Inspect mesh-capable scene entities once, outside the Vulkan path.
+        // The next stage will upload the actual vertices to a GPU buffer.
+        if(getTriangleMesh_ &&
+            std::find(inspectedMesh_.begin(),inspectedMesh_.end(),result.space)==inspectedMesh_.end() &&
+            enabled(XR_SPACE_COMPONENT_TYPE_TRIANGLE_MESH_META,requestedMesh_)) {
+            inspectedMesh_.push_back(result.space);
+            XrSpaceTriangleMeshGetInfoMETA getInfo{XR_TYPE_SPACE_TRIANGLE_MESH_GET_INFO_META};
+            XrSpaceTriangleMeshMETA mesh{XR_TYPE_SPACE_TRIANGLE_MESH_META};
+            const XrResult meshResult=getTriangleMesh_(result.space,&getInfo,&mesh);
+            sceneLog("Triangle mesh read result",static_cast<int>(meshResult));
+            if(XR_SUCCEEDED(meshResult) || meshResult==XR_ERROR_SIZE_INSUFFICIENT) {
+                sceneLog("Triangle mesh vertex count",static_cast<int>(mesh.vertexCountOutput));
+                sceneLog("Triangle mesh index count",static_cast<int>(mesh.indexCountOutput));
+                // Two-call API: fetch actual mesh geometry once per anchor.
+                // Keep acquisition off the Vulkan command path. Avoid allocations
+                // from a corrupt/unbounded runtime count.
+                constexpr uint32_t maxVertices=500000;
+                constexpr uint32_t maxIndices=1500000;
+                if(mesh.vertexCountOutput>=3 && mesh.vertexCountOutput<=maxVertices &&
+                   mesh.indexCountOutput>=3 && mesh.indexCountOutput<=maxIndices &&
+                   mesh.indexCountOutput%3==0) {
+                    CapturedMesh capture;
+                    capture.space=result.space;
+                    capture.vertices.resize(mesh.vertexCountOutput);
+                    capture.indices.resize(mesh.indexCountOutput);
+                    XrSpaceTriangleMeshMETA full{XR_TYPE_SPACE_TRIANGLE_MESH_META};
+                    full.vertexCapacityInput=static_cast<uint32_t>(capture.vertices.size());
+                    full.vertices=capture.vertices.data();
+                    full.indexCapacityInput=static_cast<uint32_t>(capture.indices.size());
+                    full.indices=capture.indices.data();
+                    const XrResult fetchResult=getTriangleMesh_(result.space,&getInfo,&full);
+                    sceneLog("Triangle mesh geometry result",static_cast<int>(fetchResult));
+                    if(XR_SUCCEEDED(fetchResult) &&
+                       full.vertexCountOutput<=capture.vertices.size() &&
+                       full.indexCountOutput<=capture.indices.size() &&
+                       full.indexCountOutput%3==0) {
+                        capture.vertices.resize(full.vertexCountOutput);
+                        capture.indices.resize(full.indexCountOutput);
+                        const bool valid=std::all_of(capture.indices.begin(),capture.indices.end(),
+                            [&](uint32_t idx){return idx<capture.vertices.size();});
+                        if(valid) {
+                            sceneLog("Triangle mesh geometry vertices",static_cast<int>(capture.vertices.size()));
+                            sceneLog("Triangle mesh geometry triangles",static_cast<int>(capture.indices.size()/3));
+                            capturedMeshes_.push_back(std::move(capture));
+                        } else sceneLog("Triangle mesh invalid indices",1);
+                    }
+                }
+            }
+        }
+        // Mesh anchors need LOCATABLE too, even when they have no semantic
+        // labels or 2D bounds (unlike WALL_FACE anchors).
+        if(std::any_of(capturedMeshes_.begin(),capturedMeshes_.end(),
+                       [&](const auto& mesh){return mesh.space==result.space;}))
+            enabled(XR_SPACE_COMPONENT_TYPE_LOCATABLE_FB,requestedLocatable_);
         if(!enabled(XR_SPACE_COMPONENT_TYPE_SEMANTIC_LABELS_FB,requestedLabels_))continue;
         if(!enabled(XR_SPACE_COMPONENT_TYPE_BOUNDED_2D_FB,requestedBounds_))continue;
         if(!enabled(XR_SPACE_COMPONENT_TYPE_LOCATABLE_FB,requestedLocatable_))continue;
-        XrSemanticLabelsFB labels{XR_TYPE_SEMANTIC_LABELS_FB};
-        const XrResult labelCountResult=labels_(session_,result.space,&labels);
-        if(XR_FAILED(labelCountResult) || labels.bufferCountOutput==0 ||
-           labels.bufferCountOutput>1024) {
-            static bool labelFailureLogged=false;
-            if(!labelFailureLogged) {
-                sceneLog("Scene label count status",static_cast<int>(labelCountResult));
-                labelFailureLogged=true;
-            }
-            continue;
-        }
-        std::vector<char> buffer(labels.bufferCountOutput+1,'\0');
-        labels.bufferCapacityInput=static_cast<uint32_t>(buffer.size());
-        labels.buffer=buffer.data();
-        if(XR_FAILED(labels_(session_,result.space,&labels)))continue;
-        if(std::strstr(buffer.data(),"WALL_FACE")==nullptr ||
-           std::strstr(buffer.data(),"INVISIBLE_WALL_FACE")!=nullptr)continue;
         XrRect2Df rect{};
-        if(XR_FAILED(bounds_(session_,result.space,&rect)))continue;
+        const auto knownPlane=std::find_if(cachedPlanes_.begin(),cachedPlanes_.end(),
+            [&](const auto& item){return item.space==result.space;});
+        if(knownPlane!=cachedPlanes_.end()) {
+            if(!knownPlane->wall)continue;
+            rect=knownPlane->rect;
+        } else {
+            // Semantic labels and plane bounds are static for this capture:
+            // read once per anchor, not 30 times on every XR frame.
+            XrSemanticLabelsFB labels{XR_TYPE_SEMANTIC_LABELS_FB};
+            const XrResult countResult=labels_(session_,result.space,&labels);
+            if(XR_FAILED(countResult) || labels.bufferCountOutput==0 ||
+                labels.bufferCountOutput>1024)continue;
+            std::vector<char> buffer(labels.bufferCountOutput+1,0);
+            labels.bufferCapacityInput=static_cast<uint32_t>(buffer.size());
+            labels.buffer=buffer.data();
+            if(XR_FAILED(labels_(session_,result.space,&labels)))continue;
+            const bool isWall=std::strstr(buffer.data(),"WALL_FACE")!=nullptr &&
+                std::strstr(buffer.data(),"INVISIBLE_WALL_FACE")==nullptr;
+            if(isWall && XR_FAILED(bounds_(session_,result.space,&rect)))continue;
+            cachedPlanes_.push_back({result.space,rect,isWall});
+            if(!isWall)continue;
+        }
         XrSpaceLocation loc{XR_TYPE_SPACE_LOCATION};
         if(XR_FAILED(xrLocateSpace(result.space,localSpace,time,&loc)))continue;
         constexpr auto required=XR_SPACE_LOCATION_POSITION_VALID_BIT|XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
@@ -274,10 +357,12 @@ void MetaSceneProvider::shutdown() {
     for(const auto& item:spaces_) if(item.space!=XR_NULL_HANDLE) xrDestroySpace(item.space);
     spaces_.clear();surfaces_.clear();pending_=false;requestId_=0;
     requestedLabels_.clear();requestedBounds_.clear();requestedLocatable_.clear();
+    requestedMesh_.clear();inspectedMesh_.clear();capturedMeshes_.clear();
+    cachedPlanes_.clear();unsupportedComponents_.clear();
     lastWallCount_=0;
     query_=nullptr;retrieve_=nullptr;bounds_=nullptr;labels_=nullptr;
     discover_=nullptr;retrieveDiscovery_=nullptr;usingDiscovery_=false;
-    getStatus_=nullptr;setStatus_=nullptr;
+    getStatus_=nullptr;setStatus_=nullptr;getTriangleMesh_=nullptr;
     session_=XR_NULL_HANDLE;
 }
 } // namespace voxen::xr

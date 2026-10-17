@@ -26,12 +26,15 @@
 #include "laserFrag.spv.hpp"
 #include "liquidRoomFrag.spv.hpp"
 #include "solidWallFrag.spv.hpp"
+#include "meshWireVert.spv.hpp"
+#include "meshWireFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "imguiPanelFrag.spv.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <array>
+#include <cstring>
 #include <cfloat>
 #include <stdexcept>
 #include <string>
@@ -343,6 +346,67 @@ VkShaderModule makeShader(VkDevice device, const std::uint8_t* bytes, std::size_
 
 } // namespace
 
+// Mesh edges are uploaded once and the changing anchor pose is applied by MVP.
+static Mat4 meshPoseMatrix(const XrPosef& pose) {
+    voxen::scene::EnvironmentSurface proxy{};
+    proxy.center={pose.position.x,pose.position.y,pose.position.z};
+    proxy.orientation={pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w};
+    proxy.halfExtents={1.f,1.f};
+    return surfaceModel(proxy);
+}
+
+void XrSwapchainRenderer::setSceneMeshes(const std::vector<MeshGeometry>& meshes) {
+    // The current Quest scene returns a single large room mesh. Start by
+    // visualizing that mesh, leaving multi-anchor batching for a later pass.
+    if(meshes.empty())return;
+    const auto& mesh=meshes.front();
+    meshWirePose_=mesh.pose;
+    if(meshWireBuffer_!=VK_NULL_HANDLE || !mesh.vertices || !mesh.indices ||
+       mesh.vertices->empty() || mesh.indices->empty())return;
+    std::vector<XrVector3f> lines;
+    const auto& indices=*mesh.indices;
+    const auto& vertices=*mesh.vertices;
+    lines.reserve(indices.size()*2);
+    for(size_t i=0;i+2<indices.size();i+=3) {
+        const auto a=indices[i], b=indices[i+1], c=indices[i+2];
+        if(a>=vertices.size() || b>=vertices.size() || c>=vertices.size())continue;
+        lines.push_back(vertices[a]);lines.push_back(vertices[b]);
+        lines.push_back(vertices[b]);lines.push_back(vertices[c]);
+        lines.push_back(vertices[c]);lines.push_back(vertices[a]);
+    }
+    if(lines.empty())return;
+    const VkDeviceSize bytes=lines.size()*sizeof(XrVector3f);
+    VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bi.size=bytes;bi.usage=VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;bi.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
+    checkVk(vkCreateBuffer(device_,&bi,nullptr,&meshWireBuffer_),"vkCreateBuffer(mesh)");
+    VkMemoryRequirements requirements{};
+    vkGetBufferMemoryRequirements(device_,meshWireBuffer_,&requirements);
+    VkPhysicalDeviceMemoryProperties memoryProperties{};
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice_,&memoryProperties);
+    uint32_t memoryType=UINT32_MAX;
+    for(uint32_t i=0;i<memoryProperties.memoryTypeCount;i++) {
+        const auto flags=memoryProperties.memoryTypes[i].propertyFlags;
+        if((requirements.memoryTypeBits&(1u<<i)) &&
+           (flags&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))==
+             (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+            memoryType=i;break;
+        }
+    }
+    if(memoryType==UINT32_MAX)throw std::runtime_error("No coherent mesh vertex memory");
+    VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    ai.allocationSize=requirements.size;ai.memoryTypeIndex=memoryType;
+    checkVk(vkAllocateMemory(device_,&ai,nullptr,&meshWireMemory_),"vkAllocateMemory(mesh)");
+    checkVk(vkBindBufferMemory(device_,meshWireBuffer_,meshWireMemory_,0),"vkBindBufferMemory(mesh)");
+    void* mapped=nullptr;
+    checkVk(vkMapMemory(device_,meshWireMemory_,0,bytes,0,&mapped),"vkMapMemory(mesh)");
+    std::memcpy(mapped,lines.data(),static_cast<size_t>(bytes));
+    vkUnmapMemory(device_,meshWireMemory_);
+    meshWireVertexCount_=static_cast<uint32_t>(lines.size());
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO,"VoxenScene","Wireframe GPU upload: %u vertices",meshWireVertexCount_);
+#endif
+}
+
 void XrSwapchainRenderer::createPipeline() {
     VkAttachmentDescription color{};
     color.format = colorFormat_;
@@ -407,7 +471,15 @@ void XrSwapchainRenderer::createPipeline() {
         stages[1].stage=VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module=fs; stages[1].pName="main";
         VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
         VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-        ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        ia.topology = (&out==&meshWirePipeline_) ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        VkVertexInputBindingDescription binding{0,sizeof(XrVector3f),VK_VERTEX_INPUT_RATE_VERTEX};
+        VkVertexInputAttributeDescription attribute{0,0,VK_FORMAT_R32G32B32_SFLOAT,0};
+        if(&out==&meshWirePipeline_) {
+            vi.vertexBindingDescriptionCount=1;
+            vi.pVertexBindingDescriptions=&binding;
+            vi.vertexAttributeDescriptionCount=1;
+            vi.pVertexAttributeDescriptions=&attribute;
+        }
         VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
         vp.viewportCount=1; vp.scissorCount=1;
         VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
@@ -417,7 +489,7 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &carouselPipeline_
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
         || &out == &imguiPanelPipeline_
 #endif
@@ -429,7 +501,7 @@ void XrSwapchainRenderer::createPipeline() {
         ) ds.depthTestEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &carouselPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -466,6 +538,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, solidWallFrag, solidWallFragSize, solidWallPipeline_);
+    buildPipeline(meshWireVert, meshWireVertSize, meshWireFrag, meshWireFragSize, meshWirePipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
 #ifdef VOXEN_WITH_IMGUI
     buildPipeline(fractalVert, fractalVertSize, imguiPanelFrag, imguiPanelFragSize, imguiPanelPipeline_);
@@ -712,6 +785,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     const Mat4 projView = multiply(projection(xrView.fov, 0.05F, 100.0F), viewMatrix(xrView.pose));
     // First visible Liquid Room demonstration: a synthetic, labelled quad,
     // NOT a detected wall. Spatial-surface binding comes in the next stage.
+    bool showSceneMesh=false;
     bool liquidEnabled=true;
     float liquidOpacity=0.42f;
     int maxLiquidWalls=3;
@@ -724,6 +798,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     int motionMode=0;
     float motionAmplitude=0.25f;
 #ifdef VOXEN_WITH_IMGUI
+    showSceneMesh=imguiCarousel_.showSceneMesh;
     liquidEnabled=imguiCarousel_.liquidRoom;
     liquidOpacity=std::clamp(imguiCarousel_.liquidOpacity,0.0f,0.6f);
     maxLiquidWalls=std::clamp(imguiCarousel_.maxLiquidWalls,1,8);
@@ -786,6 +861,26 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 0,sizeof(liquid),&liquid);
             vkCmdDraw(commandBuffer_,6,1,0,0);
         }
+    }
+#ifdef __ANDROID__
+    static bool wireframeStateLogged=false;
+    if(showSceneMesh && !wireframeStateLogged) {
+        __android_log_print(ANDROID_LOG_INFO,"VoxenScene",
+            "Wireframe draw requested: vertices=%u pipeline=%d buffer=%d",
+            meshWireVertexCount_,meshWirePipeline_!=VK_NULL_HANDLE,
+            meshWireBuffer_!=VK_NULL_HANDLE);
+        wireframeStateLogged=true;
+    }
+#endif
+    if(showSceneMesh && meshWireVertexCount_>0 && meshWireBuffer_!=VK_NULL_HANDLE) {
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,meshWirePipeline_);
+        const VkDeviceSize offset=0;
+        vkCmdBindVertexBuffers(commandBuffer_,0,1,&meshWireBuffer_,&offset);
+        const auto mvp=multiply(projView,meshPoseMatrix(meshWirePose_));
+        ProceduralPushConstants constants{mvp,{0.f,0.f,0.f,0.f}};
+        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(constants),&constants);
+        vkCmdDraw(commandBuffer_,meshWireVertexCount_,1,0,0);
     }
     if (artworksVisible) for (const auto& artwork : scene_.artworks()) {
         VkPipeline artPipeline = pipeline_;
@@ -1075,6 +1170,10 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
     if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
     if (solidWallPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,solidWallPipeline_,nullptr); solidWallPipeline_=VK_NULL_HANDLE; }
+    if (meshWirePipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,meshWirePipeline_,nullptr); meshWirePipeline_=VK_NULL_HANDLE; }
+    if(meshWireBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,meshWireBuffer_,nullptr);meshWireBuffer_=VK_NULL_HANDLE;}
+    if(meshWireMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,meshWireMemory_,nullptr);meshWireMemory_=VK_NULL_HANDLE;}
+    meshWireVertexCount_=0;
     if (carouselPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,carouselPipeline_,nullptr); carouselPipeline_=VK_NULL_HANDLE; }
 #ifdef VOXEN_WITH_IMGUI
     if (imguiPanelPipeline_ != VK_NULL_HANDLE) {vkDestroyPipeline(device_,imguiPanelPipeline_,nullptr);imguiPanelPipeline_=VK_NULL_HANDLE;}

@@ -12,6 +12,7 @@ struct CarouselState {
     bool liquidRoom = true;
     float liquidOpacity = 0.42f;
     int maxLiquidWalls = 3;
+    bool showSceneMesh = false;
     int wallShaderMode = 0; // 0 Liquid Room, 1 solid diagnostic
     float wallColor[3] = {0.12f,0.55f,1.0f};
     float wallSolidOpacity = 0.85f;

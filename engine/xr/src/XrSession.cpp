@@ -318,6 +318,30 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
     if(enableScene_) {
         metaScene_.refresh(localSpace_,frameState.predictedDisplayTime);
         renderer.setEnvironmentSurfaces(metaScene_.surfaces());
+        std::vector<voxen::render::XrSwapchainRenderer::MeshGeometry> meshes;
+        for(const auto& mesh:metaScene_.meshes()) {
+            if(!mesh.located || mesh.vertices.empty())continue;
+            voxen::render::XrSwapchainRenderer::MeshGeometry geometry{};
+            geometry.pose=mesh.pose;
+            // Copy the geometry only for the first upload; future frames
+            // currently share the mesh and refresh its anchor pose.
+            geometry.vertices=&mesh.vertices;
+            geometry.indices=&mesh.indices;
+            meshes.push_back(std::move(geometry));
+            break;
+        }
+#ifdef __ANDROID__
+        static bool meshAvailabilityLogged=false;
+        if(!meshAvailabilityLogged && !metaScene_.meshes().empty()) {
+            const auto& first=metaScene_.meshes().front();
+            __android_log_print(ANDROID_LOG_INFO,"VoxenScene",
+                "Mesh bridge: captured=%zu located=%d vertices=%zu indices=%zu",
+                metaScene_.meshes().size(),first.located?1:0,
+                first.vertices.size(),first.indices.size());
+            meshAvailabilityLogged=true;
+        }
+#endif
+        if(!meshes.empty())renderer.setSceneMeshes(meshes);
     }
 
     XrFrameBeginInfo beginInfo{XR_TYPE_FRAME_BEGIN_INFO};
