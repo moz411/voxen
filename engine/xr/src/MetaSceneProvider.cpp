@@ -355,7 +355,7 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
         wall.halfExtents={rect.extent.width*0.5f,rect.extent.height*0.5f};
         wall.tracked=true;
         walls.push_back(wall);
-        if(walls.size()>=16)break;
+        if(walls.size()>=32)break;
     }
     if(walls.size()!=lastWallCount_) {
         lastWallCount_=static_cast<uint32_t>(walls.size());
