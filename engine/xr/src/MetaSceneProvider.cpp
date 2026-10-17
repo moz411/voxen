@@ -1,0 +1,124 @@
+#include <voxen/xr/MetaSceneProvider.hpp>
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <string>
+#include <vector>
+#ifdef __ANDROID__
+#include <android/log.h>
+#else
+#include <cstdio>
+#endif
+
+namespace voxen::xr {
+namespace {
+void sceneLog(const char* message, int value) {
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO,"VoxenScene","%s: %d",message,value);
+#else
+    std::printf("[VoxenScene] %s: %d\n",message,value);
+#endif
+}
+XrVector3f rotate(XrQuaternionf q,XrVector3f v) {
+    const XrVector3f u{q.x,q.y,q.z};
+    const XrVector3f t{2.f*(u.y*v.z-u.z*v.y),
+                         2.f*(u.z*v.x-u.x*v.z),
+                         2.f*(u.x*v.y-u.y*v.x)};
+    return {v.x+q.w*t.x+u.y*t.z-u.z*t.y,
+            v.y+q.w*t.y+u.z*t.x-u.x*t.z,
+            v.z+q.w*t.z+u.x*t.y-u.y*t.x};
+}
+}
+void MetaSceneProvider::initialize(XrInstance instance,XrSession session) {
+    session_=session;
+    auto load=[&](const char* name,PFN_xrVoidFunction* function) {
+        return XR_SUCCEEDED(xrGetInstanceProcAddr(instance,name,function)) && *function;
+    };
+    if(!load("xrQuerySpacesFB",reinterpret_cast<PFN_xrVoidFunction*>(&query_)) ||
+       !load("xrRetrieveSpaceQueryResultsFB",reinterpret_cast<PFN_xrVoidFunction*>(&retrieve_)) ||
+       !load("xrGetSpaceBoundingBox2DFB",reinterpret_cast<PFN_xrVoidFunction*>(&bounds_)) ||
+       !load("xrGetSpaceSemanticLabelsFB",reinterpret_cast<PFN_xrVoidFunction*>(&labels_))) {
+        query_=nullptr;
+        sceneLog("Scene query functions unavailable",0);
+    }
+}
+void MetaSceneProvider::request() {
+    if(!query_ || pending_)return;
+    XrSpaceComponentFilterInfoFB filter{XR_TYPE_SPACE_COMPONENT_FILTER_INFO_FB};
+    filter.componentType=XR_SPACE_COMPONENT_TYPE_BOUNDED_2D_FB;
+    XrSpaceQueryInfoFB info{XR_TYPE_SPACE_QUERY_INFO_FB};
+    info.queryAction=XR_SPACE_QUERY_ACTION_LOAD_FB;
+    info.maxResultCount=256;
+    info.timeout=0;
+    info.filter=reinterpret_cast<const XrSpaceFilterInfoBaseHeaderFB*>(&filter);
+    auto result=query_(session_,reinterpret_cast<const XrSpaceQueryInfoBaseHeaderFB*>(&info),&requestId_);
+    pending_=XR_SUCCEEDED(result);
+    sceneLog("Scene query request result",static_cast<int>(result));
+}
+void MetaSceneProvider::onEvent(const XrEventDataBaseHeader* event) {
+    if(!pending_ || !event)return;
+    if(event->type==XR_TYPE_EVENT_DATA_SPACE_QUERY_RESULTS_AVAILABLE_FB) {
+        const auto* e=reinterpret_cast<const XrEventDataSpaceQueryResultsAvailableFB*>(event);
+        if(e->requestId!=requestId_)return;
+        XrSpaceQueryResultsFB results{XR_TYPE_SPACE_QUERY_RESULTS_FB};
+        if(XR_FAILED(retrieve_(session_,requestId_,&results)) || !results.resultCountOutput)return;
+        std::vector<XrSpaceQueryResultFB> batch(results.resultCountOutput);
+        results.resultCapacityInput=static_cast<uint32_t>(batch.size());
+        results.results=batch.data();
+        if(XR_SUCCEEDED(retrieve_(session_,requestId_,&results))) {
+            for(uint32_t i=0;i<results.resultCountOutput;i++)spaces_.push_back(batch[i]);
+            sceneLog("Scene spaces retrieved",static_cast<int>(spaces_.size()));
+        }
+    } else if(event->type==XR_TYPE_EVENT_DATA_SPACE_QUERY_COMPLETE_FB) {
+        const auto* e=reinterpret_cast<const XrEventDataSpaceQueryCompleteFB*>(event);
+        if(e->requestId==requestId_) {
+            pending_=false;
+            sceneLog("Scene query complete",static_cast<int>(e->result));
+        }
+    }
+}
+void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
+    if(!bounds_ || !labels_)return;
+    std::vector<voxen::scene::EnvironmentSurface> walls;
+    for(const auto& result:spaces_) {
+        XrSemanticLabelsFB labels{XR_TYPE_SEMANTIC_LABELS_FB};
+        if(XR_FAILED(labels_(session_,result.space,&labels)) ||
+           labels.bufferCountOutput==0 || labels.bufferCountOutput>1024)continue;
+        std::vector<char> buffer(labels.bufferCountOutput+1,'\0');
+        labels.bufferCapacityInput=static_cast<uint32_t>(buffer.size());
+        labels.buffer=buffer.data();
+        if(XR_FAILED(labels_(session_,result.space,&labels)))continue;
+        if(std::strstr(buffer.data(),"WALL_FACE")==nullptr ||
+           std::strstr(buffer.data(),"INVISIBLE_WALL_FACE")!=nullptr)continue;
+        XrRect2Df rect{};
+        if(XR_FAILED(bounds_(session_,result.space,&rect)))continue;
+        XrSpaceLocation loc{XR_TYPE_SPACE_LOCATION};
+        if(XR_FAILED(xrLocateSpace(result.space,localSpace,time,&loc)))continue;
+        constexpr auto required=XR_SPACE_LOCATION_POSITION_VALID_BIT|XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
+        if((loc.locationFlags&required)!=required)continue;
+        const auto& pose=loc.pose;
+        XrVector3f localCenter{rect.offset.x+rect.extent.width*0.5f,
+                                rect.offset.y+rect.extent.height*0.5f,0.f};
+        const auto delta=rotate(pose.orientation,localCenter);
+        voxen::scene::EnvironmentSurface wall{};
+        uint64_t uuidHash=1469598103934665603ull;
+        for(unsigned char byte:result.uuid.data) {
+            uuidHash^=byte;
+            uuidHash*=1099511628211ull;
+        }
+        wall.id=uuidHash;
+        wall.classification=voxen::scene::SurfaceClass::Wall;
+        wall.center={pose.position.x+delta.x,pose.position.y+delta.y,pose.position.z+delta.z};
+        wall.orientation={pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w};
+        wall.halfExtents={rect.extent.width*0.5f,rect.extent.height*0.5f};
+        wall.tracked=true;
+        walls.push_back(wall);
+    }
+    surfaces_=std::move(walls);
+}
+void MetaSceneProvider::shutdown() {
+    spaces_.clear();surfaces_.clear();pending_=false;requestId_=0;
+    query_=nullptr;retrieve_=nullptr;bounds_=nullptr;labels_=nullptr;
+    session_=XR_NULL_HANDLE;
+}
+} // namespace voxen::xr
