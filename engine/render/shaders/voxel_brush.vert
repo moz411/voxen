@@ -4,6 +4,8 @@
 // 5 star, 6 cross, 7 diamond.
 layout(push_constant) uniform PushConstants {mat4 mvp;vec4 parameters;} pc;
 layout(location=0) out vec3 tint;
+layout(location=1) out vec3 localPoint;
+layout(location=2) flat out int materialId;
 const float PI=3.141592653589793;
 const int S=32;
 const int R=16;
@@ -37,7 +39,9 @@ vec3 parametric(int shape,vec2 uv){
     return vec3(r*cos(a),uv.y-0.5,r*sin(a));
 }
 void main(){
-    int shape=clamp(int(pc.parameters.w+0.5),0,7);
+    int encoded=clamp(int(pc.parameters.w+0.5),0,23);
+    int shape=encoded%8;
+    materialId=encoded/8;
     vec3 p;
     if(shape==0)p=corners[cubeIndices[gl_VertexIndex]];
     else {
@@ -49,5 +53,6 @@ void main(){
         p=parametric(shape,uv);
     }
     tint=clamp(pc.parameters.xyz,0.0,1.0);
+    localPoint=p;
     gl_Position=pc.mvp*vec4(p,1.0);
 }
