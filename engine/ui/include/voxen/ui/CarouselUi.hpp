@@ -14,6 +14,8 @@ struct CarouselState {
     float animationSpeed = 1.0f;
     bool showArtworks = true;
     bool animateArtworks = true;
+    int artworkMotion = 0; // 0 none, 1 breathe, 2 rotate, 3 float, 4 orbit
+    float motionAmplitude = 0.25f;
     bool perfHud = true;
     float cpuMs = 0.0f;
     float gpuMs = 0.0f;
