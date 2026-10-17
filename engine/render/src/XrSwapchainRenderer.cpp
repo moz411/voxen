@@ -814,6 +814,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     bool liquidEnabled=true;
     float liquidOpacity=0.42f;
     int maxLiquidWalls=3;
+    bool includeFloorCeiling=true;
     int wallShaderMode=0;
     std::array<float,3> wallColor{0.12f,0.55f,1.0f};
     float solidOpacity=0.85f;
@@ -829,6 +830,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     liquidEnabled=imguiCarousel_.liquidRoom;
     liquidOpacity=std::clamp(imguiCarousel_.liquidOpacity,0.0f,0.6f);
     maxLiquidWalls=std::clamp(imguiCarousel_.maxLiquidWalls,1,8);
+    includeFloorCeiling=imguiCarousel_.includeFloorCeiling;
     wallShaderMode=imguiCarousel_.wallShaderMode;
     wallColor={imguiCarousel_.wallColor[0],imguiCarousel_.wallColor[1],imguiCarousel_.wallColor[2]};
     solidOpacity=imguiCarousel_.wallSolidOpacity;
@@ -863,10 +865,16 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         struct WallCandidate { const voxen::scene::EnvironmentSurface* surface; float distanceSquared; };
         std::vector<WallCandidate> candidates;
         const auto& camera=xrView.pose.position;
+        std::vector<const voxen::scene::EnvironmentSurface*> horizontalSurfaces;
         for(const auto& surface:environmentSurfaces_.surfaces()) {
-            if(!surface.tracked || surface.classification!=voxen::scene::SurfaceClass::Wall ||
-               surface.halfExtents[0]<=0.05f || surface.halfExtents[1]<=0.05f)
+            if(!surface.tracked || surface.halfExtents[0]<=0.05f ||
+               surface.halfExtents[1]<=0.05f)continue;
+            if(surface.classification==voxen::scene::SurfaceClass::Floor ||
+               surface.classification==voxen::scene::SurfaceClass::Ceiling) {
+                if(includeFloorCeiling)horizontalSurfaces.push_back(&surface);
                 continue;
+            }
+            if(surface.classification!=voxen::scene::SurfaceClass::Wall)continue;
             const float dx=surface.center[0]-camera.x;
             const float dy=surface.center[1]-camera.y;
             const float dz=surface.center[2]-camera.z;
@@ -878,8 +886,26 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             return a.surface->id<b.surface->id;
         });
         const size_t budget=std::min(candidates.size(),static_cast<size_t>(maxLiquidWalls));
-        for(size_t i=0;i<budget;i++) {
-            const Mat4 wallMvp=multiply(projView,surfaceModel(*candidates[i].surface));
+        // Floor and ceiling are additional planes, not counted against
+        // Max walls. Keep each category to one nearest anchor to bound GPU fill.
+        std::vector<const voxen::scene::EnvironmentSurface*> selected;
+        selected.reserve(budget+2);
+        for(size_t i=0;i<budget;i++)selected.push_back(candidates[i].surface);
+        for(auto kind:{voxen::scene::SurfaceClass::Floor,voxen::scene::SurfaceClass::Ceiling}) {
+            const voxen::scene::EnvironmentSurface* closest=nullptr;
+            float best=1e30f;
+            for(const auto* surface:horizontalSurfaces) {
+                if(surface->classification!=kind)continue;
+                const float dx=surface->center[0]-camera.x;
+                const float dy=surface->center[1]-camera.y;
+                const float dz=surface->center[2]-camera.z;
+                const float distance=dx*dx+dy*dy+dz*dz;
+                if(distance<best){best=distance;closest=surface;}
+            }
+            if(closest)selected.push_back(closest);
+        }
+        for(const auto* surface:selected) {
+            const Mat4 wallMvp=multiply(projView,surfaceModel(*surface));
             ProceduralPushConstants liquid{wallMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
             if(wallShaderMode==1) {
                 liquid.parameters[0]=wallColor[0];
