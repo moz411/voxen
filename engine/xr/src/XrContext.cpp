@@ -12,6 +12,7 @@
 #include <openxr/openxr_platform.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -120,6 +121,26 @@ void XrContext::createInstance() {
             return std::strcmp(e.extensionName,name)==0;
         });
     };
+    // One line per capability: an aggregate "unavailable" hides which
+    // extension is missing on the installed Quest runtime.
+    const std::array<const char*, 8> sceneExtensions = {
+        XR_FB_SCENE_EXTENSION_NAME,
+        XR_FB_SPATIAL_ENTITY_EXTENSION_NAME,
+        XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME,
+        XR_FB_SPATIAL_ENTITY_CONTAINER_EXTENSION_NAME,
+        XR_FB_SCENE_CAPTURE_EXTENSION_NAME,
+        XR_META_SPATIAL_ENTITY_DISCOVERY_EXTENSION_NAME,
+        XR_META_SPATIAL_ENTITY_PERSISTENCE_EXTENSION_NAME,
+        XR_META_SPATIAL_ENTITY_MESH_EXTENSION_NAME
+    };
+    for(const char* name:sceneExtensions) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenScene",
+            "Extension %s: %s",name,has(name)?"yes":"NO");
+#else
+        std::printf("[VoxenScene] Extension %s: %s\\n",name,has(name)?"yes":"NO");
+#endif
+    }
     sceneEnabled_=has(XR_FB_SCENE_EXTENSION_NAME) &&
                   has(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME) &&
                   has(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
