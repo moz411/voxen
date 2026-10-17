@@ -113,6 +113,29 @@ void MetaSceneProvider::onEvent(const XrEventDataBaseHeader* event) {
     } else if(usingDiscovery_ && event->type==XR_TYPE_EVENT_DATA_SPACE_DISCOVERY_COMPLETE_META) {
         const auto* e=reinterpret_cast<const XrEventDataSpaceDiscoveryCompleteMETA*>(event);
         if(e->requestId==requestId_) {
+            // Completion itself can signal that results are ready.
+            if(XR_SUCCEEDED(e->result) && spaces_.empty()) {
+                XrSpaceDiscoveryResultsMETA results{XR_TYPE_SPACE_DISCOVERY_RESULTS_META};
+                const XrResult countResult=retrieveDiscovery_(session_,requestId_,&results);
+                sceneLog("META complete retrieve count result",static_cast<int>(countResult));
+                sceneLog("META complete candidate count",static_cast<int>(results.resultCountOutput));
+                if((XR_SUCCEEDED(countResult) || countResult==XR_ERROR_SIZE_INSUFFICIENT)
+                    && results.resultCountOutput>0) {
+                    std::vector<XrSpaceDiscoveryResultMETA> batch(results.resultCountOutput);
+                    results.resultCapacityInput=static_cast<uint32_t>(batch.size());
+                    results.results=batch.data();
+                    const XrResult dataResult=retrieveDiscovery_(session_,requestId_,&results);
+                    sceneLog("META complete retrieve data result",static_cast<int>(dataResult));
+                    if(XR_SUCCEEDED(dataResult)) {
+                        for(uint32_t i=0;i<results.resultCountOutput;i++) {
+                            XrSpaceQueryResultFB space{};
+                            space.space=batch[i].space;
+                            space.uuid=batch[i].uuid;
+                            spaces_.push_back(space);
+                        }
+                    }
+                }
+            }
             pending_=false;
             sceneLog("META discovery complete",static_cast<int>(e->result));
             sceneLog("META discovery total spaces",static_cast<int>(spaces_.size()));
