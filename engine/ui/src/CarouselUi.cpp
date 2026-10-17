@@ -48,6 +48,7 @@ void drawCarousel(CarouselState& state) {
                 ImGui::SliderFloat("Opacity",&state.liquidOpacity,0.0f,0.6f);
             }
             ImGui::SliderInt("Max walls",&state.maxLiquidWalls,1,8);
+            ImGui::Checkbox("Scene mesh wireframe",&state.showSceneMesh);
             ImGui::TextDisabled("Quest fast mode: nearest tracked walls");
             break;
         default:
