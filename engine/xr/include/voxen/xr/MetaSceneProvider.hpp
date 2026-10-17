@@ -22,6 +22,9 @@ private:
     bool pending_ = false;
     uint32_t lastWallCount_ = 0;
     PFN_xrQuerySpacesFB query_ = nullptr;
+    PFN_xrDiscoverSpacesMETA discover_ = nullptr;
+    PFN_xrRetrieveSpaceDiscoveryResultsMETA retrieveDiscovery_ = nullptr;
+    bool usingDiscovery_ = false;
     PFN_xrRetrieveSpaceQueryResultsFB retrieve_ = nullptr;
     PFN_xrGetSpaceBoundingBox2DFB bounds_ = nullptr;
     PFN_xrGetSpaceSemanticLabelsFB labels_ = nullptr;
