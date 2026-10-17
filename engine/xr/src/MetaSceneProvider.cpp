@@ -42,6 +42,8 @@ void MetaSceneProvider::initialize(XrInstance instance,XrSession session) {
         sceneLog("Scene query functions unavailable",0);
     }
     load("xrGetSpaceComponentStatusFB",reinterpret_cast<PFN_xrVoidFunction*>(&getStatus_));
+    if(load("xrGetSpaceTriangleMeshMETA",reinterpret_cast<PFN_xrVoidFunction*>(&getTriangleMesh_)))
+        sceneLog("Triangle mesh function available",1);
     load("xrSetSpaceComponentStatusFB",reinterpret_cast<PFN_xrVoidFunction*>(&setStatus_));
     if(load("xrDiscoverSpacesMETA",reinterpret_cast<PFN_xrVoidFunction*>(&discover_)) &&
        load("xrRetrieveSpaceDiscoveryResultsMETA",
@@ -219,6 +221,21 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
             }
             return false;
         };
+        // Inspect mesh-capable scene entities once, outside the Vulkan path.
+        // The next stage will upload the actual vertices to a GPU buffer.
+        if(getTriangleMesh_ &&
+            std::find(inspectedMesh_.begin(),inspectedMesh_.end(),result.space)==inspectedMesh_.end() &&
+            enabled(XR_SPACE_COMPONENT_TYPE_TRIANGLE_MESH_META,requestedMesh_)) {
+            inspectedMesh_.push_back(result.space);
+            XrSpaceTriangleMeshGetInfoMETA getInfo{XR_TYPE_SPACE_TRIANGLE_MESH_GET_INFO_META};
+            XrSpaceTriangleMeshMETA mesh{XR_TYPE_SPACE_TRIANGLE_MESH_META};
+            const XrResult meshResult=getTriangleMesh_(result.space,&getInfo,&mesh);
+            sceneLog("Triangle mesh read result",static_cast<int>(meshResult));
+            if(XR_SUCCEEDED(meshResult) || meshResult==XR_ERROR_SIZE_INSUFFICIENT) {
+                sceneLog("Triangle mesh vertex count",static_cast<int>(mesh.vertexCountOutput));
+                sceneLog("Triangle mesh index count",static_cast<int>(mesh.indexCountOutput));
+            }
+        }
         if(!enabled(XR_SPACE_COMPONENT_TYPE_SEMANTIC_LABELS_FB,requestedLabels_))continue;
         if(!enabled(XR_SPACE_COMPONENT_TYPE_BOUNDED_2D_FB,requestedBounds_))continue;
         if(!enabled(XR_SPACE_COMPONENT_TYPE_LOCATABLE_FB,requestedLocatable_))continue;
@@ -274,10 +291,11 @@ void MetaSceneProvider::shutdown() {
     for(const auto& item:spaces_) if(item.space!=XR_NULL_HANDLE) xrDestroySpace(item.space);
     spaces_.clear();surfaces_.clear();pending_=false;requestId_=0;
     requestedLabels_.clear();requestedBounds_.clear();requestedLocatable_.clear();
+    requestedMesh_.clear();inspectedMesh_.clear();
     lastWallCount_=0;
     query_=nullptr;retrieve_=nullptr;bounds_=nullptr;labels_=nullptr;
     discover_=nullptr;retrieveDiscovery_=nullptr;usingDiscovery_=false;
-    getStatus_=nullptr;setStatus_=nullptr;
+    getStatus_=nullptr;setStatus_=nullptr;getTriangleMesh_=nullptr;
     session_=XR_NULL_HANDLE;
 }
 } // namespace voxen::xr
