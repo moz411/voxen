@@ -192,6 +192,16 @@ void MetaSceneProvider::onEvent(const XrEventDataBaseHeader* event) {
 void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
     if(!bounds_ || !labels_)return;
     std::vector<voxen::scene::EnvironmentSurface> walls;
+    // Mesh vertices are anchor-local. Refresh their poses in the same
+    // reference space/time used by both stereo eyes.
+    for(auto& mesh:capturedMeshes_) {
+        XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
+        const XrResult res=xrLocateSpace(mesh.space,localSpace,time,&location);
+        constexpr XrSpaceLocationFlags valid=
+            XR_SPACE_LOCATION_POSITION_VALID_BIT | XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
+        mesh.located=XR_SUCCEEDED(res) && (location.locationFlags&valid)==valid;
+        if(mesh.located)mesh.pose=location.pose;
+    }
     for(const auto& result:spaces_) {
         // Scene anchors are discovered before their components are enabled.
         // Schedule at most one asynchronous enable per space/component and
