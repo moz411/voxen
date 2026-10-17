@@ -40,8 +40,8 @@ void drawCarousel(CarouselState& state) {
         case 7:
             ImGui::Checkbox("Liquid Room",&state.liquidRoom);
             ImGui::SliderFloat("Opacity",&state.liquidOpacity,0.0f,0.6f);
-            ImGui::TextDisabled("Experimental floating plane");
-            ImGui::TextDisabled("Meta Scene mapping: pending");
+            ImGui::SliderInt("Max walls",&state.maxLiquidWalls,1,8);
+            ImGui::TextDisabled("Quest fast mode: nearest tracked walls");
             break;
         default:
             ImGui::TextDisabled("Legacy controls: port pending");
