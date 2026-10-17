@@ -99,7 +99,6 @@ void XrSwapchainRenderer::initialize(
     }
     createCommandResources();
     createSwapchains(instance, systemId, session);
-    createFramebuffers();
 #ifdef VOXEN_WITH_IMGUI
     // CPU-side ImGui lifecycle only. GPU texture compositing is a separate step.
     // Do not claim the temporary GLSL panel has been replaced yet.
@@ -118,6 +117,7 @@ void XrSwapchainRenderer::initialize(
     imguiSurface_.initialize(vulkanInstance,physicalDevice_,device_,queue_,queueFamilyIndex_);
 #endif
     createPipeline();
+    createFramebuffers();
 }
 
 void XrSwapchainRenderer::createCommandResources() {
@@ -740,8 +740,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         }
         // Normal faces the eyes. 22 cm high, with base near the controller.
         const float yaw=std::atan2(eye.x-px,eye.z-pz);
-        const Mat4 menuMvp=multiply(projView,
-            modelMatrix(px,py,0.11f,pz,yaw));
+        Mat4 menuModel=modelMatrix(px,py,0.11f,pz,yaw);
+        menuModel.m[5]*=(672.f/512.f);
+        const Mat4 menuMvp=multiply(projView,menuModel);
         ProceduralPushConstants menu{menuMvp,{seconds,1.0f,1.0f,float(nativeMenuPage_)}};
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,imguiPanelPipeline_);
         VkDescriptorSet textureSet=imguiSurface_.descriptor();
@@ -827,7 +828,7 @@ void XrSwapchainRenderer::render(
             XrPosef panel{};
             panel.position={px,py,pz};
             panel.orientation={0.f,std::sin(yaw*0.5f),0.f,std::cos(yaw*0.5f)};
-            auto hit=voxen::ui::rayToPanel(controllerPoses_[1],panel,0.22f,0.22f);
+            auto hit=voxen::ui::rayToPanel(controllerPoses_[1],panel,0.22f,0.22f*672.f/512.f);
             if(hit.valid) {
                 aiming=true;
                 io.AddMousePosEvent(hit.u*512.f,hit.v*672.f);
@@ -910,6 +911,7 @@ void XrSwapchainRenderer::render(
 }
 
 void XrSwapchainRenderer::shutdown() noexcept {
+    if (device_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
 #ifdef VOXEN_WITH_IMGUI
     imguiSurface_.shutdown();
     if (imguiContextOwned_ && ImGui::GetCurrentContext() != nullptr) {
