@@ -1,26 +1,27 @@
-# Dear ImGui XR migration — work in progress
+# Dear ImGui XR migration — first integrated offscreen prototype
 
-Goal: replace the GLSL-drawn carousel with a real interactive 3D Dear ImGui panel on Quest 3.
+Branch: `feature/mr-layered-environments`
 
-## Landed
-- Dear ImGui core and Vulkan backend pinned in CMake (v1.91.9b), Android and Windows.
-- UI model with eight page labels, Liquid Room toggle/opacity, animation speed and CPU/GPU fields.
-- Dear ImGui CPU context initialized in the native Vulkan renderer; NewFrame/drawCarousel/Render called once per XR stereo frame.
-- Reusable OpenXR controller ray / oriented panel hit mapping in `SpatialPanelInput.hpp` (not yet fed into ImGuiIO).
-- StereoKit is unaffected; existing GLSL carousel is kept as temporary fallback.
+## Implemented in this iteration
+- Native ImGui context and widgets, pinned v1.91.9b Vulkan backend.
+- `ImGuiSurface`: 512×672 RGBA8 Vulkan image, render pass/framebuffer, Vulkan descriptor pools, sampler and descriptor set.
+- CPU draw data submitted to an offscreen Vulkan pass once per stereo frame.
+- Spatial textured quad composited into each XR view using a dedicated descriptor-set pipeline.
+- Right-controller ray converted to UI panel UVs; trigger forwarded to ImGui mouse events.
+- Visible controller ray clipped to UI panel intersection.
+- Legacy green GLSL menu pipeline retained in sources as recovery option; no longer drawn when ImGui is enabled.
 
-## Not yet wired (important)
-- Font atlas upload, descriptor pool and Vulkan backend initialization (CPU ImGui lifecycle is wired).
-- Offscreen RGBA panel image/framebuffer and correct Vulkan layout barriers.
-- Rendering ImDrawData into panel texture, quad compositing with correct alpha.
-- OpenXR controller-ray intersection with tracked panel plane; button/slider events to ImGuiIO.
-- Actual connection of settings to renderer (Liquid Room currently drawn unconditionally).
-- App validation on Quest 3, shader and pipeline perf tests.
+## Validation still required
+**No local Android build or headset test was possible in this environment.** The change is not confirmed working.
+- Build with `cd android && ./gradlew assembleDebug`.
+- Launch, inspect `adb logcat -s Voxen:E Voxen:I AndroidRuntime:E`.
+- Confirm readable ImGui panel near left controller with correct stereo convergence and input.
+- Confirm `Liquid Room` checkbox/opacity UI exists; it is NOT yet wired to actual Liquid Room renderer settings.
+- Ensure no Vulkan validation errors, flicker, missing font atlas, or alpha blend issues.
+- Continue porting legacy StereoKit page controls.
+- Remove the legacy GLSL pipeline after device QA and rollback readiness.
 
-Do not report this as a working ImGui replacement. At present the Vulkan build still displays the temporary shader-based green frame. The new widgets now generate ImDrawData every XR frame, but that draw data is not yet submitted to Vulkan and is **invisible** in the headset.
+## Architecture
+The image is rendered once per XR frame, then sampled by both eyes. GPU completion is serialized by the existing renderer fence. The offscreen attachment starts at UNDEFINED every frame and finishes SHADER_READ_ONLY_OPTIMAL; explicit subpass dependency makes color writes visible to fragment sampling.
 
-Implementation notes:
-- Use a per-frame offscreen VkImage (or properly synchronized reused image); sample as texture in the stereo projection pass.
-- Correct physical panel size and stereo parallax must come from one tracked world transform, not two independent head-facing canvases.
-- Keep real-world passthrough and edge enhancements as separate OpenXR compositor layers.
-- Avoid feeding both the object-grab controller and ImGui click for the same trigger.
+Future optimization: per-frame resources and asynchronous submissions to avoid GPU waits. Current path favors correctness and debugging.
