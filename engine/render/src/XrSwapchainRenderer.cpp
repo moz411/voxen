@@ -822,6 +822,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     int maxLiquidWalls=3;
     bool includeFloorCeiling=true;
     int wallShaderMode=0;
+    bool cycleWallShaders=true;
+    float wallCycleSeconds=30.f;
     std::array<float,3> wallColor{0.12f,0.55f,1.0f};
     float solidOpacity=0.85f;
     float globalSpeed=1.0f;
@@ -838,6 +840,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     maxLiquidWalls=std::clamp(imguiCarousel_.maxLiquidWalls,1,8);
     includeFloorCeiling=imguiCarousel_.includeFloorCeiling;
     wallShaderMode=imguiCarousel_.wallShaderMode;
+    cycleWallShaders=imguiCarousel_.cycleWallShaders;
+    wallCycleSeconds=std::clamp(imguiCarousel_.wallCycleSeconds,10.f,90.f);
     wallColor={imguiCarousel_.wallColor[0],imguiCarousel_.wallColor[1],imguiCarousel_.wallColor[2]};
     solidOpacity=imguiCarousel_.wallSolidOpacity;
     globalSpeed=imguiCarousel_.animationSpeed;
@@ -859,14 +863,28 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
     if (liquidEnabled && (wallShaderMode!=0 || liquidOpacity>0.001f) &&
-        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE && ifsPhantomPipeline_ != VK_NULL_HANDLE) {
-        vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          wallShaderMode==1 ? solidWallPipeline_ :
-                          wallShaderMode==2 ? matrixRainPipeline_ :
-                          wallShaderMode==3 ? heppGlowPipeline_ :
-                          wallShaderMode==4 ? phiFieldPipeline_ :
-                          wallShaderMode==5 ? mandelbrotZoomPipeline_ :
-                          wallShaderMode==6 ? ifsPhantomPipeline_ : liquidRoomPipeline_);
+        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE  ) {
+        // Stable slots are based on scene anchor IDs, not eye-specific
+        // distance ordering. Both eyes therefore show the same effect per wall.
+        std::vector<uint64_t> shaderIds;
+        for(const auto& candidate:environmentSurfaces_.surfaces()) {
+            if(candidate.tracked && candidate.classification!=voxen::scene::SurfaceClass::Unknown)
+                shaderIds.push_back(candidate.id);
+        }
+        std::sort(shaderIds.begin(),shaderIds.end());
+        shaderIds.erase(std::unique(shaderIds.begin(),shaderIds.end()),shaderIds.end());
+        const int cycleStep=static_cast<int>(std::floor(seconds / wallCycleSeconds));
+        constexpr int demoModes[]={0,2,3,4,5}; // never SOLID or IFS PHANTOM
+        auto choosePipeline=[&](int mode)->VkPipeline {
+            switch(mode){
+                case 1:return solidWallPipeline_;
+                case 2:return matrixRainPipeline_;
+                case 3:return heppGlowPipeline_;
+                case 4:return phiFieldPipeline_;
+                case 5:return mandelbrotZoomPipeline_;
+                default:return liquidRoomPipeline_;
+            }
+        };
         // Only verified/tracked wall planes receive a room projection.
         // The synthetic development quad remains a fallback until the native
         // Scene query provider populates EnvironmentSurfaceRegistry.
@@ -914,14 +932,21 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             if(closest)selected.push_back(closest);
         }
         for(const auto* surface:selected) {
+            int activeMode=wallShaderMode;
+            if(cycleWallShaders){
+                auto it=std::lower_bound(shaderIds.begin(),shaderIds.end(),surface->id);
+                const auto rank=static_cast<int>(it-shaderIds.begin());
+                activeMode=demoModes[(rank+cycleStep)%5];
+            }
+            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,choosePipeline(activeMode));
             const Mat4 wallMvp=multiply(projView,surfaceModel(*surface));
             ProceduralPushConstants liquid{wallMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
-            if(wallShaderMode==1) {
+            if(activeMode==1) {
                 liquid.parameters[0]=wallColor[0];
                 liquid.parameters[1]=wallColor[1];
                 liquid.parameters[2]=wallColor[2];
                 liquid.parameters[3]=solidOpacity;
-            } else if(wallShaderMode==2) {
+            } else if(activeMode==2) {
                 liquid.parameters[3]=liquidOpacity;
             }
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
@@ -930,7 +955,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             vkCmdDraw(commandBuffer_,6,1,0,0);
             wallRendered=true;
         }
-        if(!wallRendered && wallShaderMode==0) {
+        if(!wallRendered && !cycleWallShaders && wallShaderMode==0) {
+            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,liquidRoomPipeline_);
             const Mat4 planeMvp=multiply(projView,
                 modelMatrix(0.0F,-0.35F,0.65F,-2.25F,0.0F));
             ProceduralPushConstants liquid{planeMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
