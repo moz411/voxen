@@ -39,8 +39,8 @@ void drawCarousel(CarouselState& state) {
         }
         case 7:
             ImGui::Checkbox("Wall effect",&state.liquidRoom);
-            static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR"};
-            ImGui::Combo("Wall shader",&state.wallShaderMode,effects,2);
+            static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN"};
+            ImGui::Combo("Wall shader",&state.wallShaderMode,effects,3);
             if(state.wallShaderMode==1) {
                 ImGui::ColorEdit3("Wall color",state.wallColor);
                 ImGui::SliderFloat("Solid opacity",&state.wallSolidOpacity,0.1f,1.0f);
@@ -49,6 +49,8 @@ void drawCarousel(CarouselState& state) {
             }
             ImGui::SliderInt("Max walls",&state.maxLiquidWalls,1,8);
             ImGui::Checkbox("Scene mesh wireframe",&state.showSceneMesh);
+            ImGui::Checkbox("Occlude walls with scene mesh",&state.sceneOcclusion);
+            if(state.sceneOcclusion) ImGui::SliderFloat("Occlusion bias",&state.sceneDepthBias,0.0f,0.01f,"%.4f");
             ImGui::TextDisabled("Quest fast mode: nearest tracked walls");
             break;
         default:

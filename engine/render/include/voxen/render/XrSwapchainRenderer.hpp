@@ -106,7 +106,12 @@ private:
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
     VkPipeline meshWirePipeline_ = VK_NULL_HANDLE;
+    VkPipeline meshDepthPipeline_ = VK_NULL_HANDLE;
+    VkPipeline matrixRainPipeline_ = VK_NULL_HANDLE;
     VkBuffer meshWireBuffer_ = VK_NULL_HANDLE;
+    VkBuffer meshDepthBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory meshDepthMemory_ = VK_NULL_HANDLE;
+    uint32_t meshDepthVertexCount_ = 0;
     VkDeviceMemory meshWireMemory_ = VK_NULL_HANDLE;
     uint32_t meshWireVertexCount_ = 0;
     XrPosef meshWirePose_{};
