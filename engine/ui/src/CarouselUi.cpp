@@ -19,6 +19,38 @@ void drawCarousel(CarouselState& state) {
         if (ImGui::Button("NEXT >")) state.page=(state.page+1)%9;
         ImGui::Separator();
         switch(state.page) {
+        case 1: {
+            ImGui::TextUnformatted("VOXEL BRUSH / SHAPE");
+            static constexpr const char* shapes[]={"CUBE","SPHERE","CONE","TORUS","CYLINDER","STAR","CROSS","DIAMOND"};
+            ImGui::Columns(4,"shapes",false);
+            for(int i=0;i<8;i++) {
+                ImGui::PushID(i);
+                if(ImGui::Selectable(shapes[i],state.voxelShape==i,0,ImVec2(105,65))) {
+                    state.voxelShape=i;
+                    state.voxelSettingsOpen=true;
+                    state.page=4;
+                }
+                ImGui::PopID();
+                ImGui::NextColumn();
+            }
+            ImGui::Columns(1);
+            ImGui::Checkbox("Voxel brush enabled",&state.voxelBrushEnabled);
+            ImGui::TextDisabled("Select a shape to open its parameters.");
+            break;
+        }
+        case 4: {
+            static constexpr const char* shapes[]={"CUBE","SPHERE","CONE","TORUS","CYLINDER","STAR","CROSS","DIAMOND"};
+            static constexpr const char* materials[]={"NEON","ORGANIC","FRACTAL"};
+            ImGui::Text("VOXEL PARAMS / %s",shapes[std::clamp(state.voxelShape,0,7)]);
+            ImGui::SliderFloat("Size (cm)",&state.voxelSizeCm,1.f,30.f,"%.0f");
+            ImGui::ColorEdit3("Color",&state.voxelColor[0]);
+            ImGui::Combo("Material",&state.voxelMaterial,materials,3);
+            ImGui::Checkbox("Voxel brush enabled",&state.voxelBrushEnabled);
+            if(ImGui::Button("< SHAPES"))state.page=1;
+            ImGui::Separator();
+            ImGui::TextDisabled("Animations, deformation and spatial sound: next iteration.");
+            break;
+        }
         case 3:
             ImGui::TextUnformatted("NATIVE VULKAN MATERIALS");
             ImGui::Checkbox("Render procedural artworks",&state.showArtworks);
