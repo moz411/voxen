@@ -234,6 +234,40 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
             if(XR_SUCCEEDED(meshResult) || meshResult==XR_ERROR_SIZE_INSUFFICIENT) {
                 sceneLog("Triangle mesh vertex count",static_cast<int>(mesh.vertexCountOutput));
                 sceneLog("Triangle mesh index count",static_cast<int>(mesh.indexCountOutput));
+                // Two-call API: fetch actual mesh geometry once per anchor.
+                // Keep acquisition off the Vulkan command path. Avoid allocations
+                // from a corrupt/unbounded runtime count.
+                constexpr uint32_t maxVertices=500000;
+                constexpr uint32_t maxIndices=1500000;
+                if(mesh.vertexCountOutput>=3 && mesh.vertexCountOutput<=maxVertices &&
+                   mesh.indexCountOutput>=3 && mesh.indexCountOutput<=maxIndices &&
+                   mesh.indexCountOutput%3==0) {
+                    CapturedMesh capture;
+                    capture.space=result.space;
+                    capture.vertices.resize(mesh.vertexCountOutput);
+                    capture.indices.resize(mesh.indexCountOutput);
+                    XrSpaceTriangleMeshMETA full{XR_TYPE_SPACE_TRIANGLE_MESH_META};
+                    full.vertexCapacityInput=static_cast<uint32_t>(capture.vertices.size());
+                    full.vertices=capture.vertices.data();
+                    full.indexCapacityInput=static_cast<uint32_t>(capture.indices.size());
+                    full.indices=capture.indices.data();
+                    const XrResult fetchResult=getTriangleMesh_(result.space,&getInfo,&full);
+                    sceneLog("Triangle mesh geometry result",static_cast<int>(fetchResult));
+                    if(XR_SUCCEEDED(fetchResult) &&
+                       full.vertexCountOutput<=capture.vertices.size() &&
+                       full.indexCountOutput<=capture.indices.size() &&
+                       full.indexCountOutput%3==0) {
+                        capture.vertices.resize(full.vertexCountOutput);
+                        capture.indices.resize(full.indexCountOutput);
+                        const bool valid=std::all_of(capture.indices.begin(),capture.indices.end(),
+                            [&](uint32_t idx){return idx<capture.vertices.size();});
+                        if(valid) {
+                            sceneLog("Triangle mesh geometry vertices",static_cast<int>(capture.vertices.size()));
+                            sceneLog("Triangle mesh geometry triangles",static_cast<int>(capture.indices.size()/3));
+                            capturedMeshes_.push_back(std::move(capture));
+                        } else sceneLog("Triangle mesh invalid indices",1);
+                    }
+                }
             }
         }
         if(!enabled(XR_SPACE_COMPONENT_TYPE_SEMANTIC_LABELS_FB,requestedLabels_))continue;
@@ -291,7 +325,7 @@ void MetaSceneProvider::shutdown() {
     for(const auto& item:spaces_) if(item.space!=XR_NULL_HANDLE) xrDestroySpace(item.space);
     spaces_.clear();surfaces_.clear();pending_=false;requestId_=0;
     requestedLabels_.clear();requestedBounds_.clear();requestedLocatable_.clear();
-    requestedMesh_.clear();inspectedMesh_.clear();
+    requestedMesh_.clear();inspectedMesh_.clear();capturedMeshes_.clear();
     lastWallCount_=0;
     query_=nullptr;retrieve_=nullptr;bounds_=nullptr;labels_=nullptr;
     discover_=nullptr;retrieveDiscovery_=nullptr;usingDiscovery_=false;
