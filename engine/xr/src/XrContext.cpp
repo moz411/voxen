@@ -150,6 +150,8 @@ void XrContext::createInstance() {
         extensions.push_back(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME);
         extensions.push_back(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
         extensions.push_back(XR_FB_SCENE_EXTENSION_NAME);
+        if(has(XR_META_SPATIAL_ENTITY_MESH_EXTENSION_NAME))
+            extensions.push_back(XR_META_SPATIAL_ENTITY_MESH_EXTENSION_NAME);
     }
 #ifdef __ANDROID__
     __android_log_print(ANDROID_LOG_INFO,"VoxenScene",
