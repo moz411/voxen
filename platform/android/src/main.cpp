@@ -45,6 +45,7 @@ void android_main(android_app* app) {
             xr.passthroughEnabled(),
             xr.sceneEnabled());
         __android_log_print(ANDROID_LOG_INFO, kTag, "XR session initialized; initializing renderer");
+        renderer.configureMusicJavaVm(app->activity->vm);
         renderer.initialize(
             xr.instance(),
             xr.systemId(),
