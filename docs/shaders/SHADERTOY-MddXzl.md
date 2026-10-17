@@ -1,27 +1,26 @@
-# Liquid Room candidate: Shadertoy MddXzl
+# Liquid Room — Shadertoy MddXzl
 
-Source: https://www.shadertoy.com/view/MddXzl
-Status: **BLOCKED — original GLSL and licensing information not yet acquired**.
+Source URL: https://www.shadertoy.com/view/MddXzl
 
-Do not substitute an invented shader for this source. Need all Shadertoy passes:
-- Common (if present)
-- Image
-- Buffer A/B/C/D (if used)
-- iChannel0-3 type and source (textures, audio, keyboard, buffer outputs, cubemap)
-- Author attribution and explicit reuse license or permission.
+## Status (2026-10-17)
+User provided GLSL `Image` pass directly. Ported to `engine/render/shaders/liquid_room.frag` and embedded as SPIR-V by `engine/CMakeLists.txt`. A translucent experimental quad is currently drawn at a fixed transform by `XrSwapchainRenderer`.
 
-## Porting target
+**This quad is synthetic, not a Meta-detected wall.** The renderer's `EnvironmentSurfaceRegistry` still has no producer. Device compilation and Quest 3 validation have not been performed; the actual visual output is unknown.
 
-Voxen native Vulkan / OpenXR, branch feature/mr-layered-environments.
+## Changes from original
+- `iTime` mapped to push constant time; `fragCoord / iResolution` mapped to quad-local UV.
+- Raymarch max iterations limited to 8 (from 12); original acceleration step `dist * 10.0` removed in favor of bounded signed-distance stepping.
+- Hit threshold raised to 0.003; miss pixels discarded.
+- Original monochrome lighting tinted cyan, alpha capped at 0.42.
+- Transparent blending enabled with depth writes disabled for this pass.
+- On some scenes the optimized version can look different or show sparse/no hits; compare against source on Quest.
 
-1. Preserve source code and attribution under `assets/shadertoy/MddXzl/` only when license allows redistribution.
-2. Reconcile Shadertoy uniforms (`iResolution`, `iTime`, `iMouse`, `iChannel*`) with Vulkan descriptor sets / push constants.
-3. Render in an environment-surface local-UV shader pass, with a native Vulkan pipeline and depth semantics validated against passthrough.
-4. Use only true tracked walls from `EnvironmentSurfaceRegistry`; no fake wall should be described as scene-detected.
-5. Provide fallback when Meta Scene permission is missing; opt-in standalone demonstration plane may be explicitly labeled as synthetic.
-6. Preserve OpenXR passthrough and Meta compositor edge highlighting; it is not a camera Sobel pass.
-7. Add disable control, brightness/opacity clamps and diagnostic GPU timestamps.
-8. Device build, verify screen orientation, compositor alpha, tracking, clipping, CPU/GPU frametime and thermal stability on Quest 3.
-
-## Shader source handoff
-Open Shadertoy > Image > copy code; repeat for each referenced buffer and Common. Share pasted text or GLSL/ZIP files. Capture the iChannel configurations and the original author/license.
+## Blockers and next tasks
+- [ ] Confirm original author, explicit redistribution license and Shadertoy attribution before distributing the source or app.
+- [ ] Build on Android and profile GPU; this is a high-cost fragment shader (27 neighbors per field sample).
+- [ ] Visually verify quad facing, transparency, raymarch hit rate, passthrough and edges on device.
+- [ ] Add an opt-in toggle; current prototype renders the quad unconditionally.
+- [ ] Integrate native Meta OpenXR scene capture to populate tracked walls; project the material onto actual surfaces.
+- [ ] Handle anchor recentering, plane normals and wall UV sizes; ensure fallback when scene data unavailable.
+- [ ] Respect room safety: compositor outlines don't replace Guardian or physical collision awareness.
+- [ ] Refine GPU timings to measure two-eye total and individual pass cost.
