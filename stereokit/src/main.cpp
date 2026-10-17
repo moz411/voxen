@@ -14,6 +14,7 @@
 #include "scene_background.h"
 #include "background_catalog.h"
 #include <cstdio>
+#include <chrono>
 #ifdef __ANDROID__
 #include <android/log.h>
 #endif
@@ -86,6 +87,27 @@ static bool restore_confirmation = false;
 static const char* storage_status = "NOT SAVED";
 static vec3 volume_start{};
 static vec3 volume_end{};
+
+
+// Head-locked diagnostic HUD. CPU measures only Voxen's application callback;
+// GPU time requires native Vulkan timestamp queries (not exposed here).
+static bool perf_hud_visible = true;
+static float app_cpu_ms = 0.0f;
+static void draw_performance_hud() {
+    if (!perf_hud_visible) return;
+    const pose_t* head = input_head();
+    if (!head) return;
+    const vec3 right = quat_rotate(head->orientation, {1,0,0});
+    const vec3 up = quat_rotate(head->orientation, {0,1,0});
+    const vec3 forward = quat_rotate(head->orientation, {0,0,-1});
+    const vec3 anchor = head->position + forward*0.70f + right*0.205f + up*0.135f;
+    // StereoKit text glyphs face the opposite convention to the camera-facing panel.
+    const quat facing = quat_mul(head->orientation, quat_from_angles(0,180,0));
+    char cpu_label[48];
+    std::snprintf(cpu_label,sizeof(cpu_label),"APP CPU %.1f ms",app_cpu_ms);
+    text_add_at(cpu_label,matrix_trs(anchor,facing,{1,1,1}),panel_text_style);
+    text_add_at("GPU -- ms",matrix_trs(anchor-up*0.014f,facing,{1,1,1}),panel_text_style);
+}
 
 static float hue = 0.45f;
 static bool painting = true;
@@ -1358,6 +1380,7 @@ int voxen_stereokit_main() {
     panel_text_style=text_make_style(font_find(default_id_font),0.0085f,
         {0.55f,1.0f,0.66f,1});
     sk_run([] {
+        const auto cpu_start = std::chrono::steady_clock::now();
         update_controller_palette();
         update_left_buttons();
         update_menu_ray();
@@ -1439,6 +1462,12 @@ int voxen_stereokit_main() {
         }
         edge_passthrough.frame(edges_enabled, camera_opacity,
             color_hsv(edge_hue, 1.0f, 1.0f, 1.0f));
+        const auto cpu_end = std::chrono::steady_clock::now();
+        const float elapsed_ms =
+            std::chrono::duration<float,std::milli>(cpu_end-cpu_start).count();
+        app_cpu_ms = app_cpu_ms == 0.0f ? elapsed_ms
+            : app_cpu_ms*0.90f + elapsed_ms*0.10f;
+        draw_performance_hud();
     }, [] {
         scene_background.shutdown();
         for(material_t m:sky_materials) if(m) material_release(m);
