@@ -14,11 +14,11 @@ void main() {
  float frame=max(panel-inner,0.0);
  float top=box2(p,vec2(0.0,0.71),vec2(0.85,0.015));
  float tabs=0.0;
- int active=clamp(int(pc.parameters.w+0.5),0,7);
+ int selectedPage=clamp(int(pc.parameters.w+0.5),0,7);
  for(int i=0;i<8;i++) {
    float x=-0.74+float(i)*0.21;
    float fill=box2(p,vec2(x,0.80),vec2(0.066,0.048));
-   tabs=max(tabs,fill*(i==active?1.0:0.22));
+   tabs=max(tabs,fill*(i==selectedPage?1.0:0.22));
  }
  float line=box2(p,vec2(0.0,0.20),vec2(0.68,0.012));
  float line2=box2(p,vec2(0.0,-0.12),vec2(0.54,0.012));
