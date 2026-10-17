@@ -41,6 +41,8 @@ void MetaSceneProvider::initialize(XrInstance instance,XrSession session) {
         query_=nullptr;
         sceneLog("Scene query functions unavailable",0);
     }
+    load("xrGetSpaceComponentStatusFB",reinterpret_cast<PFN_xrVoidFunction*>(&getStatus_));
+    load("xrSetSpaceComponentStatusFB",reinterpret_cast<PFN_xrVoidFunction*>(&setStatus_));
     if(load("xrDiscoverSpacesMETA",reinterpret_cast<PFN_xrVoidFunction*>(&discover_)) &&
        load("xrRetrieveSpaceDiscoveryResultsMETA",
             reinterpret_cast<PFN_xrVoidFunction*>(&retrieveDiscovery_))) {
@@ -183,6 +185,33 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
     if(!bounds_ || !labels_)return;
     std::vector<voxen::scene::EnvironmentSurface> walls;
     for(const auto& result:spaces_) {
+        // Scene anchors are discovered before their components are enabled.
+        // Schedule at most one asynchronous enable per space/component and
+        // poll component status on later frames. Do not block XR frame loop.
+        auto enabled=[&](XrSpaceComponentTypeFB type,std::vector<XrSpace>& requested) {
+            if(!getStatus_ || !setStatus_)return false;
+            XrSpaceComponentStatusFB status{XR_TYPE_SPACE_COMPONENT_STATUS_FB};
+            const XrResult statusResult=getStatus_(result.space,type,&status);
+            if(XR_FAILED(statusResult))return false;
+            if(status.enabled==XR_TRUE)return true;
+            if(status.changePending==XR_TRUE ||
+                std::find(requested.begin(),requested.end(),result.space)!=requested.end())
+                return false;
+            XrSpaceComponentStatusSetInfoFB info{XR_TYPE_SPACE_COMPONENT_STATUS_SET_INFO_FB};
+            info.componentType=type;
+            info.enabled=XR_TRUE;
+            info.timeout=0;
+            XrAsyncRequestIdFB id=0;
+            const XrResult requestResult=setStatus_(result.space,&info,&id);
+            sceneLog("Enable scene component request",static_cast<int>(requestResult));
+            if(XR_SUCCEEDED(requestResult) ||
+               requestResult==XR_ERROR_SPACE_COMPONENT_STATUS_PENDING_FB)
+                requested.push_back(result.space);
+            return false;
+        };
+        if(!enabled(XR_SPACE_COMPONENT_TYPE_SEMANTIC_LABELS_FB,requestedLabels_))continue;
+        if(!enabled(XR_SPACE_COMPONENT_TYPE_BOUNDED_2D_FB,requestedBounds_))continue;
+        if(!enabled(XR_SPACE_COMPONENT_TYPE_LOCATABLE_FB,requestedLocatable_))continue;
         XrSemanticLabelsFB labels{XR_TYPE_SEMANTIC_LABELS_FB};
         const XrResult labelCountResult=labels_(session_,result.space,&labels);
         if(XR_FAILED(labelCountResult) || labels.bufferCountOutput==0 ||
@@ -234,9 +263,11 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
 void MetaSceneProvider::shutdown() {
     for(const auto& item:spaces_) if(item.space!=XR_NULL_HANDLE) xrDestroySpace(item.space);
     spaces_.clear();surfaces_.clear();pending_=false;requestId_=0;
+    requestedLabels_.clear();requestedBounds_.clear();requestedLocatable_.clear();
     lastWallCount_=0;
     query_=nullptr;retrieve_=nullptr;bounds_=nullptr;labels_=nullptr;
     discover_=nullptr;retrieveDiscovery_=nullptr;usingDiscovery_=false;
+    getStatus_=nullptr;setStatus_=nullptr;
     session_=XR_NULL_HANDLE;
 }
 } // namespace voxen::xr
