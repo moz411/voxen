@@ -309,7 +309,7 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
             const XrResult countResult=labels_(session_,result.space,&labels);
             if(XR_FAILED(countResult) || labels.bufferCountOutput==0 ||
                 labels.bufferCountOutput>1024)continue;
-            std::vector<char> buffer(labels.bufferCountOutput+1,'\\0');
+            std::vector<char> buffer(labels.bufferCountOutput+1,0);
             labels.bufferCapacityInput=static_cast<uint32_t>(buffer.size());
             labels.buffer=buffer.data();
             if(XR_FAILED(labels_(session_,result.space,&labels)))continue;
