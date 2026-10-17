@@ -822,6 +822,7 @@ void XrSwapchainRenderer::render(
         // Project the right-hand aim ray to the same left-controller panel
         // transform used by the stereo pass.
         bool aiming=false;
+        float cursorX=0.f,cursorY=0.f;
         if(controllerTracked_[0] && controllerTracked_[1]) {
             const auto& cp=controllerPoses_[0].position;
             const auto& eye=views[0].pose.position;
@@ -844,7 +845,8 @@ void XrSwapchainRenderer::render(
             if(hit.valid) {
                 aiming=true;
                 panelHitDistance_=hit.distance;
-                io.AddMousePosEvent(hit.u*512.f,hit.v*672.f);
+                cursorX=hit.u*512.f;cursorY=hit.v*672.f;
+                io.AddMousePosEvent(cursorX,cursorY);
             }
         }
         if(!aiming) io.AddMousePosEvent(-FLT_MAX,-FLT_MAX);
@@ -857,6 +859,11 @@ void XrSwapchainRenderer::render(
         ImGui_ImplVulkan_NewFrame();
         ImGui::NewFrame();
         voxen::ui::drawCarousel(imguiCarousel_);
+        // Visible cursor proves that ray → panel UV mapping reaches ImGui.
+        if(aiming) {
+            ImGui::GetForegroundDrawList()->AddCircleFilled(
+                ImVec2(cursorX,cursorY),7.f,IM_COL32(100,255,150,255));
+        }
         ImGui::Render();
         nativeMenuPage_=imguiCarousel_.page;
         // ImDrawData is now available for a future offscreen VkImage renderer.
