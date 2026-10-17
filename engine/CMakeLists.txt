@@ -39,6 +39,7 @@ if(ANDROID OR WIN32)
     voxen_embed_shader(fractalFrag fractal.frag)
     voxen_embed_shader(fractalVert fractal.vert)
     voxen_embed_shader(laserFrag laser.frag)
+    voxen_embed_shader(liquidRoomFrag liquid_room.frag)
 endif()
 
 add_library(voxen_engine STATIC
