@@ -98,8 +98,8 @@ void ImGuiSurface::initialize(VkInstance instance,VkPhysicalDevice physical,VkDe
     info.Instance=instance;info.PhysicalDevice=physical_;info.Device=device_;
     info.QueueFamily=queueFamily;info.Queue=queue;
     info.DescriptorPool=imguiPool_;info.MinImageCount=2;info.ImageCount=2;
-    info.PipelineInfoMain.RenderPass=pass_;
-    info.PipelineInfoMain.MSAASamples=VK_SAMPLE_COUNT_1_BIT;
+    info.RenderPass=pass_;
+    info.MSAASamples=VK_SAMPLE_COUNT_1_BIT;
     if(!ImGui_ImplVulkan_Init(&info)) throw std::runtime_error("ImGui Vulkan init failed");
     initialized_=true;
 }
