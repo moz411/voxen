@@ -764,7 +764,13 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         const size_t budget=std::min(candidates.size(),static_cast<size_t>(maxLiquidWalls));
         for(size_t i=0;i<budget;i++) {
             const Mat4 wallMvp=multiply(projView,surfaceModel(*candidates[i].surface));
-            ProceduralPushConstants liquid{wallMvp,wallShaderMode==1 ? std::array<float,4>{wallColor[0],wallColor[1],wallColor[2],solidOpacity} : std::array<float,4>{seconds,globalSpeed,1.0F,liquidOpacity}};
+            ProceduralPushConstants liquid{wallMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
+            if(wallShaderMode==1) {
+                liquid.parameters[0]=wallColor[0];
+                liquid.parameters[1]=wallColor[1];
+                liquid.parameters[2]=wallColor[2];
+                liquid.parameters[3]=solidOpacity;
+            }
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,sizeof(liquid),&liquid);
