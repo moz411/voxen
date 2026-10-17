@@ -46,20 +46,20 @@ void MetaSceneProvider::request() {
     if(!query_ || pending_)return;
     // Meta's Scene API expects the local-storage filter chained to the
     // component filter when querying room-capture plane anchors.
+    // Diagnostic/fallback: query all locally available anchors. The previous
+    // BOUNDED_2D filter completed with zero matches on this Quest even though
+    // the extension itself is available.
     XrSpaceStorageLocationFilterInfoFB storage{
         XR_TYPE_SPACE_STORAGE_LOCATION_FILTER_INFO_FB};
     storage.location=XR_SPACE_STORAGE_LOCATION_LOCAL_FB;
-    XrSpaceComponentFilterInfoFB filter{XR_TYPE_SPACE_COMPONENT_FILTER_INFO_FB};
-    filter.next=&storage;
-    filter.componentType=XR_SPACE_COMPONENT_TYPE_BOUNDED_2D_FB;
     XrSpaceQueryInfoFB info{XR_TYPE_SPACE_QUERY_INFO_FB};
     info.queryAction=XR_SPACE_QUERY_ACTION_LOAD_FB;
     info.maxResultCount=256;
     info.timeout=0;
-    info.filter=reinterpret_cast<const XrSpaceFilterInfoBaseHeaderFB*>(&filter);
+    info.filter=reinterpret_cast<const XrSpaceFilterInfoBaseHeaderFB*>(&storage);
     auto result=query_(session_,reinterpret_cast<const XrSpaceQueryInfoBaseHeaderFB*>(&info),&requestId_);
     pending_=XR_SUCCEEDED(result);
-    sceneLog("Scene query request result",static_cast<int>(result));
+    sceneLog("Scene query ALL local anchors result",static_cast<int>(result));
 }
 void MetaSceneProvider::onEvent(const XrEventDataBaseHeader* event) {
     if(!pending_ || !event)return;
