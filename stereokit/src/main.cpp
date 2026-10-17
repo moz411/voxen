@@ -95,13 +95,23 @@ static bool perf_hud_visible = true;
 static text_style_t perf_ok_style = 0;
 static text_style_t perf_warn_style = 0;
 static float app_cpu_ms = 0.0f;
+// Rotate a vector by a unit quaternion without depending on StereoKit helper names.
+static vec3 perf_rotate(quat q, vec3 v) {
+    const vec3 u{q.x, q.y, q.z};
+    const vec3 t{2.0f * (u.y*v.z-u.z*v.y),
+                 2.0f * (u.z*v.x-u.x*v.z),
+                 2.0f * (u.x*v.y-u.y*v.x)};
+    return {v.x + q.w*t.x + (u.y*t.z-u.z*t.y),
+            v.y + q.w*t.y + (u.z*t.x-u.x*t.z),
+            v.z + q.w*t.z + (u.x*t.y-u.y*t.x)};
+}
 static void draw_performance_hud() {
     if (!perf_hud_visible) return;
     const pose_t* head = input_head();
     if (!head) return;
-    const vec3 right = quat_rotate(head->orientation, {1,0,0});
-    const vec3 up = quat_rotate(head->orientation, {0,1,0});
-    const vec3 forward = quat_rotate(head->orientation, {0,0,-1});
+    const vec3 right = perf_rotate(head->orientation, {1,0,0});
+    const vec3 up = perf_rotate(head->orientation, {0,1,0});
+    const vec3 forward = perf_rotate(head->orientation, {0,0,-1});
     const vec3 anchor = head->position + forward*0.70f + right*0.205f + up*0.135f;
     // StereoKit text glyphs face the opposite convention to the camera-facing panel.
     const quat facing = quat_mul(head->orientation, quat_from_angles(0,180,0));
