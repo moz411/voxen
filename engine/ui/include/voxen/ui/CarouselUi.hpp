@@ -11,6 +11,7 @@ struct CarouselState {
     bool visible = true;
     bool liquidRoom = true;
     float liquidOpacity = 0.42f;
+    int maxLiquidWalls = 3;
     float animationSpeed = 1.0f;
     bool showArtworks = true;
     bool animateArtworks = true;
