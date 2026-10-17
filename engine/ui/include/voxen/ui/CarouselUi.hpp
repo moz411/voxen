@@ -16,6 +16,7 @@ struct CarouselState {
     bool liquidRoom = true;
     float liquidOpacity = 0.42f;
     int maxLiquidWalls = 3;
+    bool includeFloorCeiling = true;
     bool showSceneMesh = false;
     bool sceneOcclusion = false;
     float sceneDepthBias = 0.002f;
