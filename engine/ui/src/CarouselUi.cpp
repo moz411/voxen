@@ -20,20 +20,26 @@ void drawCarousel(CarouselState& state) {
         ImGui::Separator();
         switch(state.page) {
         case 3:
-            ImGui::TextUnformatted("GPU MATERIALS");
-            ImGui::TextDisabled("Shader library migration pending");
+            ImGui::TextUnformatted("NATIVE VULKAN MATERIALS");
+            ImGui::Checkbox("Render procedural artworks",&state.showArtworks);
+            ImGui::TextDisabled("Current: Neon / Organic / Fractal");
             break;
         case 4:
+            ImGui::SliderFloat("Time multiplier",&state.animationSpeed,0.1f,3.0f);
+            ImGui::Checkbox("Performance metrics",&state.perfHud);
+            break;
+        case 5:
+            ImGui::Checkbox("Animate artworks",&state.animateArtworks);
             ImGui::SliderFloat("Animation speed",&state.animationSpeed,0.1f,3.0f);
-            ImGui::Checkbox("Performance HUD",&state.perfHud);
             break;
         case 7:
             ImGui::Checkbox("Liquid Room",&state.liquidRoom);
             ImGui::SliderFloat("Opacity",&state.liquidOpacity,0.0f,0.6f);
-            ImGui::TextDisabled("Surface detection is not connected");
+            ImGui::TextDisabled("Experimental floating plane");
+            ImGui::TextDisabled("Meta Scene mapping: pending");
             break;
         default:
-            ImGui::TextDisabled("Existing StereoKit controls: port pending");
+            ImGui::TextDisabled("Legacy controls: port pending");
             break;
         }
         ImGui::Separator();
