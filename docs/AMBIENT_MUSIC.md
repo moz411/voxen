@@ -21,3 +21,7 @@ adb shell am start -n org.voxen.xr/android.app.NativeActivity
 ```
 
 In MUSIC, try each atmosphere, pause/resume, adjust volume, and check Quest headset audio and GPU. This code has not yet been compiled/tested on hardware. If opening AAudio fails, MUSIC displays 'Audio output unavailable'.
+
+## Floor / ceiling backgrounds
+
+Meta Scene now classifies bounded-2D anchors as WALL_FACE, FLOOR or CEILING. BACKGROUNDS > Floor & ceiling (enabled by default) projects the selected wall effect onto at most the nearest floor and the nearest ceiling in addition to Max walls. This includes Liquid Room, Solid Color, Matrix Rain and Hepp Glow. Pose and dimensions still come from 2D Meta anchors; static Scene Mesh depth occlusion remains optional. Use the toggle to compare and to reduce GPU load.
