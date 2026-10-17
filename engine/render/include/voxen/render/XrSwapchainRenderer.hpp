@@ -9,6 +9,7 @@
 #include <vulkan/vulkan.h>
 #include <openxr/openxr.h>
 #include <voxen/scene/Scene.hpp>
+#include <voxen/audio/AmbientMusic.hpp>
 #include <voxen/scene/EnvironmentSurface.hpp>
 #ifdef VOXEN_WITH_IMGUI
 #include <voxen/ui/CarouselUi.hpp>
@@ -84,6 +85,7 @@ private:
     void createFramebuffers();
     void renderImage(EyeSwapchain& eye, uint32_t imageIndex, const XrView& view);
 
+    voxen::audio::AmbientMusic ambientMusic_{};
     ::XrSession session_ = XR_NULL_HANDLE;
     VkDevice device_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
