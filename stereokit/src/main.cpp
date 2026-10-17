@@ -92,6 +92,8 @@ static vec3 volume_end{};
 // Head-locked diagnostic HUD. CPU measures only Voxen's application callback;
 // GPU time requires native Vulkan timestamp queries (not exposed here).
 static bool perf_hud_visible = true;
+static text_style_t perf_ok_style = 0;
+static text_style_t perf_warn_style = 0;
 static float app_cpu_ms = 0.0f;
 static void draw_performance_hud() {
     if (!perf_hud_visible) return;
@@ -104,9 +106,11 @@ static void draw_performance_hud() {
     // StereoKit text glyphs face the opposite convention to the camera-facing panel.
     const quat facing = quat_mul(head->orientation, quat_from_angles(0,180,0));
     char cpu_label[48];
-    std::snprintf(cpu_label,sizeof(cpu_label),"APP CPU %.1f ms",app_cpu_ms);
-    text_add_at(cpu_label,matrix_trs(anchor,facing,{1,1,1}),panel_text_style);
-    text_add_at("GPU -- ms",matrix_trs(anchor-up*0.014f,facing,{1,1,1}),panel_text_style);
+    constexpr float frame_budget_ms = 1000.0f / 72.0f;
+    const bool cpu_warning = app_cpu_ms >= frame_budget_ms*0.80f;
+    std::snprintf(cpu_label,sizeof(cpu_label),"CPU %.1f / %.1f ms",app_cpu_ms,frame_budget_ms);
+    text_add_at(cpu_label,matrix_trs(anchor,facing,{1,1,1}),cpu_warning?perf_warn_style:perf_ok_style);
+    text_add_at("GPU N/A",matrix_trs(anchor-up*0.014f,facing,{1,1,1}),perf_warn_style);
 }
 
 static float hue = 0.45f;
@@ -1069,6 +1073,8 @@ static void draw_face(int page) {
         if(face_button(face,page,"MORE",-0.204f))
             sky_opacity=std::min(0.60f,sky_opacity+0.05f);
     } else if(page==6) {
+        if(face_button(face,page,perf_hud_visible?"PERF HUD: ON":"PERF HUD: OFF",-0.176f))
+            perf_hud_visible=!perf_hud_visible;
         face_text(face,"SCENE SLOT 1",0,0.125f);
         face_text(face,storage_status,0,0.073f);
         if(face_button(face,page,save_confirmation?"CONFIRM SAVE":"SAVE",0.015f)) {
@@ -1379,6 +1385,8 @@ int voxen_stereokit_main() {
     ui_enable_far_interact(false);
     panel_text_style=text_make_style(font_find(default_id_font),0.0085f,
         {0.55f,1.0f,0.66f,1});
+    perf_ok_style=text_make_style(font_find(default_id_font),0.007f,{0.30f,1.0f,0.45f,1});
+    perf_warn_style=text_make_style(font_find(default_id_font),0.007f,{1.0f,0.69f,0.28f,1});
     sk_run([] {
         const auto cpu_start = std::chrono::steady_clock::now();
         update_controller_palette();
