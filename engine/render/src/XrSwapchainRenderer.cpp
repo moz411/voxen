@@ -426,7 +426,11 @@ void XrSwapchainRenderer::createPipeline() {
         VkGraphicsPipelineCreateInfo pi{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
         pi.stageCount=2; pi.pStages=stages; pi.pVertexInputState=&vi; pi.pInputAssemblyState=&ia;
         pi.pViewportState=&vp; pi.pRasterizationState=&rs; pi.pMultisampleState=&ms;
-        pi.pColorBlendState=&cb; pi.pDepthStencilState=&ds; pi.pDynamicState=&dyn; pi.layout=(&out == &imguiPanelPipeline_ && imguiPanelPipelineLayout_ != VK_NULL_HANDLE)?imguiPanelPipelineLayout_:pipelineLayout_; pi.renderPass=renderPass_;
+        pi.pColorBlendState=&cb; pi.pDepthStencilState=&ds; pi.pDynamicState=&dyn; pi.layout=pipelineLayout_;
+#ifdef VOXEN_WITH_IMGUI
+        if(&out==&imguiPanelPipeline_)pi.layout=imguiPanelPipelineLayout_;
+#endif
+        pi.renderPass=renderPass_;
         checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &out), "vkCreateGraphicsPipelines");
         vkDestroyShaderModule(device_, fs, nullptr);
         vkDestroyShaderModule(device_, vs, nullptr);
