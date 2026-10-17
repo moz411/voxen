@@ -48,6 +48,7 @@ void drawCarousel(CarouselState& state) {
                 ImGui::SliderFloat("Opacity",&state.liquidOpacity,0.0f,0.6f);
             }
             ImGui::SliderInt("Max walls",&state.maxLiquidWalls,1,8);
+            ImGui::Checkbox("Floor & ceiling",&state.includeFloorCeiling);
             if(state.wallShaderMode==3)ImGui::TextDisabled("Hepp Maccoy 2019 / CC BY-NC-SA 3.0");
             ImGui::Checkbox("Scene mesh wireframe",&state.showSceneMesh);
             ImGui::Checkbox("Occlude walls with scene mesh",&state.sceneOcclusion);
