@@ -40,7 +40,7 @@ private:
     std::vector<XrSpace> requestedLocatable_;
     struct UnsupportedComponent { XrSpace space; XrSpaceComponentTypeFB type; };
     std::vector<UnsupportedComponent> unsupportedComponents_;
-    struct CachedPlane { XrSpace space; XrRect2Df rect; bool wall; };
+    struct CachedPlane { XrSpace space; XrRect2Df rect; voxen::scene::SurfaceClass classification; };
     std::vector<CachedPlane> cachedPlanes_;
     std::vector<XrSpace> requestedMesh_;
     std::vector<XrSpace> inspectedMesh_;

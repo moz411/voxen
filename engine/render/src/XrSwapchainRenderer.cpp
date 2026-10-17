@@ -31,6 +31,10 @@
 #include "meshDepthVert.spv.hpp"
 #include "meshDepthFrag.spv.hpp"
 #include "matrixRainFrag.spv.hpp"
+#include "heppGlowFrag.spv.hpp"
+#include "phiFieldFrag.spv.hpp"
+#include "mandelbrotZoomFrag.spv.hpp"
+#include "ifsPhantomFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "imguiPanelFrag.spv.hpp"
 
@@ -104,6 +108,7 @@ void XrSwapchainRenderer::initialize(
         if (vkCreateQueryPool(device_, &qi, nullptr, &gpuTimestampPool_) == VK_SUCCESS)
             timestampPeriodNs_ = gpuProps.limits.timestampPeriod;
     }
+    ambientMusic_.start();
     createCommandResources();
     createSwapchains(instance, systemId, session);
 #ifdef VOXEN_WITH_IMGUI
@@ -515,7 +520,7 @@ void XrSwapchainRenderer::createPipeline() {
         }
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &ifsPhantomPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -559,6 +564,10 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(meshWireVert, meshWireVertSize, meshWireFrag, meshWireFragSize, meshWirePipeline_);
     buildPipeline(meshDepthVert, meshDepthVertSize, meshDepthFrag, meshDepthFragSize, meshDepthPipeline_);
     buildPipeline(fractalVert, fractalVertSize, matrixRainFrag, matrixRainFragSize, matrixRainPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, heppGlowFrag, heppGlowFragSize, heppGlowPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, phiFieldFrag, phiFieldFragSize, phiFieldPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, mandelbrotZoomFrag, mandelbrotZoomFragSize, mandelbrotZoomPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, ifsPhantomFrag, ifsPhantomFragSize, ifsPhantomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
 #ifdef VOXEN_WITH_IMGUI
     buildPipeline(fractalVert, fractalVertSize, imguiPanelFrag, imguiPanelFragSize, imguiPanelPipeline_);
@@ -658,7 +667,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         const float axis=thumbsticks[0].x;
         if (std::fabs(axis)<0.3f) nativeMenuStickLatched_=false;
         if (!nativeMenuStickLatched_ && std::fabs(axis)>0.70f) {
-            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:7))%8;
+            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:8))%9;
             nativeMenuStickLatched_=true;
         }
     }
@@ -811,6 +820,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     bool liquidEnabled=true;
     float liquidOpacity=0.42f;
     int maxLiquidWalls=3;
+    bool includeFloorCeiling=true;
     int wallShaderMode=0;
     std::array<float,3> wallColor{0.12f,0.55f,1.0f};
     float solidOpacity=0.85f;
@@ -826,6 +836,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     liquidEnabled=imguiCarousel_.liquidRoom;
     liquidOpacity=std::clamp(imguiCarousel_.liquidOpacity,0.0f,0.6f);
     maxLiquidWalls=std::clamp(imguiCarousel_.maxLiquidWalls,1,8);
+    includeFloorCeiling=imguiCarousel_.includeFloorCeiling;
     wallShaderMode=imguiCarousel_.wallShaderMode;
     wallColor={imguiCarousel_.wallColor[0],imguiCarousel_.wallColor[1],imguiCarousel_.wallColor[2]};
     solidOpacity=imguiCarousel_.wallSolidOpacity;
@@ -848,10 +859,14 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
     if (liquidEnabled && (wallShaderMode!=0 || liquidOpacity>0.001f) &&
-        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE) {
+        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE && ifsPhantomPipeline_ != VK_NULL_HANDLE) {
         vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           wallShaderMode==1 ? solidWallPipeline_ :
-                          wallShaderMode==2 ? matrixRainPipeline_ : liquidRoomPipeline_);
+                          wallShaderMode==2 ? matrixRainPipeline_ :
+                          wallShaderMode==3 ? heppGlowPipeline_ :
+                          wallShaderMode==4 ? phiFieldPipeline_ :
+                          wallShaderMode==5 ? mandelbrotZoomPipeline_ :
+                          wallShaderMode==6 ? ifsPhantomPipeline_ : liquidRoomPipeline_);
         // Only verified/tracked wall planes receive a room projection.
         // The synthetic development quad remains a fallback until the native
         // Scene query provider populates EnvironmentSurfaceRegistry.
@@ -859,10 +874,16 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         struct WallCandidate { const voxen::scene::EnvironmentSurface* surface; float distanceSquared; };
         std::vector<WallCandidate> candidates;
         const auto& camera=xrView.pose.position;
+        std::vector<const voxen::scene::EnvironmentSurface*> horizontalSurfaces;
         for(const auto& surface:environmentSurfaces_.surfaces()) {
-            if(!surface.tracked || surface.classification!=voxen::scene::SurfaceClass::Wall ||
-               surface.halfExtents[0]<=0.05f || surface.halfExtents[1]<=0.05f)
+            if(!surface.tracked || surface.halfExtents[0]<=0.05f ||
+               surface.halfExtents[1]<=0.05f)continue;
+            if(surface.classification==voxen::scene::SurfaceClass::Floor ||
+               surface.classification==voxen::scene::SurfaceClass::Ceiling) {
+                if(includeFloorCeiling)horizontalSurfaces.push_back(&surface);
                 continue;
+            }
+            if(surface.classification!=voxen::scene::SurfaceClass::Wall)continue;
             const float dx=surface.center[0]-camera.x;
             const float dy=surface.center[1]-camera.y;
             const float dz=surface.center[2]-camera.z;
@@ -874,8 +895,26 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             return a.surface->id<b.surface->id;
         });
         const size_t budget=std::min(candidates.size(),static_cast<size_t>(maxLiquidWalls));
-        for(size_t i=0;i<budget;i++) {
-            const Mat4 wallMvp=multiply(projView,surfaceModel(*candidates[i].surface));
+        // Floor and ceiling are additional planes, not counted against
+        // Max walls. Keep each category to one nearest anchor to bound GPU fill.
+        std::vector<const voxen::scene::EnvironmentSurface*> selected;
+        selected.reserve(budget+2);
+        for(size_t i=0;i<budget;i++)selected.push_back(candidates[i].surface);
+        for(auto kind:{voxen::scene::SurfaceClass::Floor,voxen::scene::SurfaceClass::Ceiling}) {
+            const voxen::scene::EnvironmentSurface* closest=nullptr;
+            float best=1e30f;
+            for(const auto* surface:horizontalSurfaces) {
+                if(surface->classification!=kind)continue;
+                const float dx=surface->center[0]-camera.x;
+                const float dy=surface->center[1]-camera.y;
+                const float dz=surface->center[2]-camera.z;
+                const float distance=dx*dx+dy*dy+dz*dz;
+                if(distance<best){best=distance;closest=surface;}
+            }
+            if(closest)selected.push_back(closest);
+        }
+        for(const auto* surface:selected) {
+            const Mat4 wallMvp=multiply(projView,surfaceModel(*surface));
             ProceduralPushConstants liquid{wallMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
             if(wallShaderMode==1) {
                 liquid.parameters[0]=wallColor[0];
@@ -1102,7 +1141,21 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.gpuAvailable=gpuTimingAvailable() && completedGpuSamples_>0;
         ImGui_ImplVulkan_NewFrame();
         ImGui::NewFrame();
+        imguiCarousel_.musicReady=ambientMusic_.ready();
+        imguiCarousel_.musicFiles=mp3Library_.titles();
+        imguiCarousel_.musicError=mp3Library_.error();
         voxen::ui::drawCarousel(imguiCarousel_);
+        if(imguiCarousel_.musicRescan){
+            imguiCarousel_.musicRescan=false;
+            mp3Library_.shutdown();
+            mp3Library_.refresh();
+            imguiCarousel_.musicFile=0;
+        }
+        const bool procedural=imguiCarousel_.musicSource==0;
+        ambientMusic_.configure(imguiCarousel_.musicTrack,
+            procedural&&imguiCarousel_.musicPlaying,imguiCarousel_.musicVolume);
+        mp3Library_.update(procedural?-1:imguiCarousel_.musicFile,
+            !procedural&&imguiCarousel_.musicPlaying,imguiCarousel_.musicVolume);
         // Visible cursor proves that ray → panel UV mapping reaches ImGui.
         if(aiming) {
             ImGui::GetForegroundDrawList()->AddCircleFilled(
@@ -1176,6 +1229,8 @@ void XrSwapchainRenderer::render(
 }
 
 void XrSwapchainRenderer::shutdown() noexcept {
+    mp3Library_.shutdown();
+    ambientMusic_.stop();
     if (device_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
 #ifdef VOXEN_WITH_IMGUI
     imguiSurface_.shutdown();
@@ -1212,6 +1267,10 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (meshWirePipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,meshWirePipeline_,nullptr); meshWirePipeline_=VK_NULL_HANDLE; }
     if(meshDepthPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,meshDepthPipeline_,nullptr);meshDepthPipeline_=VK_NULL_HANDLE;}
     if(matrixRainPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,matrixRainPipeline_,nullptr);matrixRainPipeline_=VK_NULL_HANDLE;}
+    if(heppGlowPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,heppGlowPipeline_,nullptr);heppGlowPipeline_=VK_NULL_HANDLE;}
+    if(phiFieldPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,phiFieldPipeline_,nullptr);phiFieldPipeline_=VK_NULL_HANDLE;}
+    if(mandelbrotZoomPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,mandelbrotZoomPipeline_,nullptr);mandelbrotZoomPipeline_=VK_NULL_HANDLE;}
+    if(ifsPhantomPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,ifsPhantomPipeline_,nullptr);ifsPhantomPipeline_=VK_NULL_HANDLE;}
     if(meshDepthBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,meshDepthBuffer_,nullptr);meshDepthBuffer_=VK_NULL_HANDLE;}
     if(meshDepthMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,meshDepthMemory_,nullptr);meshDepthMemory_=VK_NULL_HANDLE;}
     meshDepthVertexCount_=0;

@@ -46,6 +46,10 @@ if(ANDROID OR WIN32)
     voxen_embed_shader(meshDepthVert mesh_depth.vert)
     voxen_embed_shader(meshDepthFrag mesh_depth.frag)
     voxen_embed_shader(matrixRainFrag matrix_rain.frag)
+    voxen_embed_shader(heppGlowFrag hepp_glow.frag)
+    voxen_embed_shader(phiFieldFrag phi_field.frag)
+    voxen_embed_shader(mandelbrotZoomFrag mandelbrot_zoom.frag)
+    voxen_embed_shader(ifsPhantomFrag ifs_phantom.frag)
     voxen_embed_shader(carouselFrag carousel.frag)
     voxen_embed_shader(imguiPanelFrag imgui_panel.frag)
 endif()
@@ -85,6 +89,8 @@ endif()
 
 add_library(voxen_engine STATIC
     core/src/Engine.cpp
+    audio/src/AmbientMusic.cpp
+    audio/src/Mp3Library.cpp
     xr/src/XrContext.cpp
     xr/src/XrSession.cpp
     xr/src/MetaSceneProvider.cpp
@@ -96,6 +102,7 @@ add_library(voxen_engine STATIC
 target_include_directories(voxen_engine
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/core/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/audio/include
         ${CMAKE_CURRENT_SOURCE_DIR}/xr/include
         ${CMAKE_CURRENT_SOURCE_DIR}/render/include
         ${CMAKE_CURRENT_SOURCE_DIR}/scene/include
@@ -104,6 +111,7 @@ target_include_directories(voxen_engine
 
 target_compile_definitions(voxen_engine PUBLIC XR_USE_GRAPHICS_API_VULKAN)
 if(ANDROID)
+    target_link_libraries(voxen_engine PUBLIC aaudio)
     target_compile_definitions(voxen_engine PUBLIC XR_USE_PLATFORM_ANDROID)
 elseif(WIN32)
     target_compile_definitions(voxen_engine PUBLIC XR_USE_PLATFORM_WIN32)

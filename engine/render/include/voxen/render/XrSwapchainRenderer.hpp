@@ -9,6 +9,8 @@
 #include <vulkan/vulkan.h>
 #include <openxr/openxr.h>
 #include <voxen/scene/Scene.hpp>
+#include <voxen/audio/AmbientMusic.hpp>
+#include <voxen/audio/Mp3Library.hpp>
 #include <voxen/scene/EnvironmentSurface.hpp>
 #ifdef VOXEN_WITH_IMGUI
 #include <voxen/ui/CarouselUi.hpp>
@@ -43,6 +45,9 @@ public:
         VkQueue queue,
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
+#ifdef __ANDROID__
+    void configureMusicJavaVm(JavaVM* vm) {mp3Library_.initialize(vm);}
+#endif
     // Provider output is empty until Meta OpenXR scene acquisition succeeds.
     struct MeshGeometry { XrPosef pose{}; const std::vector<XrVector3f>* vertices=nullptr; const std::vector<uint32_t>* indices=nullptr; };
     void setSceneMeshes(const std::vector<MeshGeometry>& meshes);
@@ -84,6 +89,8 @@ private:
     void createFramebuffers();
     void renderImage(EyeSwapchain& eye, uint32_t imageIndex, const XrView& view);
 
+    voxen::audio::AmbientMusic ambientMusic_{};
+    voxen::audio::Mp3Library mp3Library_{};
     ::XrSession session_ = XR_NULL_HANDLE;
     VkDevice device_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
@@ -108,6 +115,10 @@ private:
     VkPipeline meshWirePipeline_ = VK_NULL_HANDLE;
     VkPipeline meshDepthPipeline_ = VK_NULL_HANDLE;
     VkPipeline matrixRainPipeline_ = VK_NULL_HANDLE;
+    VkPipeline heppGlowPipeline_ = VK_NULL_HANDLE;
+    VkPipeline phiFieldPipeline_ = VK_NULL_HANDLE;
+    VkPipeline mandelbrotZoomPipeline_ = VK_NULL_HANDLE;
+    VkPipeline ifsPhantomPipeline_ = VK_NULL_HANDLE;
     VkBuffer meshWireBuffer_ = VK_NULL_HANDLE;
     VkBuffer meshDepthBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory meshDepthMemory_ = VK_NULL_HANDLE;

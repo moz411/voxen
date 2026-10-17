@@ -2,16 +2,28 @@
 #include <array>
 #include <cstdint>
 #include <string_view>
+#include <string>
+#include <vector>
 
 namespace voxen::ui {
 // UI and XR geometry are intentionally separate: controller rays must be
 // projected into panel-local UVs before forwarding mouse events to ImGui.
 struct CarouselState {
     int page = 0;
+    int musicTrack = 0;
+    bool musicPlaying = false;
+    float musicVolume = 0.45f;
+    bool musicReady = false;
+    int musicSource = 0; // 0 procedural, 1 local MP3 files
+    int musicFile = 0;
+    bool musicRescan = false;
+    std::vector<std::string> musicFiles;
+    std::string musicError;
     bool visible = true;
     bool liquidRoom = true;
     float liquidOpacity = 0.42f;
     int maxLiquidWalls = 3;
+    bool includeFloorCeiling = true;
     bool showSceneMesh = false;
     bool sceneOcclusion = false;
     float sceneDepthBias = 0.002f;
@@ -28,9 +40,9 @@ struct CarouselState {
     float gpuMs = 0.0f;
     bool gpuAvailable = false;
 };
-inline constexpr std::array<std::string_view, 8> pages = {
+inline constexpr std::array<std::string_view, 9> pages = {
     "COLORS","SHAPES","ALGORITHMS","SHADERS",
-    "PARAMS","ANIMATIONS","SAVE / LOAD","BACKGROUNDS"
+    "PARAMS","ANIMATIONS","SAVE / LOAD","BACKGROUNDS","MUSIC"
 };
 // Caller owns ImGui frame lifecycle. Draws controls into ImDrawData; no XR
 // input/passthrough assumptions are hidden in this unit.
