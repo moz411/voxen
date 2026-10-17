@@ -145,6 +145,8 @@ void XrContext::createInstance() {
                   has(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME) &&
                   has(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
     if(sceneEnabled_) {
+        if(has(XR_META_SPATIAL_ENTITY_DISCOVERY_EXTENSION_NAME))
+            extensions.push_back(XR_META_SPATIAL_ENTITY_DISCOVERY_EXTENSION_NAME);
         extensions.push_back(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME);
         extensions.push_back(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
         extensions.push_back(XR_FB_SCENE_EXTENSION_NAME);
