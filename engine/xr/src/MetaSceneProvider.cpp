@@ -41,9 +41,30 @@ void MetaSceneProvider::initialize(XrInstance instance,XrSession session) {
         query_=nullptr;
         sceneLog("Scene query functions unavailable",0);
     }
+    if(load("xrDiscoverSpacesMETA",reinterpret_cast<PFN_xrVoidFunction*>(&discover_)) &&
+       load("xrRetrieveSpaceDiscoveryResultsMETA",
+            reinterpret_cast<PFN_xrVoidFunction*>(&retrieveDiscovery_))) {
+        usingDiscovery_=true;
+        sceneLog("META discovery backend enabled",1);
+    } else {
+        discover_=nullptr;
+        retrieveDiscovery_=nullptr;
+        usingDiscovery_=false;
+        sceneLog("META discovery backend unavailable",0);
+    }
 }
 void MetaSceneProvider::request() {
-    if(!query_ || pending_)return;
+    if(pending_)return;
+    if(usingDiscovery_) {
+        // No filters on first pass: enumerate accessible persistent spatial
+        // entities. Scene semantic / bounded-2D filtering is done afterward.
+        XrSpaceDiscoveryInfoMETA info{XR_TYPE_SPACE_DISCOVERY_INFO_META};
+        const XrResult result=discover_(session_,&info,&requestId_);
+        pending_=XR_SUCCEEDED(result);
+        sceneLog("META discovery request result",static_cast<int>(result));
+        return;
+    }
+    if(!query_)return;
     // Meta's Scene API expects the local-storage filter chained to the
     // component filter when querying room-capture plane anchors.
     // This runtime rejects a storage-only filter (XR_ERROR_VALIDATION_FAILURE).
@@ -66,7 +87,37 @@ void MetaSceneProvider::request() {
 }
 void MetaSceneProvider::onEvent(const XrEventDataBaseHeader* event) {
     if(!pending_ || !event)return;
-    if(event->type==XR_TYPE_EVENT_DATA_SPACE_QUERY_RESULTS_AVAILABLE_FB) {
+    if(usingDiscovery_ && event->type==XR_TYPE_EVENT_DATA_SPACE_DISCOVERY_RESULTS_AVAILABLE_META) {
+        const auto* e=reinterpret_cast<const XrEventDataSpaceDiscoveryResultsAvailableMETA*>(event);
+        if(e->requestId!=requestId_)return;
+        XrSpaceDiscoveryResultsMETA results{XR_TYPE_SPACE_DISCOVERY_RESULTS_META};
+        const XrResult countResult=retrieveDiscovery_(session_,requestId_,&results);
+        sceneLog("META discovery retrieve count result",static_cast<int>(countResult));
+        sceneLog("META discovery candidate count",static_cast<int>(results.resultCountOutput));
+        if((XR_FAILED(countResult) && countResult!=XR_ERROR_SIZE_INSUFFICIENT) ||
+           results.resultCountOutput==0)return;
+        std::vector<XrSpaceDiscoveryResultMETA> batch(results.resultCountOutput);
+        results.resultCapacityInput=static_cast<uint32_t>(batch.size());
+        results.results=batch.data();
+        const XrResult dataResult=retrieveDiscovery_(session_,requestId_,&results);
+        sceneLog("META discovery retrieve data result",static_cast<int>(dataResult));
+        if(XR_SUCCEEDED(dataResult)) {
+            for(uint32_t i=0;i<results.resultCountOutput;i++) {
+                XrSpaceQueryResultFB space{};
+                space.space=batch[i].space;
+                space.uuid=batch[i].uuid;
+                spaces_.push_back(space);
+            }
+            sceneLog("META discovery spaces retrieved",static_cast<int>(spaces_.size()));
+        }
+    } else if(usingDiscovery_ && event->type==XR_TYPE_EVENT_DATA_SPACE_DISCOVERY_COMPLETE_META) {
+        const auto* e=reinterpret_cast<const XrEventDataSpaceDiscoveryCompleteMETA*>(event);
+        if(e->requestId==requestId_) {
+            pending_=false;
+            sceneLog("META discovery complete",static_cast<int>(e->result));
+            sceneLog("META discovery total spaces",static_cast<int>(spaces_.size()));
+        }
+    } else if(!usingDiscovery_ && event->type==XR_TYPE_EVENT_DATA_SPACE_QUERY_RESULTS_AVAILABLE_FB) {
         const auto* e=reinterpret_cast<const XrEventDataSpaceQueryResultsAvailableFB*>(event);
         if(e->requestId!=requestId_)return;
         XrSpaceQueryResultsFB results{XR_TYPE_SPACE_QUERY_RESULTS_FB};
@@ -86,7 +137,7 @@ void MetaSceneProvider::onEvent(const XrEventDataBaseHeader* event) {
             for(uint32_t i=0;i<results.resultCountOutput;i++)spaces_.push_back(batch[i]);
             sceneLog("Scene spaces retrieved",static_cast<int>(spaces_.size()));
         }
-    } else if(event->type==XR_TYPE_EVENT_DATA_SPACE_QUERY_COMPLETE_FB) {
+    } else if(!usingDiscovery_ && event->type==XR_TYPE_EVENT_DATA_SPACE_QUERY_COMPLETE_FB) {
         const auto* e=reinterpret_cast<const XrEventDataSpaceQueryCompleteFB*>(event);
         if(e->requestId==requestId_) {
             pending_=false;
@@ -144,6 +195,7 @@ void MetaSceneProvider::shutdown() {
     spaces_.clear();surfaces_.clear();pending_=false;requestId_=0;
     lastWallCount_=0;
     query_=nullptr;retrieve_=nullptr;bounds_=nullptr;labels_=nullptr;
+    discover_=nullptr;retrieveDiscovery_=nullptr;usingDiscovery_=false;
     session_=XR_NULL_HANDLE;
 }
 } // namespace voxen::xr
