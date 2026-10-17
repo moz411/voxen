@@ -187,8 +187,11 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
         const XrResult labelCountResult=labels_(session_,result.space,&labels);
         if(XR_FAILED(labelCountResult) || labels.bufferCountOutput==0 ||
            labels.bufferCountOutput>1024) {
-            if(lastWallCount_==0)sceneLog("Scene label count status",
-                                         static_cast<int>(labelCountResult));
+            static bool labelFailureLogged=false;
+            if(!labelFailureLogged) {
+                sceneLog("Scene label count status",static_cast<int>(labelCountResult));
+                labelFailureLogged=true;
+            }
             continue;
         }
         std::vector<char> buffer(labels.bufferCountOutput+1,'\0');
