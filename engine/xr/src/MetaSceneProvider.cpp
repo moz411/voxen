@@ -113,11 +113,17 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
         wall.halfExtents={rect.extent.width*0.5f,rect.extent.height*0.5f};
         wall.tracked=true;
         walls.push_back(wall);
+        if(walls.size()>=16)break;
+    }
+    if(walls.size()!=lastWallCount_) {
+        lastWallCount_=static_cast<uint32_t>(walls.size());
+        sceneLog("Tracked wall count",static_cast<int>(lastWallCount_));
     }
     surfaces_=std::move(walls);
 }
 void MetaSceneProvider::shutdown() {
     spaces_.clear();surfaces_.clear();pending_=false;requestId_=0;
+    lastWallCount_=0;
     query_=nullptr;retrieve_=nullptr;bounds_=nullptr;labels_=nullptr;
     session_=XR_NULL_HANDLE;
 }
