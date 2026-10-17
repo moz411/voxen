@@ -39,8 +39,8 @@ void drawCarousel(CarouselState& state) {
         }
         case 7:
             ImGui::Checkbox("Wall effect",&state.liquidRoom);
-            static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD"};
-            ImGui::Combo("Wall shader",&state.wallShaderMode,effects,5);
+            static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM"};
+            ImGui::Combo("Wall shader",&state.wallShaderMode,effects,6);
             if(state.wallShaderMode==1) {
                 ImGui::ColorEdit3("Wall color",state.wallColor);
                 ImGui::SliderFloat("Solid opacity",&state.wallSolidOpacity,0.1f,1.0f);
