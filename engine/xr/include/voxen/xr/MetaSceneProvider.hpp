@@ -32,6 +32,12 @@ private:
     std::vector<XrSpace> requestedLocatable_;
     std::vector<XrSpace> requestedMesh_;
     std::vector<XrSpace> inspectedMesh_;
+    struct CapturedMesh {
+        XrSpace space = XR_NULL_HANDLE;
+        std::vector<XrVector3f> vertices;
+        std::vector<uint32_t> indices;
+    };
+    std::vector<CapturedMesh> capturedMeshes_;
     PFN_xrGetSpaceTriangleMeshMETA getTriangleMesh_ = nullptr;
     PFN_xrRetrieveSpaceQueryResultsFB retrieve_ = nullptr;
     PFN_xrGetSpaceBoundingBox2DFB bounds_ = nullptr;
