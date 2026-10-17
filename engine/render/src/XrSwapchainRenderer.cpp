@@ -110,6 +110,7 @@ void XrSwapchainRenderer::initialize(
     io.IniFilename = nullptr;
     // Fetch the rasterized font atlas before the backend uploads it.
     io.Fonts->AddFontDefault();
+    io.Fonts->Build();
 #endif
 }
 
