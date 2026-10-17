@@ -110,6 +110,7 @@ private:
     bool imguiContextOwned_ = false;
     bool uiTrigger_[2]{};
     bool panelAimed_ = false;
+    float panelHitDistance_ = 0.0f;
     voxen::ui::ImGuiSurface imguiSurface_{};
     VkPipeline imguiPanelPipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout imguiPanelPipelineLayout_ = VK_NULL_HANDLE;
