@@ -12,6 +12,7 @@
 #include <voxen/scene/EnvironmentSurface.hpp>
 #ifdef VOXEN_WITH_IMGUI
 #include <voxen/ui/CarouselUi.hpp>
+#include <voxen/ui/ImGuiSurface.hpp>
 #endif
 #ifdef _WIN32
 #include <windows.h>
@@ -35,6 +36,7 @@ public:
     void initialize(
         XrInstance instance,
         XrSystemId systemId,
+        VkInstance vulkanInstance,
         ::XrSession session,
         VkDevice device,
         VkPhysicalDevice physicalDevice,
@@ -106,6 +108,9 @@ private:
 #ifdef VOXEN_WITH_IMGUI
     voxen::ui::CarouselState imguiCarousel_{};
     bool imguiContextOwned_ = false;
+    voxen::ui::ImGuiSurface imguiSurface_{};
+    VkPipeline imguiPanelPipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout imguiPanelPipelineLayout_ = VK_NULL_HANDLE;
     std::chrono::steady_clock::time_point lastUiFrame_{};
 #endif
     VkPipeline laserPipeline_ = VK_NULL_HANDLE;
