@@ -36,6 +36,8 @@ public:
         VkQueue queue,
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
+    [[nodiscard]] float lastGpuMs() const noexcept { return lastGpuMs_; }
+    [[nodiscard]] bool gpuTimingAvailable() const noexcept { return gpuTimestampPool_ != VK_NULL_HANDLE; }
     void updateControllerInteraction(const std::array<XrPosef, 2>& poses,
                                      const std::array<bool, 2>& tracked,
                                      const std::array<bool, 2>& pressed,
@@ -75,6 +77,10 @@ private:
     VkCommandPool commandPool_ = VK_NULL_HANDLE;
     VkCommandBuffer commandBuffer_ = VK_NULL_HANDLE;
     VkFence fence_ = VK_NULL_HANDLE;
+    VkQueryPool gpuTimestampPool_ = VK_NULL_HANDLE;
+    float timestampPeriodNs_ = 0.0f;
+    float lastGpuMs_ = 0.0f;
+    uint64_t completedGpuSamples_ = 0;
     VkFormat colorFormat_ = VK_FORMAT_UNDEFINED;
     VkRenderPass renderPass_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
