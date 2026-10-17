@@ -305,7 +305,7 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
         const auto knownPlane=std::find_if(cachedPlanes_.begin(),cachedPlanes_.end(),
             [&](const auto& item){return item.space==result.space;});
         if(knownPlane!=cachedPlanes_.end()) {
-            if(!knownPlane->wall)continue;
+            if(knownPlane->classification==voxen::scene::SurfaceClass::Unknown)continue;
             rect=knownPlane->rect;
         } else {
             // Semantic labels and plane bounds are static for this capture:
@@ -318,11 +318,18 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
             labels.bufferCapacityInput=static_cast<uint32_t>(buffer.size());
             labels.buffer=buffer.data();
             if(XR_FAILED(labels_(session_,result.space,&labels)))continue;
-            const bool isWall=std::strstr(buffer.data(),"WALL_FACE")!=nullptr &&
-                std::strstr(buffer.data(),"INVISIBLE_WALL_FACE")==nullptr;
-            if(isWall && XR_FAILED(bounds_(session_,result.space,&rect)))continue;
-            cachedPlanes_.push_back({result.space,rect,isWall});
-            if(!isWall)continue;
+            voxen::scene::SurfaceClass classification=voxen::scene::SurfaceClass::Unknown;
+            if(std::strstr(buffer.data(),"WALL_FACE")!=nullptr &&
+               std::strstr(buffer.data(),"INVISIBLE_WALL_FACE")==nullptr)
+                classification=voxen::scene::SurfaceClass::Wall;
+            else if(std::strstr(buffer.data(),"FLOOR")!=nullptr)
+                classification=voxen::scene::SurfaceClass::Floor;
+            else if(std::strstr(buffer.data(),"CEILING")!=nullptr)
+                classification=voxen::scene::SurfaceClass::Ceiling;
+            if(classification!=voxen::scene::SurfaceClass::Unknown &&
+               XR_FAILED(bounds_(session_,result.space,&rect)))continue;
+            cachedPlanes_.push_back({result.space,rect,classification});
+            if(classification==voxen::scene::SurfaceClass::Unknown)continue;
         }
         XrSpaceLocation loc{XR_TYPE_SPACE_LOCATION};
         if(XR_FAILED(xrLocateSpace(result.space,localSpace,time,&loc)))continue;
@@ -339,7 +346,8 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
             uuidHash*=1099511628211ull;
         }
         wall.id=uuidHash;
-        wall.classification=voxen::scene::SurfaceClass::Wall;
+        wall.classification=(knownPlane!=cachedPlanes_.end()) ? knownPlane->classification :
+            cachedPlanes_.back().classification;
         wall.center={pose.position.x+delta.x,pose.position.y+delta.y,pose.position.z+delta.z};
         wall.orientation={pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w};
         wall.halfExtents={rect.extent.width*0.5f,rect.extent.height*0.5f};
@@ -349,7 +357,7 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
     }
     if(walls.size()!=lastWallCount_) {
         lastWallCount_=static_cast<uint32_t>(walls.size());
-        sceneLog("Tracked wall count",static_cast<int>(lastWallCount_));
+        sceneLog("Tracked background surface count",static_cast<int>(lastWallCount_));
     }
     surfaces_=std::move(walls);
 }
