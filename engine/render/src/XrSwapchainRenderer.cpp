@@ -21,6 +21,8 @@
 #include "cubeVert.spv.hpp"
 #include "proceduralFrag.spv.hpp"
 #include "organicaVert.spv.hpp"
+#include "voxelBrushVert.spv.hpp"
+#include "voxelBrushFrag.spv.hpp"
 #include "fractalFrag.spv.hpp"
 #include "fractalVert.spv.hpp"
 #include "laserFrag.spv.hpp"
@@ -557,6 +559,7 @@ void XrSwapchainRenderer::createPipeline() {
     };
     buildPipeline(cubeVert, cubeVertSize, proceduralFrag, proceduralFragSize, pipeline_);
     buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
+    buildPipeline(voxelBrushVert, voxelBrushVertSize, voxelBrushFrag, voxelBrushFragSize, voxelBrushPipeline_);
     buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
@@ -684,6 +687,35 @@ void XrSwapchainRenderer::updateControllerInteraction(
         if(hand==1 && panelAimed_) {
             hoveredArtwork_[hand]=-1;
             heldArtwork_[hand]=-1;
+            previousPress_[hand]=pressed[hand];
+            continue;
+        }
+#endif
+#ifdef VOXEN_WITH_IMGUI
+        if(hand==1 && imguiCarousel_.voxelBrushEnabled){
+            heldArtwork_[hand]=-1;
+            hoveredArtwork_[hand]=-1;
+            if(pressed[hand]){
+                const auto& q=poses[hand].orientation;
+                VoxelStrokeStamp stamp{};
+                stamp.position={
+                    poses[hand].position.x-0.13f*2.f*(q.x*q.z+q.w*q.y),
+                    poses[hand].position.y-0.13f*2.f*(q.y*q.z-q.w*q.x),
+                    poses[hand].position.z-0.13f*(1.f-2.f*(q.x*q.x+q.y*q.y))};
+                stamp.sizeMeters=std::clamp(imguiCarousel_.voxelSizeCm,1.f,30.f)*0.01f;
+                stamp.shape=std::clamp(imguiCarousel_.voxelShape,0,7);
+                stamp.material=std::clamp(imguiCarousel_.voxelMaterial,0,2);
+                stamp.color={imguiCarousel_.voxelColor[0],imguiCarousel_.voxelColor[1],imguiCarousel_.voxelColor[2]};
+                const float dx=stamp.position[0]-lastVoxelTip_[0];
+                const float dy=stamp.position[1]-lastVoxelTip_[1];
+                const float dz=stamp.position[2]-lastVoxelTip_[2];
+                const float minSpacing=stamp.sizeMeters*0.65f;
+                if(!lastVoxelTipValid_ || dx*dx+dy*dy+dz*dz>=minSpacing*minSpacing){
+                    if(voxelStamps_.size()<2048)voxelStamps_.push_back(stamp);
+                    lastVoxelTip_=stamp.position;
+                    lastVoxelTipValid_=true;
+                }
+            } else lastVoxelTipValid_=false;
             previousPress_[hand]=pressed[hand];
             continue;
         }
@@ -1011,6 +1043,38 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             0, sizeof(constants), &constants);
         vkCmdDraw(commandBuffer_, vertices, 1, 0, 0);
     }
+    // Voxel strokes: individual preset snapshots are kept after brush changes.
+    if(voxelBrushPipeline_!=VK_NULL_HANDLE){
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,voxelBrushPipeline_);
+        auto drawStamp=[&](const VoxelStrokeStamp& stamp){
+            const auto mvp=multiply(projView,modelMatrix(
+                stamp.position[0],stamp.position[1],stamp.sizeMeters,
+                stamp.position[2],0.f));
+            ProceduralPushConstants pc{mvp,{
+                stamp.color[0],stamp.color[1],stamp.color[2],
+                float(stamp.shape+8*stamp.material)}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,stamp.shape==0?36:32*16*6,1,0,0);
+        };
+        for(const auto& stamp:voxelStamps_)drawStamp(stamp);
+#ifdef VOXEN_WITH_IMGUI
+        if(imguiCarousel_.voxelBrushEnabled && controllerTracked_[1] && !panelAimed_){
+            const auto& pose=controllerPoses_[1];
+            const auto& q=pose.orientation;
+            VoxelStrokeStamp tip{};
+            tip.position={
+                pose.position.x-0.13f*2.f*(q.x*q.z+q.w*q.y),
+                pose.position.y-0.13f*2.f*(q.y*q.z-q.w*q.x),
+                pose.position.z-0.13f*(1.f-2.f*(q.x*q.x+q.y*q.y))};
+            tip.sizeMeters=std::clamp(imguiCarousel_.voxelSizeCm,1.f,30.f)*0.01f;
+            tip.shape=std::clamp(imguiCarousel_.voxelShape,0,7);
+            tip.material=std::clamp(imguiCarousel_.voxelMaterial,0,2);
+            tip.color={imguiCarousel_.voxelColor[0],imguiCarousel_.voxelColor[1],imguiCarousel_.voxelColor[2]};
+            drawStamp(tip);
+        }
+#endif
+    }
 #ifdef VOXEN_WITH_IMGUI
     // Minimal native eight-page carousel scaffold, left-hand anchored.
     if (controllerTracked_[0] && imguiSurface_.ready() && imguiPanelPipeline_ != VK_NULL_HANDLE) {
@@ -1260,6 +1324,8 @@ void XrSwapchainRenderer::shutdown() noexcept {
 
     if (pipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, pipeline_, nullptr); pipeline_ = VK_NULL_HANDLE; }
     if (organicaPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, organicaPipeline_, nullptr); organicaPipeline_ = VK_NULL_HANDLE; }
+    if(voxelBrushPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxelBrushPipeline_,nullptr);voxelBrushPipeline_=VK_NULL_HANDLE;}
+    voxelStamps_.clear();
     if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
     if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
