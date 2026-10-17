@@ -2,6 +2,8 @@
 #include <array>
 #include <cstdint>
 #include <string_view>
+#include <string>
+#include <vector>
 
 namespace voxen::ui {
 // UI and XR geometry are intentionally separate: controller rays must be
@@ -12,6 +14,11 @@ struct CarouselState {
     bool musicPlaying = false;
     float musicVolume = 0.45f;
     bool musicReady = false;
+    int musicSource = 0; // 0 procedural, 1 local MP3 files
+    int musicFile = 0;
+    bool musicRescan = false;
+    std::vector<std::string> musicFiles;
+    std::string musicError;
     bool visible = true;
     bool liquidRoom = true;
     float liquidOpacity = 0.42f;
