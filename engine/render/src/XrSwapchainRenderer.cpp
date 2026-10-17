@@ -71,6 +71,21 @@ void XrSwapchainRenderer::initialize(
     if (depthFormat_ == VK_FORMAT_UNDEFINED) throw std::runtime_error("No Vulkan depth attachment format supported");
     queueFamilyIndex_ = queueFamilyIndex;
 
+    VkPhysicalDeviceProperties gpuProps{};
+    vkGetPhysicalDeviceProperties(physicalDevice_, &gpuProps);
+    uint32_t familyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &familyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> families(familyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &familyCount, families.data());
+    if (queueFamilyIndex_ < familyCount &&
+        families[queueFamilyIndex_].timestampValidBits != 0 &&
+        gpuProps.limits.timestampComputeAndGraphics == VK_TRUE) {
+        VkQueryPoolCreateInfo qi{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+        qi.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        qi.queryCount = 2;
+        if (vkCreateQueryPool(device_, &qi, nullptr, &gpuTimestampPool_) == VK_SUCCESS)
+            timestampPeriodNs_ = gpuProps.limits.timestampPeriod;
+    }
     createCommandResources();
     createSwapchains(instance, systemId, session);
     createPipeline();
@@ -539,6 +554,11 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     checkVk(vkBeginCommandBuffer(commandBuffer_, &begin), "vkBeginCommandBuffer");
 
+    if (gpuTimestampPool_ != VK_NULL_HANDLE) {
+        vkCmdResetQueryPool(commandBuffer_, gpuTimestampPool_, 0, 2);
+        vkCmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpuTimestampPool_, 0);
+    }
+
     auto& layout=eye.layouts.at(imageIndex);
     if (layout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
         VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -628,10 +648,20 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_, 36, 1, 0, 0);
     }
     vkCmdEndRenderPass(commandBuffer_);
+    if (gpuTimestampPool_ != VK_NULL_HANDLE)
+        vkCmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpuTimestampPool_, 1);
     checkVk(vkEndCommandBuffer(commandBuffer_), "vkEndCommandBuffer");
     VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO}; submit.commandBufferCount=1; submit.pCommandBuffers=&commandBuffer_;
     checkVk(vkQueueSubmit(queue_,1,&submit,fence_), "vkQueueSubmit");
     checkVk(vkWaitForFences(device_,1,&fence_,VK_TRUE,UINT64_MAX), "vkWaitForFences");
+    if (gpuTimestampPool_ != VK_NULL_HANDLE) {
+        uint64_t ts[2]{};
+        if (vkGetQueryPoolResults(device_,gpuTimestampPool_,0,2,sizeof(ts),ts,sizeof(uint64_t),
+                VK_QUERY_RESULT_64_BIT) == VK_SUCCESS && ts[1] >= ts[0]) {
+            const float ms = static_cast<float>(ts[1]-ts[0])*timestampPeriodNs_*1e-6f;
+            lastGpuMs_ = completedGpuSamples_++ == 0 ? ms : lastGpuMs_*0.9f+ms*0.1f;
+        }
+    }
 }
 
 void XrSwapchainRenderer::render(
@@ -707,6 +737,10 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (pipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr); pipelineLayout_ = VK_NULL_HANDLE; }
     if (renderPass_ != VK_NULL_HANDLE) { vkDestroyRenderPass(device_, renderPass_, nullptr); renderPass_ = VK_NULL_HANDLE; }
 
+    if (gpuTimestampPool_ != VK_NULL_HANDLE) {
+        vkDestroyQueryPool(device_, gpuTimestampPool_, nullptr);
+        gpuTimestampPool_ = VK_NULL_HANDLE;
+    }
     if (fence_ != VK_NULL_HANDLE) {
         vkDestroyFence(device_, fence_, nullptr);
         fence_ = VK_NULL_HANDLE;
