@@ -8,6 +8,10 @@ namespace voxen::ui {
 // projected into panel-local UVs before forwarding mouse events to ImGui.
 struct CarouselState {
     int page = 0;
+    int musicTrack = 0;
+    bool musicPlaying = false;
+    float musicVolume = 0.45f;
+    bool musicReady = false;
     bool visible = true;
     bool liquidRoom = true;
     float liquidOpacity = 0.42f;
@@ -28,9 +32,9 @@ struct CarouselState {
     float gpuMs = 0.0f;
     bool gpuAvailable = false;
 };
-inline constexpr std::array<std::string_view, 8> pages = {
+inline constexpr std::array<std::string_view, 9> pages = {
     "COLORS","SHAPES","ALGORITHMS","SHADERS",
-    "PARAMS","ANIMATIONS","SAVE / LOAD","BACKGROUNDS"
+    "PARAMS","ANIMATIONS","SAVE / LOAD","BACKGROUNDS","MUSIC"
 };
 // Caller owns ImGui frame lifecycle. Draws controls into ImDrawData; no XR
 // input/passthrough assumptions are hidden in this unit.
