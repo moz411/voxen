@@ -44,7 +44,13 @@ void MetaSceneProvider::initialize(XrInstance instance,XrSession session) {
 }
 void MetaSceneProvider::request() {
     if(!query_ || pending_)return;
+    // Meta's Scene API expects the local-storage filter chained to the
+    // component filter when querying room-capture plane anchors.
+    XrSpaceStorageLocationFilterInfoFB storage{
+        XR_TYPE_SPACE_STORAGE_LOCATION_FILTER_INFO_FB};
+    storage.location=XR_SPACE_STORAGE_LOCATION_LOCAL_FB;
     XrSpaceComponentFilterInfoFB filter{XR_TYPE_SPACE_COMPONENT_FILTER_INFO_FB};
+    filter.next=&storage;
     filter.componentType=XR_SPACE_COMPONENT_TYPE_BOUNDED_2D_FB;
     XrSpaceQueryInfoFB info{XR_TYPE_SPACE_QUERY_INFO_FB};
     info.queryAction=XR_SPACE_QUERY_ACTION_LOAD_FB;
