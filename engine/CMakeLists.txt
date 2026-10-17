@@ -40,6 +40,7 @@ if(ANDROID OR WIN32)
     voxen_embed_shader(fractalVert fractal.vert)
     voxen_embed_shader(laserFrag laser.frag)
     voxen_embed_shader(liquidRoomFrag liquid_room.frag)
+    voxen_embed_shader(solidWallFrag solid_wall.frag)
     voxen_embed_shader(carouselFrag carousel.frag)
     voxen_embed_shader(imguiPanelFrag imgui_panel.frag)
 endif()
@@ -81,6 +82,7 @@ add_library(voxen_engine STATIC
     core/src/Engine.cpp
     xr/src/XrContext.cpp
     xr/src/XrSession.cpp
+    xr/src/MetaSceneProvider.cpp
     render/src/VulkanContext.cpp
     render/src/XrSwapchainRenderer.cpp
     ${VOXEN_SHADER_HEADERS}

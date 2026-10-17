@@ -102,6 +102,7 @@ private:
     VkPipeline organicaPipeline_ = VK_NULL_HANDLE;
     VkPipeline fractalPipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
+    VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
     VkPipeline carouselPipeline_ = VK_NULL_HANDLE;
     int nativeMenuPage_ = 0;
     bool nativeMenuStickLatched_ = false;

@@ -25,6 +25,7 @@
 #include "fractalVert.spv.hpp"
 #include "laserFrag.spv.hpp"
 #include "liquidRoomFrag.spv.hpp"
+#include "solidWallFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "imguiPanelFrag.spv.hpp"
 
@@ -283,6 +284,28 @@ Mat4 modelMatrix(float x = 0.0F, float y = 0.0F, float scale = 0.25F, float z = 
     return m;
 }
 
+// Room surfaces arrive from the Scene provider in LOCAL space (meters).
+// Transform the quad's local XY coordinates into the oriented tracked plane.
+Mat4 surfaceModel(const voxen::scene::EnvironmentSurface& surface) {
+    const auto& q=surface.orientation;
+    const float x=q[0],y=q[1],z=q[2],w=q[3];
+    Mat4 m{};
+    m.m[0]=(1.f-2.f*(y*y+z*z))*surface.halfExtents[0];
+    m.m[1]=(2.f*(x*y+z*w))*surface.halfExtents[0];
+    m.m[2]=(2.f*(x*z-y*w))*surface.halfExtents[0];
+    m.m[4]=(2.f*(x*y-z*w))*surface.halfExtents[1];
+    m.m[5]=(1.f-2.f*(x*x+z*z))*surface.halfExtents[1];
+    m.m[6]=(2.f*(y*z+x*w))*surface.halfExtents[1];
+    m.m[8]=2.f*(x*z+y*w);
+    m.m[9]=2.f*(y*z-x*w);
+    m.m[10]=1.f-2.f*(x*x+y*y);
+    m.m[12]=surface.center[0];
+    m.m[13]=surface.center[1];
+    m.m[14]=surface.center[2];
+    m.m[15]=1.f;
+    return m;
+}
+
 // A slender cube aligned with the controller's local -Z aiming direction.
 Mat4 laserMatrix(const XrPosef& pose, float distance) {
     const auto& q = pose.orientation;
@@ -394,7 +417,7 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &carouselPipeline_
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
         || &out == &imguiPanelPipeline_
 #endif
@@ -406,7 +429,7 @@ void XrSwapchainRenderer::createPipeline() {
         ) ds.depthTestEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &carouselPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -442,6 +465,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, solidWallFrag, solidWallFragSize, solidWallPipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
 #ifdef VOXEN_WITH_IMGUI
     buildPipeline(fractalVert, fractalVertSize, imguiPanelFrag, imguiPanelFragSize, imguiPanelPipeline_);
@@ -690,6 +714,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     // NOT a detected wall. Spatial-surface binding comes in the next stage.
     bool liquidEnabled=true;
     float liquidOpacity=0.42f;
+    int maxLiquidWalls=3;
+    int wallShaderMode=0;
+    std::array<float,3> wallColor{0.12f,0.55f,1.0f};
+    float solidOpacity=0.85f;
     float globalSpeed=1.0f;
     bool artworksVisible=true;
     bool artworksAnimated=true;
@@ -698,20 +726,66 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 #ifdef VOXEN_WITH_IMGUI
     liquidEnabled=imguiCarousel_.liquidRoom;
     liquidOpacity=std::clamp(imguiCarousel_.liquidOpacity,0.0f,0.6f);
+    maxLiquidWalls=std::clamp(imguiCarousel_.maxLiquidWalls,1,8);
+    wallShaderMode=imguiCarousel_.wallShaderMode;
+    wallColor={imguiCarousel_.wallColor[0],imguiCarousel_.wallColor[1],imguiCarousel_.wallColor[2]};
+    solidOpacity=imguiCarousel_.wallSolidOpacity;
     globalSpeed=imguiCarousel_.animationSpeed;
     artworksVisible=imguiCarousel_.showArtworks;
     artworksAnimated=imguiCarousel_.animateArtworks;
     motionMode=imguiCarousel_.artworkMotion;
     motionAmplitude=std::clamp(imguiCarousel_.motionAmplitude,0.0f,0.5f);
 #endif
-    if (liquidEnabled && liquidOpacity>0.001f && liquidRoomPipeline_ != VK_NULL_HANDLE) {
-        vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, liquidRoomPipeline_);
-        const Mat4 planeMvp=multiply(projView,modelMatrix(0.0F,-0.35F,0.65F,-2.25F,0.0F));
-        ProceduralPushConstants liquid{planeMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
-        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            0,sizeof(liquid),&liquid);
-        vkCmdDraw(commandBuffer_,6,1,0,0);
+    if (liquidEnabled && (wallShaderMode==1 || liquidOpacity>0.001f) &&
+        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE) {
+        vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          wallShaderMode==1 ? solidWallPipeline_ : liquidRoomPipeline_);
+        // Only verified/tracked wall planes receive a room projection.
+        // The synthetic development quad remains a fallback until the native
+        // Scene query provider populates EnvironmentSurfaceRegistry.
+        bool wallRendered=false;
+        struct WallCandidate { const voxen::scene::EnvironmentSurface* surface; float distanceSquared; };
+        std::vector<WallCandidate> candidates;
+        const auto& camera=xrView.pose.position;
+        for(const auto& surface:environmentSurfaces_.surfaces()) {
+            if(!surface.tracked || surface.classification!=voxen::scene::SurfaceClass::Wall ||
+               surface.halfExtents[0]<=0.05f || surface.halfExtents[1]<=0.05f)
+                continue;
+            const float dx=surface.center[0]-camera.x;
+            const float dy=surface.center[1]-camera.y;
+            const float dz=surface.center[2]-camera.z;
+            candidates.push_back({&surface,dx*dx+dy*dy+dz*dz});
+        }
+        // Limit fragment-shader fill cost. Same stable ordering in both eyes.
+        std::sort(candidates.begin(),candidates.end(),[](const auto& a,const auto& b) {
+            if(a.distanceSquared!=b.distanceSquared)return a.distanceSquared<b.distanceSquared;
+            return a.surface->id<b.surface->id;
+        });
+        const size_t budget=std::min(candidates.size(),static_cast<size_t>(maxLiquidWalls));
+        for(size_t i=0;i<budget;i++) {
+            const Mat4 wallMvp=multiply(projView,surfaceModel(*candidates[i].surface));
+            ProceduralPushConstants liquid{wallMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
+            if(wallShaderMode==1) {
+                liquid.parameters[0]=wallColor[0];
+                liquid.parameters[1]=wallColor[1];
+                liquid.parameters[2]=wallColor[2];
+                liquid.parameters[3]=solidOpacity;
+            }
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,sizeof(liquid),&liquid);
+            vkCmdDraw(commandBuffer_,6,1,0,0);
+            wallRendered=true;
+        }
+        if(!wallRendered && wallShaderMode==0) {
+            const Mat4 planeMvp=multiply(projView,
+                modelMatrix(0.0F,-0.35F,0.65F,-2.25F,0.0F));
+            ProceduralPushConstants liquid{planeMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,sizeof(liquid),&liquid);
+            vkCmdDraw(commandBuffer_,6,1,0,0);
+        }
     }
     if (artworksVisible) for (const auto& artwork : scene_.artworks()) {
         VkPipeline artPipeline = pipeline_;
@@ -1000,6 +1074,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
     if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
+    if (solidWallPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,solidWallPipeline_,nullptr); solidWallPipeline_=VK_NULL_HANDLE; }
     if (carouselPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,carouselPipeline_,nullptr); carouselPipeline_=VK_NULL_HANDLE; }
 #ifdef VOXEN_WITH_IMGUI
     if (imguiPanelPipeline_ != VK_NULL_HANDLE) {vkDestroyPipeline(device_,imguiPanelPipeline_,nullptr);imguiPanelPipeline_=VK_NULL_HANDLE;}

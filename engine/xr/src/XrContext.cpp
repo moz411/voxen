@@ -12,6 +12,7 @@
 #include <openxr/openxr_platform.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -113,6 +114,50 @@ void XrContext::createInstance() {
     std::printf("[Voxen] XR_FB_passthrough available: %s\n", passthroughEnabled_ ? "yes" : "no");
 #endif
     if (passthroughEnabled_) extensions.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
+    // Scene Model is optional: never prevent startup when spatial data is
+    // unavailable or the user has not completed Space Setup.
+    const auto has=[&](const char* name) {
+        return std::any_of(available.begin(),available.end(),[&](const auto& e) {
+            return std::strcmp(e.extensionName,name)==0;
+        });
+    };
+    // One line per capability: an aggregate "unavailable" hides which
+    // extension is missing on the installed Quest runtime.
+    const std::array<const char*, 8> sceneExtensions = {
+        XR_FB_SCENE_EXTENSION_NAME,
+        XR_FB_SPATIAL_ENTITY_EXTENSION_NAME,
+        XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME,
+        XR_FB_SPATIAL_ENTITY_CONTAINER_EXTENSION_NAME,
+        XR_FB_SCENE_CAPTURE_EXTENSION_NAME,
+        XR_META_SPATIAL_ENTITY_DISCOVERY_EXTENSION_NAME,
+        XR_META_SPATIAL_ENTITY_PERSISTENCE_EXTENSION_NAME,
+        XR_META_SPATIAL_ENTITY_MESH_EXTENSION_NAME
+    };
+    for(const char* name:sceneExtensions) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenScene",
+            "Extension %s: %s",name,has(name)?"yes":"NO");
+#else
+        std::printf("[VoxenScene] Extension %s: %s\\n",name,has(name)?"yes":"NO");
+#endif
+    }
+    sceneEnabled_=has(XR_FB_SCENE_EXTENSION_NAME) &&
+                  has(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME) &&
+                  has(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
+    if(sceneEnabled_) {
+        if(has(XR_META_SPATIAL_ENTITY_DISCOVERY_EXTENSION_NAME))
+            extensions.push_back(XR_META_SPATIAL_ENTITY_DISCOVERY_EXTENSION_NAME);
+        extensions.push_back(XR_FB_SPATIAL_ENTITY_EXTENSION_NAME);
+        extensions.push_back(XR_FB_SPATIAL_ENTITY_QUERY_EXTENSION_NAME);
+        extensions.push_back(XR_FB_SCENE_EXTENSION_NAME);
+    }
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO,"VoxenScene",
+        "Meta Scene extensions: %s",sceneEnabled_?"enabled":"unavailable");
+#else
+    std::printf("[VoxenScene] Meta Scene extensions: %s\\n",sceneEnabled_?"enabled":"unavailable");
+#endif
+
 
     XrInstanceCreateInfo createInfo{XR_TYPE_INSTANCE_CREATE_INFO};
     std::strncpy(createInfo.applicationInfo.applicationName, "Voxen", XR_MAX_APPLICATION_NAME_SIZE - 1);

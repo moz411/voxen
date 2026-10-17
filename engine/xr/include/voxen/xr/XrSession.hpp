@@ -4,6 +4,7 @@
 
 #include <openxr/openxr.h>
 #include <vulkan/vulkan.h>
+#include <voxen/xr/MetaSceneProvider.hpp>
 
 namespace voxen::render { class XrSwapchainRenderer; }
 
@@ -24,7 +25,8 @@ public:
         VkPhysicalDevice physicalDevice,
         VkDevice device,
         uint32_t queueFamilyIndex,
-        bool enablePassthrough = false);
+        bool enablePassthrough = false,
+        bool enableScene = false);
     void shutdown() noexcept;
 
     // Drains runtime events. Returns false when the runtime asks the app to exit.
@@ -60,6 +62,8 @@ private:
     XrSessionState state_ = XR_SESSION_STATE_UNKNOWN;
     bool running_ = false;
     bool enablePassthrough_ = false;
+    bool enableScene_ = false;
+    MetaSceneProvider metaScene_{};
     XrPassthroughFB passthrough_ = XR_NULL_HANDLE;
     XrPassthroughLayerFB passthroughLayer_ = XR_NULL_HANDLE;
     PFN_xrCreatePassthroughFB createPassthrough_ = nullptr;

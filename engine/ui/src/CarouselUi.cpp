@@ -38,10 +38,17 @@ void drawCarousel(CarouselState& state) {
             break;
         }
         case 7:
-            ImGui::Checkbox("Liquid Room",&state.liquidRoom);
-            ImGui::SliderFloat("Opacity",&state.liquidOpacity,0.0f,0.6f);
-            ImGui::TextDisabled("Experimental floating plane");
-            ImGui::TextDisabled("Meta Scene mapping: pending");
+            ImGui::Checkbox("Wall effect",&state.liquidRoom);
+            static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR"};
+            ImGui::Combo("Wall shader",&state.wallShaderMode,effects,2);
+            if(state.wallShaderMode==1) {
+                ImGui::ColorEdit3("Wall color",state.wallColor);
+                ImGui::SliderFloat("Solid opacity",&state.wallSolidOpacity,0.1f,1.0f);
+            } else {
+                ImGui::SliderFloat("Opacity",&state.liquidOpacity,0.0f,0.6f);
+            }
+            ImGui::SliderInt("Max walls",&state.maxLiquidWalls,1,8);
+            ImGui::TextDisabled("Quest fast mode: nearest tracked walls");
             break;
         default:
             ImGui::TextDisabled("Legacy controls: port pending");
