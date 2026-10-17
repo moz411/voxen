@@ -361,15 +361,18 @@ void XrSwapchainRenderer::setSceneMeshes(const std::vector<MeshGeometry>& meshes
     if(meshes.empty())return;
     const auto& mesh=meshes.front();
     meshWirePose_=mesh.pose;
-    if(meshWireBuffer_!=VK_NULL_HANDLE || mesh.vertices.empty() || mesh.indices.empty())return;
+    if(meshWireBuffer_!=VK_NULL_HANDLE || !mesh.vertices || !mesh.indices ||
+       mesh.vertices->empty() || mesh.indices->empty())return;
     std::vector<XrVector3f> lines;
-    lines.reserve(mesh.indices.size()*2);
-    for(size_t i=0;i+2<mesh.indices.size();i+=3) {
-        const auto a=mesh.indices[i], b=mesh.indices[i+1], c=mesh.indices[i+2];
-        if(a>=mesh.vertices.size() || b>=mesh.vertices.size() || c>=mesh.vertices.size())continue;
-        lines.push_back(mesh.vertices[a]);lines.push_back(mesh.vertices[b]);
-        lines.push_back(mesh.vertices[b]);lines.push_back(mesh.vertices[c]);
-        lines.push_back(mesh.vertices[c]);lines.push_back(mesh.vertices[a]);
+    const auto& indices=*mesh.indices;
+    const auto& vertices=*mesh.vertices;
+    lines.reserve(indices.size()*2);
+    for(size_t i=0;i+2<indices.size();i+=3) {
+        const auto a=indices[i], b=indices[i+1], c=indices[i+2];
+        if(a>=vertices.size() || b>=vertices.size() || c>=vertices.size())continue;
+        lines.push_back(vertices[a]);lines.push_back(vertices[b]);
+        lines.push_back(vertices[b]);lines.push_back(vertices[c]);
+        lines.push_back(vertices[c]);lines.push_back(vertices[a]);
     }
     if(lines.empty())return;
     const VkDeviceSize bytes=lines.size()*sizeof(XrVector3f);
