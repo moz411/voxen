@@ -759,6 +759,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     for (std::size_t hand = 0; hand < controllerTracked_.size(); ++hand) {
         if (!controllerTracked_[hand]) continue;
         float length = 2.5F;
+#ifdef VOXEN_WITH_IMGUI
+        if(hand==1 && panelAimed_)length=std::max(0.05f,panelHitDistance_);
+#endif
         const int target = hoveredArtwork_[hand];
         if (target >= 0) {
             const auto& q = controllerPoses_[hand].orientation;
@@ -766,10 +769,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const float dy = -2.0F * (q.y*q.z - q.w*q.x);
             const float dz = -(1.0F - 2.0F * (q.x*q.x + q.y*q.y));
             const auto& c = scene_.artworks()[target].transform.position;
-            length = std::clamp(
+            length = std::min(length,std::clamp(
                 (c[0]-controllerPoses_[hand].position.x)*dx +
                 (c[1]-controllerPoses_[hand].position.y)*dy +
-                (c[2]-controllerPoses_[hand].position.z)*dz, 0.1F, 2.5F);
+                (c[2]-controllerPoses_[hand].position.z)*dz, 0.1F, 2.5F));
         }
         const Mat4 beamMvp = multiply(projView, laserMatrix(controllerPoses_[hand], length));
         ProceduralPushConstants constants{beamMvp, {seconds, 1.0F, 1.0F, 0.0F}};
@@ -831,12 +834,14 @@ void XrSwapchainRenderer::render(
             auto hit=voxen::ui::rayToPanel(controllerPoses_[1],panel,0.22f,0.22f*672.f/512.f);
             if(hit.valid) {
                 aiming=true;
+                panelHitDistance_=hit.distance;
                 io.AddMousePosEvent(hit.u*512.f,hit.v*672.f);
             }
         }
         if(!aiming) io.AddMousePosEvent(-FLT_MAX,-FLT_MAX);
         io.AddMouseButtonEvent(0,aiming && uiTrigger_[1]);
         panelAimed_=aiming;
+        if (!aiming) panelHitDistance_=0.0f;
         imguiCarousel_.page=nativeMenuPage_;
         imguiCarousel_.gpuMs=lastGpuMs_;
         imguiCarousel_.gpuAvailable=gpuTimingAvailable() && completedGpuSamples_>0;
