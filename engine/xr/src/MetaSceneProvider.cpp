@@ -106,7 +106,12 @@ void MetaSceneProvider::onEvent(const XrEventDataBaseHeader* event) {
                 XrSpaceQueryResultFB space{};
                 space.space=batch[i].space;
                 space.uuid=batch[i].uuid;
-                spaces_.push_back(space);
+                const bool known=std::any_of(spaces_.begin(),spaces_.end(),
+                    [&](const auto& existing) {
+                        return std::memcmp(existing.uuid.data,space.uuid.data,
+                                           sizeof(space.uuid.data))==0;
+                    });
+                if(!known)spaces_.push_back(space);
             }
             sceneLog("META discovery spaces retrieved",static_cast<int>(spaces_.size()));
         }
@@ -131,7 +136,12 @@ void MetaSceneProvider::onEvent(const XrEventDataBaseHeader* event) {
                             XrSpaceQueryResultFB space{};
                             space.space=batch[i].space;
                             space.uuid=batch[i].uuid;
-                            spaces_.push_back(space);
+                            const bool known=std::any_of(spaces_.begin(),spaces_.end(),
+                                [&](const auto& existing) {
+                                    return std::memcmp(existing.uuid.data,space.uuid.data,
+                                        sizeof(space.uuid.data))==0;
+                                });
+                            if(!known)spaces_.push_back(space);
                         }
                     }
                 }
@@ -174,8 +184,13 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
     std::vector<voxen::scene::EnvironmentSurface> walls;
     for(const auto& result:spaces_) {
         XrSemanticLabelsFB labels{XR_TYPE_SEMANTIC_LABELS_FB};
-        if(XR_FAILED(labels_(session_,result.space,&labels)) ||
-           labels.bufferCountOutput==0 || labels.bufferCountOutput>1024)continue;
+        const XrResult labelCountResult=labels_(session_,result.space,&labels);
+        if(XR_FAILED(labelCountResult) || labels.bufferCountOutput==0 ||
+           labels.bufferCountOutput>1024) {
+            if(lastWallCount_==0)sceneLog("Scene label count status",
+                                         static_cast<int>(labelCountResult));
+            continue;
+        }
         std::vector<char> buffer(labels.bufferCountOutput+1,'\0');
         labels.bufferCapacityInput=static_cast<uint32_t>(buffer.size());
         labels.buffer=buffer.data();
