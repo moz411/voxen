@@ -20,6 +20,7 @@ private:
     XrSession session_ = XR_NULL_HANDLE;
     XrAsyncRequestIdFB requestId_ = 0;
     bool pending_ = false;
+    uint32_t lastWallCount_ = 0;
     PFN_xrQuerySpacesFB query_ = nullptr;
     PFN_xrRetrieveSpaceQueryResultsFB retrieve_ = nullptr;
     PFN_xrGetSpaceBoundingBox2DFB bounds_ = nullptr;
