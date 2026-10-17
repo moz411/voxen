@@ -18,6 +18,7 @@
 #include "fractalFrag.spv.hpp"
 #include "fractalVert.spv.hpp"
 #include "laserFrag.spv.hpp"
+#include "liquidRoomFrag.spv.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -355,9 +356,18 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_) ? VK_FALSE : VK_TRUE;
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_) ? VK_FALSE : VK_TRUE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
+        if (&out == &liquidRoomPipeline_) {
+            blend.blendEnable=VK_TRUE;
+            blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
+            blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.colorBlendOp=VK_BLEND_OP_ADD;
+            blend.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;
+            blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.alphaBlendOp=VK_BLEND_OP_ADD;
+        }
         VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
         cb.attachmentCount=1; cb.pAttachments=&blend;
         VkDynamicState dyns[]={VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR};
@@ -376,6 +386,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
 }
 
 void XrSwapchainRenderer::createFramebuffers() {
@@ -592,6 +603,17 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     const float seconds = std::chrono::duration<float>(
         std::chrono::steady_clock::now() - animationStart_).count();
     const Mat4 projView = multiply(projection(xrView.fov, 0.05F, 100.0F), viewMatrix(xrView.pose));
+    // First visible Liquid Room demonstration: a synthetic, labelled quad,
+    // NOT a detected wall. Spatial-surface binding comes in the next stage.
+    if (liquidRoomPipeline_ != VK_NULL_HANDLE) {
+        vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, liquidRoomPipeline_);
+        const Mat4 planeMvp=multiply(projView,modelMatrix(0.0F,-0.35F,0.65F,-2.25F,0.0F));
+        ProceduralPushConstants liquid{planeMvp,{seconds,1.0F,1.0F,0.0F}};
+        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            0,sizeof(liquid),&liquid);
+        vkCmdDraw(commandBuffer_,6,1,0,0);
+    }
     for (const auto& artwork : scene_.artworks()) {
         VkPipeline artPipeline = pipeline_;
         uint32_t vertices = 36;
@@ -752,6 +774,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (organicaPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, organicaPipeline_, nullptr); organicaPipeline_ = VK_NULL_HANDLE; }
     if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
+    if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
     if (pipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr); pipelineLayout_ = VK_NULL_HANDLE; }
     if (renderPass_ != VK_NULL_HANDLE) { vkDestroyRenderPass(device_, renderPass_, nullptr); renderPass_ = VK_NULL_HANDLE; }
 
