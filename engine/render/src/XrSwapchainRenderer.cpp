@@ -688,16 +688,28 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     const Mat4 projView = multiply(projection(xrView.fov, 0.05F, 100.0F), viewMatrix(xrView.pose));
     // First visible Liquid Room demonstration: a synthetic, labelled quad,
     // NOT a detected wall. Spatial-surface binding comes in the next stage.
-    if (liquidRoomPipeline_ != VK_NULL_HANDLE) {
+    bool liquidEnabled=true;
+    float liquidOpacity=0.42f;
+    float globalSpeed=1.0f;
+    bool artworksVisible=true;
+    bool artworksAnimated=true;
+#ifdef VOXEN_WITH_IMGUI
+    liquidEnabled=imguiCarousel_.liquidRoom;
+    liquidOpacity=std::clamp(imguiCarousel_.liquidOpacity,0.0f,0.6f);
+    globalSpeed=imguiCarousel_.animationSpeed;
+    artworksVisible=imguiCarousel_.showArtworks;
+    artworksAnimated=imguiCarousel_.animateArtworks;
+#endif
+    if (liquidEnabled && liquidOpacity>0.001f && liquidRoomPipeline_ != VK_NULL_HANDLE) {
         vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, liquidRoomPipeline_);
         const Mat4 planeMvp=multiply(projView,modelMatrix(0.0F,-0.35F,0.65F,-2.25F,0.0F));
-        ProceduralPushConstants liquid{planeMvp,{seconds,1.0F,1.0F,0.0F}};
+        ProceduralPushConstants liquid{planeMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
         vkCmdPushConstants(commandBuffer_,pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0,sizeof(liquid),&liquid);
         vkCmdDraw(commandBuffer_,6,1,0,0);
     }
-    for (const auto& artwork : scene_.artworks()) {
+    if (artworksVisible) for (const auto& artwork : scene_.artworks()) {
         VkPipeline artPipeline = pipeline_;
         uint32_t vertices = 36;
         float shape = 0.0F;
@@ -722,7 +734,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         const auto& t = artwork.transform;
         const Mat4 mvp = multiply(projView, modelMatrix(
             t.position[0], t.position[1], t.scale, t.position[2], t.yawRadians));
-        ProceduralPushConstants constants{mvp, {seconds, artwork.animationSpeed, 1.0F, shape}};
+        ProceduralPushConstants constants{mvp, {artworksAnimated ? seconds : 0.0f, artwork.animationSpeed*globalSpeed, 1.0F, shape}};
         vkCmdPushConstants(commandBuffer_, pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0, sizeof(constants), &constants);
