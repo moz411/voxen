@@ -57,13 +57,27 @@ void drawCarousel(CarouselState& state) {
             break;
         case 8: {
             ImGui::TextUnformatted("AMBIENT SOUND");
+            static constexpr const char* sources[]={"PROCEDURAL","MP3 FILES"};
+            if(ImGui::Combo("Source",&state.musicSource,sources,2)) state.musicPlaying=false;
+            if(state.musicSource==1){
+                if(ImGui::Button("RESCAN MUSIC FOLDER"))state.musicRescan=true;
+                if(state.musicFiles.empty())ImGui::TextDisabled("No MP3 in Music folder");
+                for(int i=0;i<static_cast<int>(state.musicFiles.size());++i){
+                    if(ImGui::Selectable(state.musicFiles[i].c_str(),state.musicFile==i)){
+                        state.musicFile=i;
+                        state.musicPlaying=true;
+                    }
+                }
+                if(!state.musicError.empty())ImGui::TextWrapped("%s",state.musicError.c_str());
+            } else {
             static constexpr const char* tracks[]={"COSMOS / Drone","OCEAN / Waves","FOREST / Air & birds"};
             ImGui::Combo("Atmosphere",&state.musicTrack,tracks,3);
+            }
             if(ImGui::Button(state.musicPlaying ? "PAUSE" : "PLAY"))
                 state.musicPlaying=!state.musicPlaying;
             ImGui::SliderFloat("Music volume",&state.musicVolume,0.f,1.f);
-            ImGui::TextDisabled("Procedural loops - no audio files needed");
-            if(!state.musicReady)ImGui::TextDisabled("Audio output unavailable");
+            ImGui::TextDisabled(state.musicSource==0 ? "Procedural ambient loops" : "MP3 playlist / loop enabled");
+            if(state.musicSource==0&&!state.musicReady)ImGui::TextDisabled("Audio output unavailable");
             break;
         }
         default:
