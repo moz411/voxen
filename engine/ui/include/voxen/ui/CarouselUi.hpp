@@ -19,6 +19,12 @@ struct CarouselState {
     bool musicRescan = false;
     std::vector<std::string> musicFiles;
     std::string musicError;
+    int voxelShape = 0;
+    float voxelSizeCm = 8.f;
+    float voxelColor[3] = {0.10f,0.95f,0.78f};
+    int voxelMaterial = 0;
+    bool voxelBrushEnabled = false;
+    bool voxelSettingsOpen = false;
     bool visible = true;
     bool liquidRoom = true;
     float liquidOpacity = 0.42f;
