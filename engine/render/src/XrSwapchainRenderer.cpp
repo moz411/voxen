@@ -32,6 +32,7 @@
 #include "meshDepthFrag.spv.hpp"
 #include "matrixRainFrag.spv.hpp"
 #include "heppGlowFrag.spv.hpp"
+#include "phiFieldFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "imguiPanelFrag.spv.hpp"
 
@@ -517,7 +518,7 @@ void XrSwapchainRenderer::createPipeline() {
         }
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -562,6 +563,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(meshDepthVert, meshDepthVertSize, meshDepthFrag, meshDepthFragSize, meshDepthPipeline_);
     buildPipeline(fractalVert, fractalVertSize, matrixRainFrag, matrixRainFragSize, matrixRainPipeline_);
     buildPipeline(fractalVert, fractalVertSize, heppGlowFrag, heppGlowFragSize, heppGlowPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, phiFieldFrag, phiFieldFragSize, phiFieldPipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
 #ifdef VOXEN_WITH_IMGUI
     buildPipeline(fractalVert, fractalVertSize, imguiPanelFrag, imguiPanelFragSize, imguiPanelPipeline_);
@@ -853,11 +855,12 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
     if (liquidEnabled && (wallShaderMode!=0 || liquidOpacity>0.001f) &&
-        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE) {
+        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE) {
         vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           wallShaderMode==1 ? solidWallPipeline_ :
                           wallShaderMode==2 ? matrixRainPipeline_ :
-                          wallShaderMode==3 ? heppGlowPipeline_ : liquidRoomPipeline_);
+                          wallShaderMode==3 ? heppGlowPipeline_ :
+                          wallShaderMode==4 ? phiFieldPipeline_ : liquidRoomPipeline_);
         // Only verified/tracked wall planes receive a room projection.
         // The synthetic development quad remains a fallback until the native
         // Scene query provider populates EnvironmentSurfaceRegistry.
@@ -1246,6 +1249,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(meshDepthPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,meshDepthPipeline_,nullptr);meshDepthPipeline_=VK_NULL_HANDLE;}
     if(matrixRainPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,matrixRainPipeline_,nullptr);matrixRainPipeline_=VK_NULL_HANDLE;}
     if(heppGlowPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,heppGlowPipeline_,nullptr);heppGlowPipeline_=VK_NULL_HANDLE;}
+    if(phiFieldPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,phiFieldPipeline_,nullptr);phiFieldPipeline_=VK_NULL_HANDLE;}
     if(meshDepthBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,meshDepthBuffer_,nullptr);meshDepthBuffer_=VK_NULL_HANDLE;}
     if(meshDepthMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,meshDepthMemory_,nullptr);meshDepthMemory_=VK_NULL_HANDLE;}
     meshDepthVertexCount_=0;
