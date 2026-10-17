@@ -1142,8 +1142,20 @@ void XrSwapchainRenderer::render(
         ImGui_ImplVulkan_NewFrame();
         ImGui::NewFrame();
         imguiCarousel_.musicReady=ambientMusic_.ready();
+        imguiCarousel_.musicFiles=mp3Library_.titles();
+        imguiCarousel_.musicError=mp3Library_.error();
         voxen::ui::drawCarousel(imguiCarousel_);
-        ambientMusic_.configure(imguiCarousel_.musicTrack,imguiCarousel_.musicPlaying,imguiCarousel_.musicVolume);
+        if(imguiCarousel_.musicRescan){
+            imguiCarousel_.musicRescan=false;
+            mp3Library_.shutdown();
+            mp3Library_.refresh();
+            imguiCarousel_.musicFile=0;
+        }
+        const bool procedural=imguiCarousel_.musicSource==0;
+        ambientMusic_.configure(imguiCarousel_.musicTrack,
+            procedural&&imguiCarousel_.musicPlaying,imguiCarousel_.musicVolume);
+        mp3Library_.update(procedural?-1:imguiCarousel_.musicFile,
+            !procedural&&imguiCarousel_.musicPlaying,imguiCarousel_.musicVolume);
         // Visible cursor proves that ray → panel UV mapping reaches ImGui.
         if(aiming) {
             ImGui::GetForegroundDrawList()->AddCircleFilled(
@@ -1217,6 +1229,7 @@ void XrSwapchainRenderer::render(
 }
 
 void XrSwapchainRenderer::shutdown() noexcept {
+    mp3Library_.shutdown();
     ambientMusic_.stop();
     if (device_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
 #ifdef VOXEN_WITH_IMGUI
