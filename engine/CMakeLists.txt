@@ -86,6 +86,7 @@ endif()
 
 add_library(voxen_engine STATIC
     core/src/Engine.cpp
+    audio/src/AmbientMusic.cpp
     xr/src/XrContext.cpp
     xr/src/XrSession.cpp
     xr/src/MetaSceneProvider.cpp
@@ -97,6 +98,7 @@ add_library(voxen_engine STATIC
 target_include_directories(voxen_engine
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/core/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/audio/include
         ${CMAKE_CURRENT_SOURCE_DIR}/xr/include
         ${CMAKE_CURRENT_SOURCE_DIR}/render/include
         ${CMAKE_CURRENT_SOURCE_DIR}/scene/include
@@ -105,6 +107,7 @@ target_include_directories(voxen_engine
 
 target_compile_definitions(voxen_engine PUBLIC XR_USE_GRAPHICS_API_VULKAN)
 if(ANDROID)
+    target_link_libraries(voxen_engine PUBLIC aaudio)
     target_compile_definitions(voxen_engine PUBLIC XR_USE_PLATFORM_ANDROID)
 elseif(WIN32)
     target_compile_definitions(voxen_engine PUBLIC XR_USE_PLATFORM_WIN32)
