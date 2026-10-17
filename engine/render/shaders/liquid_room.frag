@@ -20,9 +20,9 @@ vec4 sphereAt(vec3 p,float time) {
 float field(vec3 p,float time) {
     vec3 tile=floor(p);
     float distanceToSurface=1.0;
-    for(int z=-1;z<=1;++z)
-    for(int y=-1;y<=1;++y)
-    for(int x=-1;x<=1;++x) {
+    for(int z=0;z<=1;++z)
+    for(int y=0;y<=1;++y)
+    for(int x=0;x<=1;++x) {
         vec4 s=sphereAt(tile+vec3(x,y,z),time);
         if(s.w>0.0) distanceToSurface=min(distanceToSurface,length(p-s.xyz)-s.w);
     }
@@ -42,9 +42,9 @@ void main() {
     vec3 direction=normalize(vec3(uv*vec2(1.0,1.0),0.7));
     vec3 point=origin;
     bool hit=false;
-    // The source is expensive (27 cell checks for each field() call).
-    // Fixed maximum loop, bounded travel distance, no extrapolation x10.
-    for(int step=0;step<8;++step) {
+    // Quest fast path: 8 neighboring cells instead of 27 per field().
+    // Five ray steps, bounded travel distance.
+    for(int step=0;step<5;++step) {
         float d=field(point,time);
         if(d<0.003) { hit=true; break; }
         point+=direction*clamp(d,0.008,0.5);
