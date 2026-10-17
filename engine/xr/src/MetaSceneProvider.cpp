@@ -67,11 +67,19 @@ void MetaSceneProvider::onEvent(const XrEventDataBaseHeader* event) {
         const auto* e=reinterpret_cast<const XrEventDataSpaceQueryResultsAvailableFB*>(event);
         if(e->requestId!=requestId_)return;
         XrSpaceQueryResultsFB results{XR_TYPE_SPACE_QUERY_RESULTS_FB};
-        if(XR_FAILED(retrieve_(session_,requestId_,&results)) || !results.resultCountOutput)return;
+        const XrResult countResult=retrieve_(session_,requestId_,&results);
+        sceneLog("Scene retrieve count result",static_cast<int>(countResult));
+        sceneLog("Scene retrieve candidate count",static_cast<int>(results.resultCountOutput));
+        // Some runtimes return XR_ERROR_SIZE_INSUFFICIENT while reporting
+        // the required count: do not mistake that for an empty scene.
+        if((XR_FAILED(countResult) && countResult!=XR_ERROR_SIZE_INSUFFICIENT) ||
+           results.resultCountOutput==0)return;
         std::vector<XrSpaceQueryResultFB> batch(results.resultCountOutput);
         results.resultCapacityInput=static_cast<uint32_t>(batch.size());
         results.results=batch.data();
-        if(XR_SUCCEEDED(retrieve_(session_,requestId_,&results))) {
+        const XrResult batchResult=retrieve_(session_,requestId_,&results);
+        sceneLog("Scene retrieve data result",static_cast<int>(batchResult));
+        if(XR_SUCCEEDED(batchResult)) {
             for(uint32_t i=0;i<results.resultCountOutput;i++)spaces_.push_back(batch[i]);
             sceneLog("Scene spaces retrieved",static_cast<int>(spaces_.size()));
         }
@@ -80,6 +88,7 @@ void MetaSceneProvider::onEvent(const XrEventDataBaseHeader* event) {
         if(e->requestId==requestId_) {
             pending_=false;
             sceneLog("Scene query complete",static_cast<int>(e->result));
+            sceneLog("Scene total anchor results",static_cast<int>(spaces_.size()));
         }
     }
 }
