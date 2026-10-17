@@ -1,6 +1,7 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
 #ifdef VOXEN_WITH_IMGUI
 #include <imgui.h>
+#include <backends/imgui_impl_vulkan.h>
 #include <voxen/ui/CarouselUi.hpp>
 #endif
 
@@ -24,6 +25,7 @@
 #include "laserFrag.spv.hpp"
 #include "liquidRoomFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
+#include "imguiPanelFrag.spv.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -56,6 +58,7 @@ XrSwapchainRenderer::~XrSwapchainRenderer() {
 void XrSwapchainRenderer::initialize(
     XrInstance instance,
     XrSystemId systemId,
+    VkInstance vulkanInstance,
     ::XrSession session,
     VkDevice device,
     VkPhysicalDevice physicalDevice,
@@ -94,7 +97,6 @@ void XrSwapchainRenderer::initialize(
     }
     createCommandResources();
     createSwapchains(instance, systemId, session);
-    createPipeline();
     createFramebuffers();
 #ifdef VOXEN_WITH_IMGUI
     // CPU-side ImGui lifecycle only. GPU texture compositing is a separate step.
@@ -111,7 +113,9 @@ void XrSwapchainRenderer::initialize(
     // Fetch the rasterized font atlas before the backend uploads it.
     io.Fonts->AddFontDefault();
     io.Fonts->Build();
+    imguiSurface_.initialize(vulkanInstance,physicalDevice_,device_,queue_,queueFamilyIndex_);
 #endif
+    createPipeline();
 }
 
 void XrSwapchainRenderer::createCommandResources() {
@@ -354,6 +358,17 @@ void XrSwapchainRenderer::createPipeline() {
     pli.pushConstantRangeCount = 1; pli.pPushConstantRanges = &push;
     checkVk(vkCreatePipelineLayout(device_, &pli, nullptr, &pipelineLayout_), "vkCreatePipelineLayout");
 
+#ifdef VOXEN_WITH_IMGUI
+    // The offscreen texture descriptor layout is created by ImGuiSurface.
+    VkPushConstantRange panelPush{};
+    panelPush.stageFlags=VK_SHADER_STAGE_VERTEX_BIT;
+    panelPush.size=sizeof(ProceduralPushConstants);
+    VkDescriptorSetLayout uiSetLayout=imguiSurface_.descriptorLayout();
+    VkPipelineLayoutCreateInfo panelInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    panelInfo.setLayoutCount=1; panelInfo.pSetLayouts=&uiSetLayout;
+    panelInfo.pushConstantRangeCount=1;panelInfo.pPushConstantRanges=&panelPush;
+    checkVk(vkCreatePipelineLayout(device_,&panelInfo,nullptr,&imguiPanelPipelineLayout_),"vkCreatePipelineLayout(imgui)");
+#endif
     // All three pipelines share a render pass and one 80-byte push constant layout.
     auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
                              const std::uint8_t* fb, std::size_t fsz,
@@ -377,11 +392,23 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &carouselPipeline_) ? VK_FALSE : VK_TRUE;
-        if (&out == &carouselPipeline_) ds.depthTestEnable=VK_FALSE;
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &carouselPipeline_
+#ifdef VOXEN_WITH_IMGUI
+        || &out == &imguiPanelPipeline_
+#endif
+        ) ? VK_FALSE : VK_TRUE;
+        if (&out == &carouselPipeline_
+#ifdef VOXEN_WITH_IMGUI
+            || &out == &imguiPanelPipeline_
+#endif
+        ) ds.depthTestEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &carouselPipeline_) {
+        if (&out == &liquidRoomPipeline_ || &out == &carouselPipeline_
+#ifdef VOXEN_WITH_IMGUI
+            || &out == &imguiPanelPipeline_
+#endif
+        ) {
             blend.blendEnable=VK_TRUE;
             blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
             blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
@@ -399,7 +426,7 @@ void XrSwapchainRenderer::createPipeline() {
         VkGraphicsPipelineCreateInfo pi{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
         pi.stageCount=2; pi.pStages=stages; pi.pVertexInputState=&vi; pi.pInputAssemblyState=&ia;
         pi.pViewportState=&vp; pi.pRasterizationState=&rs; pi.pMultisampleState=&ms;
-        pi.pColorBlendState=&cb; pi.pDepthStencilState=&ds; pi.pDynamicState=&dyn; pi.layout=pipelineLayout_; pi.renderPass=renderPass_;
+        pi.pColorBlendState=&cb; pi.pDepthStencilState=&ds; pi.pDynamicState=&dyn; pi.layout=(&out == &imguiPanelPipeline_ && imguiPanelPipelineLayout_ != VK_NULL_HANDLE)?imguiPanelPipelineLayout_:pipelineLayout_; pi.renderPass=renderPass_;
         checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &out), "vkCreateGraphicsPipelines");
         vkDestroyShaderModule(device_, fs, nullptr);
         vkDestroyShaderModule(device_, vs, nullptr);
@@ -410,6 +437,9 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
+#ifdef VOXEN_WITH_IMGUI
+    buildPipeline(fractalVert, fractalVertSize, imguiPanelFrag, imguiPanelFragSize, imguiPanelPipeline_);
+#endif
 }
 
 void XrSwapchainRenderer::createFramebuffers() {
@@ -601,6 +631,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpuTimestampPool_, 0);
     }
 
+#ifdef VOXEN_WITH_IMGUI
+    if (imguiSurface_.ready() && ImGui::GetDrawData()!=nullptr && &eye==&eyes_[0])
+        imguiSurface_.render(commandBuffer_,ImGui::GetDrawData());
+#endif
     auto& layout=eye.layouts.at(imageIndex);
     if (layout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
         VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -676,8 +710,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             0, sizeof(constants), &constants);
         vkCmdDraw(commandBuffer_, vertices, 1, 0, 0);
     }
+#ifdef VOXEN_WITH_IMGUI
     // Minimal native eight-page carousel scaffold, left-hand anchored.
-    if (controllerTracked_[0] && carouselPipeline_ != VK_NULL_HANDLE) {
+    if (controllerTracked_[0] && imguiSurface_.ready() && imguiPanelPipeline_ != VK_NULL_HANDLE) {
         const auto& cp=controllerPoses_[0].position;
         // Keep the panel at a readable distance from both eyes, rather than
         // having the left controller push it through the headset near plane.
@@ -699,12 +734,16 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         const Mat4 menuMvp=multiply(projView,
             modelMatrix(px,py,0.11f,pz,yaw));
         ProceduralPushConstants menu{menuMvp,{seconds,1.0f,1.0f,float(nativeMenuPage_)}};
-        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,carouselPipeline_);
-        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,imguiPanelPipeline_);
+        VkDescriptorSet textureSet=imguiSurface_.descriptor();
+        vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+            imguiPanelPipelineLayout_,0,1,&textureSet,0,nullptr);
+        vkCmdPushConstants(commandBuffer_,imguiPanelPipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT,
             0,sizeof(menu),&menu);
         vkCmdDraw(commandBuffer_,6,1,0,0);
     }
+#endif
     // Draw the visible controller rays last; depth testing hides them behind artwork.
     vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, laserPipeline_);
     for (std::size_t hand = 0; hand < controllerTracked_.size(); ++hand) {
@@ -761,6 +800,7 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.page=nativeMenuPage_;
         imguiCarousel_.gpuMs=lastGpuMs_;
         imguiCarousel_.gpuAvailable=gpuTimingAvailable() && completedGpuSamples_>0;
+        ImGui_ImplVulkan_NewFrame();
         ImGui::NewFrame();
         voxen::ui::drawCarousel(imguiCarousel_);
         ImGui::Render();
@@ -832,6 +872,7 @@ void XrSwapchainRenderer::render(
 
 void XrSwapchainRenderer::shutdown() noexcept {
 #ifdef VOXEN_WITH_IMGUI
+    imguiSurface_.shutdown();
     if (imguiContextOwned_ && ImGui::GetCurrentContext() != nullptr) {
         ImGui::DestroyContext();
         imguiContextOwned_=false;
@@ -862,6 +903,10 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
     if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
     if (carouselPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,carouselPipeline_,nullptr); carouselPipeline_=VK_NULL_HANDLE; }
+#ifdef VOXEN_WITH_IMGUI
+    if (imguiPanelPipeline_ != VK_NULL_HANDLE) {vkDestroyPipeline(device_,imguiPanelPipeline_,nullptr);imguiPanelPipeline_=VK_NULL_HANDLE;}
+    if (imguiPanelPipelineLayout_ != VK_NULL_HANDLE) {vkDestroyPipelineLayout(device_,imguiPanelPipelineLayout_,nullptr);imguiPanelPipelineLayout_=VK_NULL_HANDLE;}
+#endif
     if (pipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr); pipelineLayout_ = VK_NULL_HANDLE; }
     if (renderPass_ != VK_NULL_HANDLE) { vkDestroyRenderPass(device_, renderPass_, nullptr); renderPass_ = VK_NULL_HANDLE; }
 
