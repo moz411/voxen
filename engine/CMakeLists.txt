@@ -41,6 +41,7 @@ if(ANDROID OR WIN32)
     voxen_embed_shader(laserFrag laser.frag)
     voxen_embed_shader(liquidRoomFrag liquid_room.frag)
     voxen_embed_shader(carouselFrag carousel.frag)
+    voxen_embed_shader(imguiPanelFrag imgui_panel.frag)
 endif()
 
 
@@ -63,6 +64,7 @@ if(VOXEN_WITH_IMGUI)
         ${voxen_dear_imgui_SOURCE_DIR}/imgui_widgets.cpp
         ${voxen_dear_imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
         ui/src/CarouselUi.cpp
+        ui/src/ImGuiSurface.cpp
     )
     target_include_directories(voxen_imgui PUBLIC
         ${voxen_dear_imgui_SOURCE_DIR}
