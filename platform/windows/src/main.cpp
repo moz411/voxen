@@ -27,7 +27,8 @@ int main() {
             vulkan.physicalDevice(),
             vulkan.device(),
             vulkan.graphicsQueueFamily(),
-            xr.passthroughEnabled());
+            xr.passthroughEnabled(),
+            xr.sceneEnabled());
         renderer.initialize(
             xr.instance(),
             xr.systemId(),
