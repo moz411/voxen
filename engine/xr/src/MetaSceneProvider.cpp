@@ -122,6 +122,7 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
     surfaces_=std::move(walls);
 }
 void MetaSceneProvider::shutdown() {
+    for(const auto& item:spaces_) if(item.space!=XR_NULL_HANDLE) xrDestroySpace(item.space);
     spaces_.clear();surfaces_.clear();pending_=false;requestId_=0;
     lastWallCount_=0;
     query_=nullptr;retrieve_=nullptr;bounds_=nullptr;labels_=nullptr;
