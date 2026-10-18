@@ -95,6 +95,12 @@ void XrSession::initializeActions() {
     actionInfo.subactionPaths = handPaths_.data();
     checkXr(xrCreateAction(actionSet_, &actionInfo, &selectAction_), "xrCreateAction(select)");
 
+    XrActionCreateInfo menuInfo{XR_TYPE_ACTION_CREATE_INFO};
+    menuInfo.actionType=XR_ACTION_TYPE_BOOLEAN_INPUT;
+    std::strncpy(menuInfo.actionName,"toggle_ui",XR_MAX_ACTION_NAME_SIZE-1);
+    std::strncpy(menuInfo.localizedActionName,"Show or hide Voxen menu",XR_MAX_LOCALIZED_ACTION_NAME_SIZE-1);
+    checkXr(xrCreateAction(actionSet_,&menuInfo,&leftMenuAction_),"xrCreateAction(toggle_ui)");
+
     XrActionCreateInfo aimInfo{XR_TYPE_ACTION_CREATE_INFO};
     aimInfo.actionType = XR_ACTION_TYPE_POSE_INPUT;
     std::strncpy(aimInfo.actionName, "aim_pose", XR_MAX_ACTION_NAME_SIZE - 1);
@@ -113,6 +119,7 @@ void XrSession::initializeActions() {
 
     XrPath profile = XR_NULL_PATH;
     XrPath leftTrigger = XR_NULL_PATH;
+    XrPath leftMenu = XR_NULL_PATH;
     XrPath rightTrigger = XR_NULL_PATH;
     XrPath leftAim = XR_NULL_PATH;
     XrPath rightAim = XR_NULL_PATH;
@@ -120,6 +127,7 @@ void XrSession::initializeActions() {
     XrPath rightStick = XR_NULL_PATH;
     checkXr(xrStringToPath(instance_, "/interaction_profiles/oculus/touch_controller", &profile), "xrStringToPath(touch)");
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/trigger/value", &leftTrigger), "xrStringToPath(left trigger)");
+    checkXr(xrStringToPath(instance_, "/user/hand/left/input/menu/click", &leftMenu), "xrStringToPath(left menu)");
     checkXr(xrStringToPath(instance_, "/user/hand/right/input/trigger/value", &rightTrigger), "xrStringToPath(right trigger)");
 
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/aim/pose", &leftAim), "xrStringToPath(left aim)");
@@ -131,6 +139,7 @@ void XrSession::initializeActions() {
     // Boolean actions may bind to floating trigger inputs using OpenXR's threshold mapping.
     const XrActionSuggestedBinding bindings[] = {
         {selectAction_, leftTrigger},
+        {leftMenuAction_, leftMenu},
         {selectAction_, rightTrigger},
         {aimAction_, leftAim},
         {aimAction_, rightAim},
@@ -139,7 +148,7 @@ void XrSession::initializeActions() {
     };
     XrInteractionProfileSuggestedBinding suggested{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
     suggested.interactionProfile = profile;
-    suggested.countSuggestedBindings = 6;
+    suggested.countSuggestedBindings = static_cast<uint32_t>(sizeof(bindings)/sizeof(bindings[0]));
     suggested.suggestedBindings = bindings;
     checkXr(xrSuggestInteractionProfileBindings(instance_, &suggested), "xrSuggestInteractionProfileBindings");
 
@@ -147,6 +156,13 @@ void XrSession::initializeActions() {
     attach.countActionSets = 1;
     attach.actionSets = &actionSet_;
     checkXr(xrAttachSessionActionSets(session_, &attach), "xrAttachSessionActionSets");
+    XrActionStateGetInfo menuGet{XR_TYPE_ACTION_STATE_GET_INFO};
+    menuGet.action=leftMenuAction_;
+    XrActionStateBoolean menuState{XR_TYPE_ACTION_STATE_BOOLEAN};
+    checkXr(xrGetActionStateBoolean(session_,&menuGet,&menuState),"xrGetActionStateBoolean(menu)");
+    const bool menuNow=menuState.isActive==XR_TRUE && menuState.currentState==XR_TRUE;
+    if(menuNow && !menuPressed_)menuTogglePending_=true;
+    menuPressed_=menuNow;
     for (std::size_t hand = 0; hand < handPaths_.size(); ++hand) {
         XrActionSpaceCreateInfo space{XR_TYPE_ACTION_SPACE_CREATE_INFO};
         space.action = aimAction_;
@@ -303,6 +319,10 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
     checkXr(xrWaitFrame(session_, &waitInfo, &frameState), "xrWaitFrame");
 
     syncActions();
+    if(menuTogglePending_){
+        renderer.toggleUiVisibility();
+        menuTogglePending_=false;
+    }
     std::array<XrPosef, 2> aimPoses{};
     std::array<bool, 2> aimTracked{};
     for (std::size_t hand = 0; hand < aimSpaces_.size(); ++hand) {
