@@ -20,14 +20,14 @@ struct CarouselState {
     std::vector<std::string> musicFiles;
     std::string musicError;
     bool visible = true;
-    bool liquidRoom = true;
+    bool liquidRoom = false;
     float liquidOpacity = 0.42f;
-    int maxLiquidWalls = 3;
+    int maxLiquidWalls = 8;
     bool includeFloorCeiling = true;
     bool showSceneMesh = false;
     bool sceneOcclusion = false;
     float sceneDepthBias = 0.002f;
-    bool cycleWallShaders = true;
+    bool cycleWallShaders = false;
     float wallCycleSeconds = 30.f;
     int wallShaderMode = 0; // 0 Liquid Room, 1 solid diagnostic
     float wallColor[3] = {0.12f,0.55f,1.0f};
