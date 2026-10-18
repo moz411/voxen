@@ -570,7 +570,7 @@ void XrSwapchainRenderer::createPipeline() {
     };
     buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
-    buildPipeline(cubeVert, cubeVertSize, voxenMandelbulbFrag, voxenMandelbulbFragSize, voxenMandelbulbPipeline_);
+    buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, voxenMandelbulbPipeline_);
     buildPipeline(voxenAttractorVert, voxenAttractorVertSize, voxenAttractorFrag, voxenAttractorFragSize, voxenAttractorPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
@@ -933,7 +933,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         auto paintPlasma=[&](const PlasmaVoxen& v){
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 v.preset==1 ? voxenSpheresPipeline_ :
-                v.preset==2 ? laserPipeline_ : // Proven engine cube/laser pipeline; diagnostic only.
+                v.preset==2 ? voxenMandelbulbPipeline_ : // Isolate pipeline state; exact same demo shaders.
                 v.preset==3 ? voxenAttractorPipeline_ : voxenPlasmaPipeline_);
             const Mat4 mvp=multiply(projView,modelMatrix(
                 v.position[0],v.position[1],v.scale,v.position[2],0.f));
