@@ -44,6 +44,12 @@ public:
         VkQueue queue,
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
+    void toggleUiVisibility() noexcept {
+#ifdef VOXEN_WITH_IMGUI
+        imguiCarousel_.visible=!imguiCarousel_.visible;
+        if(!imguiCarousel_.visible)panelAimed_=false;
+#endif
+    }
 #ifdef __ANDROID__
     void configureMusicJavaVm(JavaVM* vm) {mp3Library_.initialize(vm);}
 #endif
