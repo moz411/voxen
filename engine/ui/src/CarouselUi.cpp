@@ -25,7 +25,13 @@ void drawCarousel(CarouselState& state) {
             static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR"};
             ImGui::Combo("Voxen preset",&state.voxenPreset,presets,4);
             ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : "Animated 3D trajectory lines");
-            if(state.voxenPreset==2) ImGui::Checkbox("Experimental 3D lighting",&state.mandelbulbLighting);
+            if(state.voxenPreset==2){
+                ImGui::Checkbox("Experimental 3D lighting",&state.mandelbulbLighting);
+                if(state.mandelbulbLighting){
+                    static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS"};
+                    ImGui::Combo("Mandelbulb material",&state.mandelbulbMaterial,materials,3);
+                }
+            }
             ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.06f,0.60f,"%.2f");
             ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
