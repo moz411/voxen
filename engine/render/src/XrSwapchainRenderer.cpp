@@ -694,7 +694,13 @@ void XrSwapchainRenderer::updateControllerInteraction(
         const float dy=v.position[1]-lastVoxenPos_[1];
         const float dz=v.position[2]-lastVoxenPos_[2];
         if(!lastVoxenValid_ || dx*dx+dy*dy+dz*dz >= v.scale*v.scale*0.45f){
-            if(voxens_.size()<256)voxens_.push_back(v);
+            if(voxens_.size()<256){
+                voxens_.push_back(v);
+#ifdef __ANDROID__
+                if(v.preset==2) __android_log_print(ANDROID_LOG_INFO,"Voxen","Mandelbulb instance created: total=%zu, scale=%.2f, pos=(%.2f,%.2f,%.2f)",
+                    voxens_.size(),v.scale,v.position[0],v.position[1],v.position[2]);
+#endif
+            }
             lastVoxenPos_=v.position;
             lastVoxenValid_=true;
         }
