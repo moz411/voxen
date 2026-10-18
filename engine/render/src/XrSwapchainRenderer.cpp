@@ -650,7 +650,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         float axis=thumbsticks[0].x;
         if(std::fabs(axis)<0.3f)nativeMenuStickLatched_=false;
         if(!nativeMenuStickLatched_ && std::fabs(axis)>0.70f){
-            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:8))%9;
+            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:2))%3;
             nativeMenuStickLatched_=true;
         }
     }
