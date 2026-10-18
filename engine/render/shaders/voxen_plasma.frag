@@ -17,7 +17,7 @@ void main(){
     vec3 cold=0.35+0.35*cos(6.2831853*(pc.parameters.z+vec3(0.0,0.22,0.48)));
     vec3 hot=vec3(0.95,0.85,1.0);
     vec3 col=mix(cold,hot,clamp(energy*1.3,0.0,1.0))*(0.18+energy*2.4);
-    float alpha=clamp(energy*2.5,0.0,0.90)*smoothstep(0.98,0.65,r);
+    float alpha=clamp(energy*2.5,0.0,0.90)*(1.0-smoothstep(0.65,0.98,r));
     if(alpha<0.014)discard;
     outColor=vec4(col,alpha);
 }
