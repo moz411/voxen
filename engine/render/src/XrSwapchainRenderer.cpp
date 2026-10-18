@@ -132,43 +132,51 @@ void XrSwapchainRenderer::initialize(
     imguiSurface_.initialize(vulkanInstance,physicalDevice_,device_,queue_,queueFamilyIndex_);
 #endif
     createPipeline();
-    // Build fractal surface once, upload an ordinary vertex buffer. No fractal
-    // computation is performed per eye, per instance or per rendered frame.
+    // Extract the Mandelbulb once, then keep a shared indexed GPU mesh.
     {
-        const auto points=generateMandelbulbMesh();
-        if(!points.empty()){
-            const VkDeviceSize bytes=points.size()*sizeof(XrVector3f);
+        const auto mesh=generateIndexedMandelbulbMesh();
+        auto upload=[&](const void* data,VkDeviceSize bytes,VkBufferUsageFlags usage,
+                        VkBuffer& buffer,VkDeviceMemory& memory){
             VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-            bi.size=bytes;
-            bi.usage=VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-            bi.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
-            checkVk(vkCreateBuffer(device_,&bi,nullptr,&mandelbulbMeshBuffer_),"vkCreateBuffer(mandelbulb)");
+            bi.size=bytes;bi.usage=usage;bi.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
+            checkVk(vkCreateBuffer(device_,&bi,nullptr,&buffer),"vkCreateBuffer(mandelbulb)");
             VkMemoryRequirements req{};
-            vkGetBufferMemoryRequirements(device_,mandelbulbMeshBuffer_,&req);
+            vkGetBufferMemoryRequirements(device_,buffer,&req);
             VkPhysicalDeviceMemoryProperties props{};
             vkGetPhysicalDeviceMemoryProperties(physicalDevice_,&props);
-            uint32_t memType=UINT32_MAX;
+            uint32_t type=UINT32_MAX;
             for(uint32_t i=0;i<props.memoryTypeCount;i++){
                 const auto flags=props.memoryTypes[i].propertyFlags;
                 if((req.memoryTypeBits&(1u<<i)) &&
                    (flags&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))==
                     (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)){
-                    memType=i;break;
+                    type=i;break;
                 }
             }
-            if(memType==UINT32_MAX)throw std::runtime_error("No host-coherent Mandelbulb mesh memory");
+            if(type==UINT32_MAX)throw std::runtime_error("No host-coherent Mandelbulb memory");
             VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-            ai.allocationSize=req.size;ai.memoryTypeIndex=memType;
-            checkVk(vkAllocateMemory(device_,&ai,nullptr,&mandelbulbMeshMemory_),"vkAllocateMemory(mandelbulb)");
-            checkVk(vkBindBufferMemory(device_,mandelbulbMeshBuffer_,mandelbulbMeshMemory_,0),"vkBindBufferMemory(mandelbulb)");
+            ai.allocationSize=req.size;ai.memoryTypeIndex=type;
+            checkVk(vkAllocateMemory(device_,&ai,nullptr,&memory),"vkAllocateMemory(mandelbulb)");
+            checkVk(vkBindBufferMemory(device_,buffer,memory,0),"vkBindBufferMemory(mandelbulb)");
             void* dst=nullptr;
-            checkVk(vkMapMemory(device_,mandelbulbMeshMemory_,0,bytes,0,&dst),"vkMapMemory(mandelbulb)");
-            std::memcpy(dst,points.data(),static_cast<size_t>(bytes));
-            vkUnmapMemory(device_,mandelbulbMeshMemory_);
-            mandelbulbMeshVertexCount_=static_cast<uint32_t>(points.size());
+            checkVk(vkMapMemory(device_,memory,0,bytes,0,&dst),"vkMapMemory(mandelbulb)");
+            std::memcpy(dst,data,static_cast<size_t>(bytes));
+            vkUnmapMemory(device_,memory);
+        };
+        if(!mesh.vertices.empty() && !mesh.indices.empty()){
+            const VkDeviceSize vertexBytes=mesh.vertices.size()*sizeof(XrVector3f);
+            const VkDeviceSize indexBytes=mesh.indices.size()*sizeof(uint32_t);
+            upload(mesh.vertices.data(),vertexBytes,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                   mandelbulbMeshBuffer_,mandelbulbMeshMemory_);
+            upload(mesh.indices.data(),indexBytes,VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                   mandelbulbIndexBuffer_,mandelbulbIndexMemory_);
+            mandelbulbMeshVertexCount_=static_cast<uint32_t>(mesh.vertices.size());
+            mandelbulbIndexCount_=static_cast<uint32_t>(mesh.indices.size());
 #ifdef __ANDROID__
-            __android_log_print(ANDROID_LOG_INFO,"Voxen","Mandelbulb cached mesh: %u triangles, %.2f MiB",
-                mandelbulbMeshVertexCount_/3,double(bytes)/(1024.0*1024.0));
+            __android_log_print(ANDROID_LOG_INFO,"Voxen",
+                "Mandelbulb indexed mesh: %u triangles, %u unique vertices, %.2f MiB",
+                mandelbulbIndexCount_/3,mandelbulbMeshVertexCount_,
+                double(vertexBytes+indexBytes)/(1024.0*1024.0));
 #endif
         }
     }
@@ -980,7 +988,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 if(mandelbulbMeshVertexCount_!=0){
                     VkDeviceSize offset=0;
                     vkCmdBindVertexBuffers(commandBuffer_,0,1,&mandelbulbMeshBuffer_,&offset);
-                    vkCmdDraw(commandBuffer_,mandelbulbMeshVertexCount_,1,0,0);
+                    vkCmdBindIndexBuffer(commandBuffer_,mandelbulbIndexBuffer_,0,VK_INDEX_TYPE_UINT32);
+                    vkCmdDrawIndexed(commandBuffer_,mandelbulbIndexCount_,1,0,0,0);
                 }
             }else{
                 vkCmdDraw(commandBuffer_,v.preset==3 ? 24*18*2 : 6,1,0,0);
@@ -1251,6 +1260,9 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
     if(mandelbulbMeshBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,mandelbulbMeshBuffer_,nullptr);mandelbulbMeshBuffer_=VK_NULL_HANDLE;}
     if(mandelbulbMeshMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,mandelbulbMeshMemory_,nullptr);mandelbulbMeshMemory_=VK_NULL_HANDLE;}
+    if(mandelbulbIndexBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,mandelbulbIndexBuffer_,nullptr);mandelbulbIndexBuffer_=VK_NULL_HANDLE;}
+    if(mandelbulbIndexMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,mandelbulbIndexMemory_,nullptr);mandelbulbIndexMemory_=VK_NULL_HANDLE;}
+    mandelbulbIndexCount_=0;
     mandelbulbMeshVertexCount_=0;
     if(voxenAttractorPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenAttractorPipeline_,nullptr);voxenAttractorPipeline_=VK_NULL_HANDLE;}
     voxens_.clear();
