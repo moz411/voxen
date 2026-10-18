@@ -107,6 +107,7 @@ private:
     VkRenderPass renderPass_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline voxenPlasmaPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxenSpheresPipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
     VkPipeline meshWirePipeline_ = VK_NULL_HANDLE;
@@ -140,6 +141,7 @@ private:
     std::array<EyeSwapchain, 2> eyes_{};
     voxen::scene::EnvironmentSurfaceRegistry environmentSurfaces_{};
     struct PlasmaVoxen {
+        int preset=0;
         std::array<float,3> position{};
         float scale=0.18f;
         float hue=0.52f;
