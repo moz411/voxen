@@ -570,7 +570,7 @@ void XrSwapchainRenderer::createPipeline() {
     };
     buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
-    buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, voxenMandelbulbPipeline_);
+    buildPipeline(cubeVert, cubeVertSize, voxenMandelbulbFrag, voxenMandelbulbFragSize, voxenMandelbulbPipeline_);
     buildPipeline(voxenAttractorVert, voxenAttractorVertSize, voxenAttractorFrag, voxenAttractorFragSize, voxenAttractorPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
