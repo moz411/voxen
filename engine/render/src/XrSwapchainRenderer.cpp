@@ -1051,7 +1051,7 @@ void XrSwapchainRenderer::render(
         // transform used by the stereo pass.
         bool aiming=false;
         float cursorX=0.f,cursorY=0.f;
-        if(controllerTracked_[0] && controllerTracked_[1]) {
+        if(imguiCarousel_.visible && controllerTracked_[0] && controllerTracked_[1]) {
             const auto& cp=controllerPoses_[0].position;
             const auto& eye=views[0].pose.position;
             float px=cp.x,py=cp.y+0.29f,pz=cp.z;
