@@ -30,6 +30,8 @@
 #include "laserFrag.spv.hpp"
 #include "liquidRoomFrag.spv.hpp"
 #include "solidWallFrag.spv.hpp"
+#include "mandelbulbLitVert.spv.hpp"
+#include "mandelbulbLitFrag.spv.hpp"
 #include "meshWireVert.spv.hpp"
 #include "meshWireFrag.spv.hpp"
 #include "meshDepthVert.spv.hpp"
@@ -135,6 +137,7 @@ void XrSwapchainRenderer::initialize(
     // Extract the Mandelbulb once, then keep a shared indexed GPU mesh.
     {
         const auto mesh=generateIndexedMandelbulbMesh();
+        const auto litVertices=buildMandelbulbLitVertices(mesh);
         auto upload=[&](const void* data,VkDeviceSize bytes,VkBufferUsageFlags usage,
                         VkBuffer& buffer,VkDeviceMemory& memory){
             VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -164,9 +167,9 @@ void XrSwapchainRenderer::initialize(
             vkUnmapMemory(device_,memory);
         };
         if(!mesh.vertices.empty() && !mesh.indices.empty()){
-            const VkDeviceSize vertexBytes=mesh.vertices.size()*sizeof(XrVector3f);
+            const VkDeviceSize vertexBytes=litVertices.size()*sizeof(MandelbulbLitVertex);
             const VkDeviceSize indexBytes=mesh.indices.size()*sizeof(uint32_t);
-            upload(mesh.vertices.data(),vertexBytes,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            upload(litVertices.data(),vertexBytes,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                    mandelbulbMeshBuffer_,mandelbulbMeshMemory_);
             upload(mesh.indices.data(),indexBytes,VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                    mandelbulbIndexBuffer_,mandelbulbIndexMemory_);
@@ -546,11 +549,17 @@ void XrSwapchainRenderer::createPipeline() {
         ia.topology = (&out==&meshWirePipeline_ || &out==&voxenAttractorPipeline_) ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         VkVertexInputBindingDescription binding{0,sizeof(XrVector3f),VK_VERTEX_INPUT_RATE_VERTEX};
         VkVertexInputAttributeDescription attribute{0,0,VK_FORMAT_R32G32B32_SFLOAT,0};
-        if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_ || &out==&voxenMandelbulbPipeline_) {
+        VkVertexInputAttributeDescription litAttributes[2]{
+            {0,0,VK_FORMAT_R32G32B32_SFLOAT,0},
+            {1,0,VK_FORMAT_R32G32B32_SFLOAT,sizeof(XrVector3f)}
+        };
+        if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_ || &out==&voxenMandelbulbPipeline_ || &out==&voxenMandelbulbLitPipeline_) {
+            binding.stride=sizeof(MandelbulbLitVertex);
             vi.vertexBindingDescriptionCount=1;
             vi.pVertexBindingDescriptions=&binding;
-            vi.vertexAttributeDescriptionCount=1;
-            vi.pVertexAttributeDescriptions=&attribute;
+            vi.vertexAttributeDescriptionCount=(&out==&voxenMandelbulbLitPipeline_) ? 2 : 1;
+            vi.pVertexAttributeDescriptions=(&out==&voxenMandelbulbLitPipeline_) ? litAttributes : &attribute;
+            if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_)binding.stride=sizeof(XrVector3f);
         }
         VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
         vp.viewportCount=1; vp.scissorCount=1;
@@ -615,6 +624,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
     buildPipeline(meshWireVert, meshWireVertSize, laserFrag, laserFragSize, voxenMandelbulbPipeline_);
+    buildPipeline(mandelbulbLitVert, mandelbulbLitVertSize, mandelbulbLitFrag, mandelbulbLitFragSize, voxenMandelbulbLitPipeline_);
     buildPipeline(voxenAttractorVert, voxenAttractorVertSize, voxenAttractorFrag, voxenAttractorFragSize, voxenAttractorPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
@@ -977,7 +987,11 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         auto paintPlasma=[&](const PlasmaVoxen& v){
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 v.preset==1 ? voxenSpheresPipeline_ :
-                v.preset==2 ? voxenMandelbulbPipeline_ :
+                v.preset==2 ? (
+#ifdef VOXEN_WITH_IMGUI
+                imguiCarousel_.mandelbulbLighting ? voxenMandelbulbLitPipeline_ :
+#endif
+                voxenMandelbulbPipeline_) :
                 v.preset==3 ? voxenAttractorPipeline_ : voxenPlasmaPipeline_);
             const Mat4 mvp=multiply(projView,modelMatrix(
                 v.position[0],v.position[1],v.scale,v.position[2],0.f));
@@ -1258,6 +1272,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
+    if(voxenMandelbulbLitPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbLitPipeline_,nullptr);voxenMandelbulbLitPipeline_=VK_NULL_HANDLE;}
     if(mandelbulbMeshBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,mandelbulbMeshBuffer_,nullptr);mandelbulbMeshBuffer_=VK_NULL_HANDLE;}
     if(mandelbulbMeshMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,mandelbulbMeshMemory_,nullptr);mandelbulbMeshMemory_=VK_NULL_HANDLE;}
     if(mandelbulbIndexBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,mandelbulbIndexBuffer_,nullptr);mandelbulbIndexBuffer_=VK_NULL_HANDLE;}
