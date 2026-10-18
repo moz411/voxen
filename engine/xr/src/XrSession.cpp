@@ -101,6 +101,12 @@ void XrSession::initializeActions() {
     std::strncpy(menuInfo.localizedActionName,"Show or hide Voxen menu",XR_MAX_LOCALIZED_ACTION_NAME_SIZE-1);
     checkXr(xrCreateAction(actionSet_,&menuInfo,&leftMenuAction_),"xrCreateAction(toggle_ui)");
 
+    XrActionCreateInfo yInfo{XR_TYPE_ACTION_CREATE_INFO};
+    yInfo.actionType=XR_ACTION_TYPE_BOOLEAN_INPUT;
+    std::strncpy(yInfo.actionName,"toggle_ui_y",XR_MAX_ACTION_NAME_SIZE-1);
+    std::strncpy(yInfo.localizedActionName,"Toggle Voxen UI with Y",XR_MAX_LOCALIZED_ACTION_NAME_SIZE-1);
+    checkXr(xrCreateAction(actionSet_,&yInfo,&leftYAction_),"xrCreateAction(toggle_ui_y)");
+
     XrActionCreateInfo aimInfo{XR_TYPE_ACTION_CREATE_INFO};
     aimInfo.actionType = XR_ACTION_TYPE_POSE_INPUT;
     std::strncpy(aimInfo.actionName, "aim_pose", XR_MAX_ACTION_NAME_SIZE - 1);
@@ -120,6 +126,7 @@ void XrSession::initializeActions() {
     XrPath profile = XR_NULL_PATH;
     XrPath leftTrigger = XR_NULL_PATH;
     XrPath leftMenu = XR_NULL_PATH;
+    XrPath leftY = XR_NULL_PATH;
     XrPath rightTrigger = XR_NULL_PATH;
     XrPath leftAim = XR_NULL_PATH;
     XrPath rightAim = XR_NULL_PATH;
@@ -128,6 +135,7 @@ void XrSession::initializeActions() {
     checkXr(xrStringToPath(instance_, "/interaction_profiles/oculus/touch_controller", &profile), "xrStringToPath(touch)");
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/trigger/value", &leftTrigger), "xrStringToPath(left trigger)");
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/menu/click", &leftMenu), "xrStringToPath(left menu)");
+    checkXr(xrStringToPath(instance_, "/user/hand/left/input/y/click", &leftY), "xrStringToPath(left Y)");
     checkXr(xrStringToPath(instance_, "/user/hand/right/input/trigger/value", &rightTrigger), "xrStringToPath(right trigger)");
 
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/aim/pose", &leftAim), "xrStringToPath(left aim)");
@@ -140,6 +148,7 @@ void XrSession::initializeActions() {
     const XrActionSuggestedBinding bindings[] = {
         {selectAction_, leftTrigger},
         {leftMenuAction_, leftMenu},
+        {leftYAction_, leftY},
         {selectAction_, rightTrigger},
         {aimAction_, leftAim},
         {aimAction_, rightAim},
@@ -163,6 +172,12 @@ void XrSession::initializeActions() {
     const bool menuNow=menuState.isActive==XR_TRUE && menuState.currentState==XR_TRUE;
     if(menuNow && !menuPressed_)menuTogglePending_=true;
     menuPressed_=menuNow;
+    menuGet.action=leftYAction_;
+    XrActionStateBoolean yState{XR_TYPE_ACTION_STATE_BOOLEAN};
+    checkXr(xrGetActionStateBoolean(session_,&menuGet,&yState),"xrGetActionStateBoolean(Y)");
+    const bool yNow=yState.isActive==XR_TRUE && yState.currentState==XR_TRUE;
+    if(yNow && !yPressed_)menuTogglePending_=true;
+    yPressed_=yNow;
     for (std::size_t hand = 0; hand < handPaths_.size(); ++hand) {
         XrActionSpaceCreateInfo space{XR_TYPE_ACTION_SPACE_CREATE_INFO};
         space.action = aimAction_;
