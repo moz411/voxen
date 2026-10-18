@@ -517,6 +517,11 @@ void XrSwapchainRenderer::createPipeline() {
         || &out == &imguiPanelPipeline_
 #endif
         ) ? VK_FALSE : VK_TRUE;
+        if (&out == &voxenMandelbulbPipeline_) {
+            // Diagnostic: ignore depth until the volumetric proxy is visible.
+            ds.depthTestEnable=VK_FALSE;
+            ds.depthWriteEnable=VK_FALSE;
+        }
         if (&out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
