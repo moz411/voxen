@@ -10,8 +10,8 @@
 #include <unordered_map>
 #include <algorithm>
 namespace voxen::render {
-inline std::vector<XrVector3f> generateMandelbulbMesh() {
-    constexpr int N=44;
+inline std::vector<XrVector3f> generateMandelbulbMesh(int resolution=44) {
+    const int N=resolution;
     constexpr float extent=1.22f;
     constexpr float step=(2.f*extent)/float(N);
     constexpr float scale=0.40f;
@@ -87,9 +87,9 @@ struct IndexedMandelbulbMesh {
     std::vector<XrVector3f> vertices;
     std::vector<uint32_t> indices;
 };
-inline IndexedMandelbulbMesh generateIndexedMandelbulbMesh(){
-    constexpr float spacing=(2.f*1.22f/44.f)*0.40f*0.5f;
-    auto triangles=generateMandelbulbMesh();
+inline IndexedMandelbulbMesh generateIndexedMandelbulbMesh(int resolution=44){
+    const float spacing=(2.f*1.22f/float(resolution))*0.40f*0.5f;
+    auto triangles=generateMandelbulbMesh(resolution);
     IndexedMandelbulbMesh result;
     result.vertices.reserve(triangles.size()/2);
     result.indices.reserve(triangles.size());
