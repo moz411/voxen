@@ -570,7 +570,7 @@ void XrSwapchainRenderer::createPipeline() {
     };
     buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
-    buildPipeline(cubeVert, cubeVertSize, voxenMandelbulbFrag, voxenMandelbulbFragSize, voxenMandelbulbPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, voxenMandelbulbFrag, voxenMandelbulbFragSize, voxenMandelbulbPipeline_);
     buildPipeline(voxenAttractorVert, voxenAttractorVertSize, voxenAttractorFrag, voxenAttractorFragSize, voxenAttractorPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
@@ -933,22 +933,14 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         auto paintPlasma=[&](const PlasmaVoxen& v){
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 v.preset==1 ? voxenSpheresPipeline_ :
-                v.preset==2 ? voxenMandelbulbPipeline_ : // Isolate pipeline state; exact same demo shaders.
+                v.preset==2 ? voxenMandelbulbPipeline_ :
                 v.preset==3 ? voxenAttractorPipeline_ : voxenPlasmaPipeline_);
             const Mat4 mvp=multiply(projView,modelMatrix(
                 v.position[0],v.position[1],v.scale,v.position[2],0.f));
-            if(v.preset==2){
-                // Same known working cube.vert / laser.frag pipeline and ordinary MVP.
-                ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,v.density}};
-                vkCmdPushConstants(commandBuffer_,pipelineLayout_,
-                    VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
-                vkCmdDraw(commandBuffer_,36,1,0,0);
-            }else{
-                ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,v.density}};
-                vkCmdPushConstants(commandBuffer_,pipelineLayout_,
-                    VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
-                vkCmdDraw(commandBuffer_,v.preset==3 ? 24*18*2 : 6,1,0,0);
-            }
+            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,v.density}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,v.preset==3 ? 24*18*2 : 6,1,0,0);
         };
         for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
