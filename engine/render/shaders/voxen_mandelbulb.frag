@@ -46,7 +46,10 @@ void main(){
     vec2 segment=cubeInterval(ro,rd);
     float travel=max(segment.x,0.0);
     float endTravel=segment.y;
-    if(endTravel<=travel)discard;
+    if(endTravel<=travel){
+        outColor=vec4(1.0,0.1,0.75,1.0); // Diagnostic: invalid ray/box interval
+        return;
+    }
     float t=pc.parameters.x*pc.parameters.y*0.18;
     mat2 r=mat2(cos(t),sin(t),-sin(t),cos(t));
     vec3 hitPoint;
