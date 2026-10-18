@@ -33,7 +33,14 @@ struct CarouselState {
     float wallColor[3] = {0.12f,0.55f,1.0f};
     float wallSolidOpacity = 0.85f;
     float animationSpeed = 1.0f;
-    bool showArtworks = true;
+    bool voxenPaintEnabled = true;
+    float voxenScale = 0.18f;
+    float voxenHue = 0.52f;
+    float voxenDensity = 1.0f;
+    float voxenSpeed = 1.0f;
+    bool voxenClear = false;
+    int voxenCount = 0;
+    bool showArtworks = false;
     bool animateArtworks = true;
     int artworkMotion = 0; // 0 none, 1 breathe, 2 rotate, 3 float, 4 orbit
     float motionAmplitude = 0.25f;
@@ -43,7 +50,7 @@ struct CarouselState {
     bool gpuAvailable = false;
 };
 inline constexpr std::array<std::string_view, 9> pages = {
-    "COLORS","SHAPES","ALGORITHMS","SHADERS",
+    "COLORS","VOXENS","ALGORITHMS","SHADERS",
     "PARAMS","ANIMATIONS","SAVE / LOAD","BACKGROUNDS","MUSIC"
 };
 // Caller owns ImGui frame lifecycle. Draws controls into ImDrawData; no XR
