@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+#include <unordered_map>
+#include <algorithm>
 namespace voxen::render {
 inline std::vector<XrVector3f> generateMandelbulbMesh() {
     constexpr int N=44;
@@ -78,5 +80,37 @@ inline std::vector<XrVector3f> generateMandelbulbMesh() {
         }
     }
     return mesh;
+}
+// Deduplicate the half-grid positions produced by marching tetrahedra.
+// The resulting mesh shares vertices across adjacent triangles.
+struct IndexedMandelbulbMesh {
+    std::vector<XrVector3f> vertices;
+    std::vector<uint32_t> indices;
+};
+inline IndexedMandelbulbMesh generateIndexedMandelbulbMesh(){
+    constexpr float spacing=(2.f*1.22f/44.f)*0.40f*0.5f;
+    auto triangles=generateMandelbulbMesh();
+    IndexedMandelbulbMesh result;
+    result.vertices.reserve(triangles.size()/2);
+    result.indices.reserve(triangles.size());
+    std::unordered_map<uint64_t,uint32_t> lookup;
+    lookup.reserve(triangles.size()/2);
+    auto key=[&](const XrVector3f& p)->uint64_t {
+        auto quant=[&](float v)->uint64_t {
+            return uint64_t(std::clamp(int(std::lround(v/spacing))+2048,0,4095));
+        };
+        return quant(p.x)|(quant(p.y)<<12)|(quant(p.z)<<24);
+    };
+    for(const auto& p:triangles){
+        const uint64_t k=key(p);
+        auto it=lookup.find(k);
+        if(it==lookup.end()){
+            const uint32_t id=static_cast<uint32_t>(result.vertices.size());
+            result.vertices.push_back(p);
+            lookup.emplace(k,id);
+            result.indices.push_back(id);
+        }else result.indices.push_back(it->second);
+    }
+    return result;
 }
 } // namespace voxen::render
