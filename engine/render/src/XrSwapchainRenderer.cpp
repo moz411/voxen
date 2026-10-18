@@ -933,18 +933,13 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         auto paintPlasma=[&](const PlasmaVoxen& v){
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 v.preset==1 ? voxenSpheresPipeline_ :
-                v.preset==2 ? voxenMandelbulbPipeline_ :
+                v.preset==2 ? laserPipeline_ : // Proven engine cube/laser pipeline; diagnostic only.
                 v.preset==3 ? voxenAttractorPipeline_ : voxenPlasmaPipeline_);
             const Mat4 mvp=multiply(projView,modelMatrix(
                 v.position[0],v.position[1],v.scale,v.position[2],0.f));
             if(v.preset==2){
-                // World-space eye for this XR view, expressed in Voxen-local units.
-                // Model is translation + uniform scale, so the inverse is cheap.
-                const float inverseScale=1.0f/std::max(v.scale,0.01f);
-                VolumePushConstants pc{mvp,{seconds,v.speed,v.hue,float(imguiCarousel_.volumeDebugMode)},{
-                    (xrView.pose.position.x-v.position[0])*inverseScale,
-                    (xrView.pose.position.y-v.position[1])*inverseScale,
-                    (xrView.pose.position.z-v.position[2])*inverseScale,0.0f}};
+                // Same known working cube.vert / laser.frag pipeline and ordinary MVP.
+                ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,v.density}};
                 vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                     VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
                 vkCmdDraw(commandBuffer_,36,1,0,0);
