@@ -19,24 +19,23 @@ void drawCarousel(CarouselState& state) {
         if (ImGui::Button("NEXT >")) state.page=(state.page+1)%9;
         ImGui::Separator();
         switch(state.page) {
-        case 3:
-            ImGui::TextUnformatted("NATIVE VULKAN MATERIALS");
-            ImGui::Checkbox("Render procedural artworks",&state.showArtworks);
-            ImGui::TextDisabled("Current: Neon / Organic / Fractal");
+        case 1:
+            ImGui::TextUnformatted("VOXENS / PROCEDURAL PRESETS");
+            ImGui::Separator();
+            ImGui::TextUnformatted("01  PLASMA");
+            ImGui::TextDisabled("Animated procedural energy field");
+            ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
+            ImGui::SliderFloat("Size (m)",&state.voxenScale,0.06f,0.60f,"%.2f");
+            ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
+            ImGui::SliderFloat("Density",&state.voxenDensity,0.3f,2.f);
+            ImGui::SliderFloat("Speed",&state.voxenSpeed,0.1f,3.f);
+            ImGui::Text("Voxens: %d / 256",state.voxenCount);
+            if(ImGui::Button("CLEAR VOXENS"))state.voxenClear=true;
+            ImGui::TextDisabled("Right trigger paints in space");
+            ImGui::TextDisabled("Audio / deformation / trajectories: next steps");
             break;
-        case 4:
-            ImGui::SliderFloat("Time multiplier",&state.animationSpeed,0.1f,3.0f);
-            ImGui::Checkbox("Performance metrics",&state.perfHud);
-            break;
-        case 5: {
-            ImGui::Checkbox("Animate artworks",&state.animateArtworks);
-            static constexpr const char* motions[]={"NONE","BREATHE","ROTATE","FLOAT","ORBIT"};
-            ImGui::Combo("Motion",&state.artworkMotion,motions,5);
-            ImGui::SliderFloat("Animation speed",&state.animationSpeed,0.1f,3.0f);
-            ImGui::SliderFloat("Amplitude",&state.motionAmplitude,0.0f,0.5f);
-            ImGui::TextDisabled("Applies to the 4 native demo artworks");
-            break;
-        }
+
+
         case 7:
             ImGui::Checkbox("Wall effect",&state.liquidRoom);
             static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM"};
