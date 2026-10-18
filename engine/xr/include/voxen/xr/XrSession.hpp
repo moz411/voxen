@@ -56,7 +56,9 @@ private:
     XrAction aimAction_ = XR_NULL_HANDLE;
     XrAction thumbstickAction_ = XR_NULL_HANDLE;
     XrAction leftMenuAction_ = XR_NULL_HANDLE;
+    XrAction leftYAction_ = XR_NULL_HANDLE;
     bool menuPressed_ = false;
+    bool yPressed_ = false;
     bool menuTogglePending_ = false;
     std::array<XrSpace, 2> aimSpaces_{XR_NULL_HANDLE, XR_NULL_HANDLE};
     std::array<XrPath, 2> handPaths_{};
