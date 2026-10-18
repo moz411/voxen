@@ -116,12 +116,15 @@ private:
     VkPipeline voxenSpheresPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenMandelbulbPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenMandelbulbLitPipeline_ = VK_NULL_HANDLE;
-    VkBuffer mandelbulbMeshBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory mandelbulbMeshMemory_ = VK_NULL_HANDLE;
-    VkBuffer mandelbulbIndexBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory mandelbulbIndexMemory_ = VK_NULL_HANDLE;
-    uint32_t mandelbulbIndexCount_ = 0;
-    uint32_t mandelbulbMeshVertexCount_ = 0;
+    struct MandelbulbLod {
+        VkBuffer vertexBuffer=VK_NULL_HANDLE;
+        VkDeviceMemory vertexMemory=VK_NULL_HANDLE;
+        VkBuffer indexBuffer=VK_NULL_HANDLE;
+        VkDeviceMemory indexMemory=VK_NULL_HANDLE;
+        uint32_t vertexCount=0;
+        uint32_t indexCount=0;
+    };
+    std::array<MandelbulbLod,3> mandelbulbLods_{};
     VkPipeline voxenAttractorPipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
