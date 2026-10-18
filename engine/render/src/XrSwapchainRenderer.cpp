@@ -250,6 +250,28 @@ void XrSwapchainRenderer::createSwapchains(
             configs.data()),
         "xrEnumerateViewConfigurationViews");
 
+    // Select one LOD per object before rendering either eye. Hysteresis
+    // prevents thrashing at thresholds and guarantees identical stereo meshes.
+    const XrVector3f center{
+        0.5f*(views[0].pose.position.x+views[1].pose.position.x),
+        0.5f*(views[0].pose.position.y+views[1].pose.position.y),
+        0.5f*(views[0].pose.position.z+views[1].pose.position.z)
+    };
+    for(auto& v:voxens_){
+        if(v.preset!=2)continue;
+        const float dx=v.position[0]-center.x;
+        const float dy=v.position[1]-center.y;
+        const float dz=v.position[2]-center.z;
+        const float distance=std::sqrt(dx*dx+dy*dy+dz*dz);
+        const float apparent=v.scale/std::max(distance,0.15f);
+        // Base switches at 0.24 / 0.11, with a 15% hysteresis band.
+        if(v.lodLevel<0) v.lodLevel=apparent>=0.24f?0:(apparent>=0.11f?1:2);
+        else if(v.lodLevel==0 && apparent<0.204f)v.lodLevel=1;
+        else if(v.lodLevel==1){
+            if(apparent>0.276f)v.lodLevel=0;
+            else if(apparent<0.0935f)v.lodLevel=2;
+        }else if(v.lodLevel==2 && apparent>0.1265f)v.lodLevel=1;
+    }
     for (uint32_t eye = 0; eye < eyes_.size(); ++eye) {
         auto& target = eyes_[eye];
         target.width = static_cast<int32_t>(configs[eye].recommendedImageRectWidth);
@@ -1000,15 +1022,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             if(v.preset==2){
-                const auto& eyePos=xrView.pose.position;
-                const float dx=v.position[0]-eyePos.x;
-                const float dy=v.position[1]-eyePos.y;
-                const float dz=v.position[2]-eyePos.z;
-                const float distance=std::sqrt(dx*dx+dy*dy+dz*dz);
-                const float apparent=v.scale/std::max(distance,0.15f);
-                // Prefer full resolution for nearby/large artwork.
-                const int level=apparent>=0.24f ? 0 : (apparent>=0.11f ? 1 : 2);
-                const auto& lod=mandelbulbLods_[level];
+                const auto& lod=mandelbulbLods_[std::clamp(v.lodLevel,0,2)];
                 if(lod.indexCount>0){
                     VkDeviceSize offset=0;
                     vkCmdBindVertexBuffers(commandBuffer_,0,1,&lod.vertexBuffer,&offset);
