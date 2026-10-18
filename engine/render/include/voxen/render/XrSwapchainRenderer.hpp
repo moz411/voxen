@@ -118,7 +118,6 @@ private:
     VkPipeline heppGlowPipeline_ = VK_NULL_HANDLE;
     VkPipeline phiFieldPipeline_ = VK_NULL_HANDLE;
     VkPipeline mandelbrotZoomPipeline_ = VK_NULL_HANDLE;
-    VkPipeline ifsPhantomPipeline_ = VK_NULL_HANDLE;
     VkBuffer meshWireBuffer_ = VK_NULL_HANDLE;
     VkBuffer meshDepthBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory meshDepthMemory_ = VK_NULL_HANDLE;
