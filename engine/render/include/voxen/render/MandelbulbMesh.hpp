@@ -13,7 +13,7 @@ namespace voxen::render {
 inline std::vector<XrVector3f> generateMandelbulbMesh(int resolution=44) {
     const int N=resolution;
     constexpr float extent=1.22f;
-    constexpr float step=(2.f*extent)/float(N);
+    const float step=(2.f*extent)/float(N);
     constexpr float scale=0.40f;
     constexpr int tet[6][4]={
         {0,5,1,6},{0,1,2,6},{0,2,3,6},
