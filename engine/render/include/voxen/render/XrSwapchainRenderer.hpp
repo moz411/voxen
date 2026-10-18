@@ -115,6 +115,16 @@ private:
     VkPipeline voxenPlasmaPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenSpheresPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenMandelbulbPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxenMandelbulbLitPipeline_ = VK_NULL_HANDLE;
+    struct MandelbulbLod {
+        VkBuffer vertexBuffer=VK_NULL_HANDLE;
+        VkDeviceMemory vertexMemory=VK_NULL_HANDLE;
+        VkBuffer indexBuffer=VK_NULL_HANDLE;
+        VkDeviceMemory indexMemory=VK_NULL_HANDLE;
+        uint32_t vertexCount=0;
+        uint32_t indexCount=0;
+    };
+    std::array<MandelbulbLod,3> mandelbulbLods_{};
     VkPipeline voxenAttractorPipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
@@ -155,6 +165,8 @@ private:
         float hue=0.52f;
         float density=1.0f;
         float speed=1.0f;
+        int material=0;
+        int lodLevel=-1; // Chosen once per stereo frame using both eye positions
     };
     std::vector<PlasmaVoxen> voxens_;
     std::array<float,3> lastVoxenPos_{};

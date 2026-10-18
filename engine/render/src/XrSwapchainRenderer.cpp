@@ -1,4 +1,5 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
+#include <voxen/render/MandelbulbMesh.hpp>
 #ifdef VOXEN_WITH_IMGUI
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
@@ -29,6 +30,8 @@
 #include "laserFrag.spv.hpp"
 #include "liquidRoomFrag.spv.hpp"
 #include "solidWallFrag.spv.hpp"
+#include "mandelbulbLitVert.spv.hpp"
+#include "mandelbulbLitFrag.spv.hpp"
 #include "meshWireVert.spv.hpp"
 #include "meshWireFrag.spv.hpp"
 #include "meshDepthVert.spv.hpp"
@@ -131,6 +134,56 @@ void XrSwapchainRenderer::initialize(
     imguiSurface_.initialize(vulkanInstance,physicalDevice_,device_,queue_,queueFamilyIndex_);
 #endif
     createPipeline();
+    // Three shared meshes: high/medium/low detail, extracted only once.
+    {
+        auto upload=[&](const void* data,VkDeviceSize bytes,VkBufferUsageFlags usage,
+                        VkBuffer& buffer,VkDeviceMemory& memory){
+            VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+            bi.size=bytes;bi.usage=usage;bi.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
+            checkVk(vkCreateBuffer(device_,&bi,nullptr,&buffer),"vkCreateBuffer(mandelbulb)");
+            VkMemoryRequirements req{};
+            vkGetBufferMemoryRequirements(device_,buffer,&req);
+            VkPhysicalDeviceMemoryProperties props{};
+            vkGetPhysicalDeviceMemoryProperties(physicalDevice_,&props);
+            uint32_t type=UINT32_MAX;
+            for(uint32_t i=0;i<props.memoryTypeCount;i++){
+                const auto flags=props.memoryTypes[i].propertyFlags;
+                if((req.memoryTypeBits&(1u<<i)) &&
+                   (flags&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))==
+                    (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)){
+                    type=i;break;
+                }
+            }
+            if(type==UINT32_MAX)throw std::runtime_error("No host-coherent Mandelbulb memory");
+            VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+            ai.allocationSize=req.size;ai.memoryTypeIndex=type;
+            checkVk(vkAllocateMemory(device_,&ai,nullptr,&memory),"vkAllocateMemory(mandelbulb)");
+            checkVk(vkBindBufferMemory(device_,buffer,memory,0),"vkBindBufferMemory(mandelbulb)");
+            void* dst=nullptr;
+            checkVk(vkMapMemory(device_,memory,0,bytes,0,&dst),"vkMapMemory(mandelbulb)");
+            std::memcpy(dst,data,static_cast<size_t>(bytes));
+            vkUnmapMemory(device_,memory);
+        };
+        constexpr int resolutions[3]={44,28,16};
+        for(int level=0;level<3;++level){
+            const auto mesh=generateIndexedMandelbulbMesh(resolutions[level]);
+            if(mesh.vertices.empty() || mesh.indices.empty())continue;
+            const auto litVertices=buildMandelbulbLitVertices(mesh);
+            auto& lod=mandelbulbLods_[level];
+            const VkDeviceSize vb=litVertices.size()*sizeof(MandelbulbLitVertex);
+            const VkDeviceSize ib=mesh.indices.size()*sizeof(uint32_t);
+            upload(litVertices.data(),vb,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,lod.vertexBuffer,lod.vertexMemory);
+            upload(mesh.indices.data(),ib,VK_BUFFER_USAGE_INDEX_BUFFER_BIT,lod.indexBuffer,lod.indexMemory);
+            lod.vertexCount=static_cast<uint32_t>(mesh.vertices.size());
+            lod.indexCount=static_cast<uint32_t>(mesh.indices.size());
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_INFO,"Voxen",
+                "Mandelbulb LOD %d: grid=%d triangles=%u vertices=%u memory=%.2f MiB",
+                level,resolutions[level],lod.indexCount/3,lod.vertexCount,
+                double(vb+ib)/(1024.0*1024.0));
+#endif
+        }
+    }
     createFramebuffers();
 }
 
@@ -497,11 +550,17 @@ void XrSwapchainRenderer::createPipeline() {
         ia.topology = (&out==&meshWirePipeline_ || &out==&voxenAttractorPipeline_) ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         VkVertexInputBindingDescription binding{0,sizeof(XrVector3f),VK_VERTEX_INPUT_RATE_VERTEX};
         VkVertexInputAttributeDescription attribute{0,0,VK_FORMAT_R32G32B32_SFLOAT,0};
-        if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_) {
+        VkVertexInputAttributeDescription litAttributes[2]{
+            {0,0,VK_FORMAT_R32G32B32_SFLOAT,0},
+            {1,0,VK_FORMAT_R32G32B32_SFLOAT,sizeof(XrVector3f)}
+        };
+        if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_ || &out==&voxenMandelbulbPipeline_ || &out==&voxenMandelbulbLitPipeline_) {
+            binding.stride=sizeof(MandelbulbLitVertex);
             vi.vertexBindingDescriptionCount=1;
             vi.pVertexBindingDescriptions=&binding;
-            vi.vertexAttributeDescriptionCount=1;
-            vi.pVertexAttributeDescriptions=&attribute;
+            vi.vertexAttributeDescriptionCount=(&out==&voxenMandelbulbLitPipeline_) ? 2 : 1;
+            vi.pVertexAttributeDescriptions=(&out==&voxenMandelbulbLitPipeline_) ? litAttributes : &attribute;
+            if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_)binding.stride=sizeof(XrVector3f);
         }
         VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
         vp.viewportCount=1; vp.scissorCount=1;
@@ -565,7 +624,8 @@ void XrSwapchainRenderer::createPipeline() {
     };
     buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
-    buildPipeline(fractalVert, fractalVertSize, voxenMandelbulbFrag, voxenMandelbulbFragSize, voxenMandelbulbPipeline_);
+    buildPipeline(meshWireVert, meshWireVertSize, laserFrag, laserFragSize, voxenMandelbulbPipeline_);
+    buildPipeline(mandelbulbLitVert, mandelbulbLitVertSize, mandelbulbLitFrag, mandelbulbLitFragSize, voxenMandelbulbLitPipeline_);
     buildPipeline(voxenAttractorVert, voxenAttractorVertSize, voxenAttractorFrag, voxenAttractorFragSize, voxenAttractorPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
@@ -684,6 +744,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         v.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.6f);
         v.hue=imguiCarousel_.voxenHue;
         v.density=imguiCarousel_.voxenDensity;
+        v.material=std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
         v.speed=imguiCarousel_.voxenSpeed;
         const float dx=v.position[0]-lastVoxenPos_[0];
         const float dy=v.position[1]-lastVoxenPos_[1];
@@ -928,14 +989,31 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         auto paintPlasma=[&](const PlasmaVoxen& v){
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 v.preset==1 ? voxenSpheresPipeline_ :
-                v.preset==2 ? voxenMandelbulbPipeline_ :
+                v.preset==2 ? (
+#ifdef VOXEN_WITH_IMGUI
+                imguiCarousel_.mandelbulbLighting ? voxenMandelbulbLitPipeline_ :
+#endif
+                voxenMandelbulbPipeline_) :
                 v.preset==3 ? voxenAttractorPipeline_ : voxenPlasmaPipeline_);
             const Mat4 mvp=multiply(projView,modelMatrix(
                 v.position[0],v.position[1],v.scale,v.position[2],0.f));
-            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,v.density}};
+            // For Mandelbulbs, pack material into the otherwise unchanged float slot.
+            // Density remains in [0.3,2.0], while material uses multiples of 4.
+            const float packedDensity=v.preset==2 ? v.density+4.0f*float(v.material) : v.density;
+            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,packedDensity}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
-            vkCmdDraw(commandBuffer_,v.preset==3 ? 24*18*2 : 6,1,0,0);
+            if(v.preset==2){
+                const auto& lod=mandelbulbLods_[std::clamp(v.lodLevel,0,2)];
+                if(lod.indexCount>0){
+                    VkDeviceSize offset=0;
+                    vkCmdBindVertexBuffers(commandBuffer_,0,1,&lod.vertexBuffer,&offset);
+                    vkCmdBindIndexBuffer(commandBuffer_,lod.indexBuffer,0,VK_INDEX_TYPE_UINT32);
+                    vkCmdDrawIndexed(commandBuffer_,lod.indexCount,1,0,0,0);
+                }
+            }else{
+                vkCmdDraw(commandBuffer_,v.preset==3 ? 24*18*2 : 6,1,0,0);
+            }
         };
         for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
@@ -1113,6 +1191,28 @@ void XrSwapchainRenderer::render(
         std::printf("[Voxen] Rendering first stereo projection frame\n");
 #endif
     }
+    // Select one LOD per object before rendering either eye. Hysteresis
+    // prevents thrashing at thresholds and guarantees identical stereo meshes.
+    const XrVector3f center{
+        0.5f*(views[0].pose.position.x+views[1].pose.position.x),
+        0.5f*(views[0].pose.position.y+views[1].pose.position.y),
+        0.5f*(views[0].pose.position.z+views[1].pose.position.z)
+    };
+    for(auto& v:voxens_){
+        if(v.preset!=2)continue;
+        const float dx=v.position[0]-center.x;
+        const float dy=v.position[1]-center.y;
+        const float dz=v.position[2]-center.z;
+        const float distance=std::sqrt(dx*dx+dy*dy+dz*dz);
+        const float apparent=v.scale/std::max(distance,0.15f);
+        // Base switches at 0.24 / 0.11, with a 15% hysteresis band.
+        if(v.lodLevel<0) v.lodLevel=apparent>=0.24f?0:(apparent>=0.11f?1:2);
+        else if(v.lodLevel==0 && apparent<0.204f)v.lodLevel=1;
+        else if(v.lodLevel==1){
+            if(apparent>0.276f)v.lodLevel=0;
+            else if(apparent<0.0935f)v.lodLevel=2;
+        }else if(v.lodLevel==2 && apparent>0.1265f)v.lodLevel=1;
+    }
     for (uint32_t eye = 0; eye < eyes_.size(); ++eye) {
         auto& swapchain = eyes_[eye];
 
@@ -1145,16 +1245,32 @@ void XrSwapchainRenderer::render(
     const auto now = std::chrono::steady_clock::now();
     if (now - lastStatsLog >= std::chrono::seconds(2)) {
         lastStatsLog = now;
+        uint32_t lodCounts[3]={};
+        uint64_t displayedTriangles=0;
+        for(const auto& object:voxens_){
+            if(object.preset!=2)continue;
+            const int lod=std::clamp(object.lodLevel,0,2);
+            if(mandelbulbLods_[lod].indexCount==0)continue;
+            ++lodCounts[lod];
+            displayedTriangles+=mandelbulbLods_[lod].indexCount/3;
+        }
 #ifdef __ANDROID__
         if (gpuTimestampPool_ != VK_NULL_HANDLE && completedGpuSamples_ > 0)
             __android_log_print(ANDROID_LOG_INFO,"VoxenPerf","GPU last-eye %.2f ms",lastGpuMs_);
         else
             __android_log_print(ANDROID_LOG_INFO,"VoxenPerf","GPU N/A (timestamps unsupported)");
+        __android_log_print(ANDROID_LOG_INFO,"VoxenPerf",
+            "Mandelbulb LOD instances: L0=%u L1=%u L2=%u triangles/eye=%llu",
+            lodCounts[0],lodCounts[1],lodCounts[2],
+            static_cast<unsigned long long>(displayedTriangles));
 #else
         if (gpuTimestampPool_ != VK_NULL_HANDLE && completedGpuSamples_ > 0)
             std::printf("[VoxenPerf] GPU last-eye %.2f ms\\n",lastGpuMs_);
         else
             std::printf("[VoxenPerf] GPU N/A (timestamps unsupported)\\n");
+        std::printf("[VoxenPerf] Mandelbulb LOD instances: L0=%u L1=%u L2=%u triangles/eye=%llu\\n",
+            lodCounts[0],lodCounts[1],lodCounts[2],
+            static_cast<unsigned long long>(displayedTriangles));
 #endif
     }
     if (!firstFrameLogged_) {
@@ -1200,6 +1316,14 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
+    if(voxenMandelbulbLitPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbLitPipeline_,nullptr);voxenMandelbulbLitPipeline_=VK_NULL_HANDLE;}
+    for(auto& lod:mandelbulbLods_){
+        if(lod.vertexBuffer!=VK_NULL_HANDLE)vkDestroyBuffer(device_,lod.vertexBuffer,nullptr);
+        if(lod.indexBuffer!=VK_NULL_HANDLE)vkDestroyBuffer(device_,lod.indexBuffer,nullptr);
+        if(lod.vertexMemory!=VK_NULL_HANDLE)vkFreeMemory(device_,lod.vertexMemory,nullptr);
+        if(lod.indexMemory!=VK_NULL_HANDLE)vkFreeMemory(device_,lod.indexMemory,nullptr);
+        lod={};
+    }
     if(voxenAttractorPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenAttractorPipeline_,nullptr);voxenAttractorPipeline_=VK_NULL_HANDLE;}
     voxens_.clear();
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
