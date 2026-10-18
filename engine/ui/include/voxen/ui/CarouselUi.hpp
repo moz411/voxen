@@ -33,6 +33,7 @@ struct CarouselState {
     float wallColor[3] = {0.12f,0.55f,1.0f};
     float wallSolidOpacity = 0.85f;
     float animationSpeed = 1.0f;
+    bool mandelbulbLighting = false; // Opt-in: proven cyan shader remains default
     int voxenPreset = 0; // Plasma or Spheres Intersections
     bool voxenPaintEnabled = true;
     float voxenScale = 0.18f;
