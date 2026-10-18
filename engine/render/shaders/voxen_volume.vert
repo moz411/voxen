@@ -6,14 +6,14 @@ layout(push_constant) uniform PushConstants {
     mat4 mvp;
     vec4 parameters;
 } pc;
-const int SLICES = 24;
-const int STACKS = 18;
+const int SLICES = 32;
+const int STACKS = 24;
 const float PI = 3.14159265358979323846;
 float bulbDistance(vec3 p) {
     vec3 z=p;
     float dr=1.0;
     float r=0.0;
-    for (int i=0;i<5;i++) {
+    for (int i=0;i<7;i++) {
         r=length(z);
         if(r>2.0) break;
         float safeR=max(r,0.0001);
@@ -31,10 +31,10 @@ vec3 surfaceVertex(int sx,int sy){
     vec3 dir=vec3(sin(lat)*cos(lon),cos(lat),sin(lat)*sin(lon));
     // March from outside towards the center; stop at the DE surface.
     float radius=1.55;
-    for(int i=0;i<14;i++){
+    for(int i=0;i<24;i++){
         float d=bulbDistance(dir*radius);
-        if(d<0.008)break;
-        radius=max(0.03,radius-clamp(d,0.009,0.16));
+        if(d<0.0035)break;
+        radius=max(0.03,radius-clamp(d,0.004,0.18));
     }
     return dir*radius*0.47;
 }
