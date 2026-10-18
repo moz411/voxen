@@ -110,6 +110,7 @@ private:
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipeline organicaPipeline_ = VK_NULL_HANDLE;
     VkPipeline fractalPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxenPlasmaPipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
     VkPipeline meshWirePipeline_ = VK_NULL_HANDLE;
@@ -145,6 +146,16 @@ private:
     voxen::scene::EnvironmentSurfaceRegistry environmentSurfaces_{};
     std::array<int, 2> heldArtwork_{{-1, -1}};
     std::array<int, 2> hoveredArtwork_{{-1, -1}};
+    struct PlasmaVoxen {
+        std::array<float,3> position{};
+        float scale=0.18f;
+        float hue=0.52f;
+        float density=1.0f;
+        float speed=1.0f;
+    };
+    std::vector<PlasmaVoxen> voxens_;
+    std::array<float,3> lastVoxenPos_{};
+    bool lastVoxenValid_=false;
     std::array<XrPosef, 2> controllerPoses_{};
     std::array<bool, 2> controllerTracked_{};
     std::array<bool, 2> previousPress_{};
