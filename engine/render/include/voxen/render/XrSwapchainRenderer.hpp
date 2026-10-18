@@ -107,9 +107,6 @@ private:
     VkFormat colorFormat_ = VK_FORMAT_UNDEFINED;
     VkRenderPass renderPass_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
-    VkPipeline pipeline_ = VK_NULL_HANDLE;
-    VkPipeline organicaPipeline_ = VK_NULL_HANDLE;
-    VkPipeline fractalPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenPlasmaPipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
