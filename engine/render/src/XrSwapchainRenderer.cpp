@@ -1253,20 +1253,20 @@ void XrSwapchainRenderer::render(
 #ifdef __ANDROID__
         if (gpuTimestampPool_ != VK_NULL_HANDLE && completedGpuSamples_ > 0)
             __android_log_print(ANDROID_LOG_INFO,"VoxenPerf","GPU last-eye %.2f ms",lastGpuMs_);
+        else
+            __android_log_print(ANDROID_LOG_INFO,"VoxenPerf","GPU N/A (timestamps unsupported)");
         __android_log_print(ANDROID_LOG_INFO,"VoxenPerf",
             "Mandelbulb LOD instances: L0=%u L1=%u L2=%u triangles/eye=%llu",
             lodCounts[0],lodCounts[1],lodCounts[2],
             static_cast<unsigned long long>(displayedTriangles));
-        else
-            __android_log_print(ANDROID_LOG_INFO,"VoxenPerf","GPU N/A (timestamps unsupported)");
 #else
         if (gpuTimestampPool_ != VK_NULL_HANDLE && completedGpuSamples_ > 0)
             std::printf("[VoxenPerf] GPU last-eye %.2f ms\\n",lastGpuMs_);
+        else
+            std::printf("[VoxenPerf] GPU N/A (timestamps unsupported)\\n");
         std::printf("[VoxenPerf] Mandelbulb LOD instances: L0=%u L1=%u L2=%u triangles/eye=%llu\\n",
             lodCounts[0],lodCounts[1],lodCounts[2],
             static_cast<unsigned long long>(displayedTriangles));
-        else
-            std::printf("[VoxenPerf] GPU N/A (timestamps unsupported)\\n");
 #endif
     }
     if (!firstFrameLogged_) {
