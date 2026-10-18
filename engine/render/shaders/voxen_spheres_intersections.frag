@@ -15,12 +15,12 @@ float sceneSdf(vec3 p,float t){
     float d=10.0;
     float density=clamp(pc.parameters.w,0.3,2.0);
     // Deterministic, relaxed-looking staggered packing of different radii.
-    for(int j=-2;j<=2;++j){
-        for(int i=-2;i<=2;++i){
+    for(int j=-1;j<=1;++j){
+        for(int i=-1;i<=1;++i){
             vec2 cell=vec2(float(i),float(j));
             float n=hash(cell);
-            vec2 center=(cell+vec2(0.18*sin(n*6.283+0.3*t),0.15*cos(n*11.0+0.2*t)))*0.39;
-            float radius=mix(0.17,0.29,n);
+            vec2 center=(cell+vec2(0.18*sin(n*6.283+0.3*t),0.15*cos(n*11.0+0.2*t)))*0.49;
+            float radius=mix(0.22,0.36,n);
             radius*=mix(0.86,1.12,density*0.5);
             vec3 q=p-vec3(center.x,center.y,0.05*sin(n*7.0+t*0.28));
             float sphere=length(q)-radius;
@@ -45,7 +45,7 @@ void main(){
     float z=0.0;
     bool hit=false;
     vec3 p;
-    for(int step=0;step<36;++step){
+    for(int step=0;step<32;++step){
         p=ro+rd*z;
         float d=sceneSdf(p,t);
         if(d<0.004){hit=true;break;}
