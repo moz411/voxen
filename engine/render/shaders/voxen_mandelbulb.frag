@@ -8,7 +8,7 @@ float bulbDE(vec3 p){
     vec3 z=p;
     float dr=1.0,r=0.0;
     const float power=8.0;
-    for(int i=0;i<8;++i){
+    for(int i=0;i<6;++i){
         r=length(z);
         if(r>2.0)break;
         float theta=acos(clamp(z.z/max(r,0.0001),-1.0,1.0));
@@ -38,7 +38,7 @@ void main(){
     float travel=0.0;
     bool hit=false;
     vec3 p;
-    for(int i=0;i<56;++i){
+    for(int i=0;i<32;++i){
         p=ro+rd*travel;
         vec3 model=p;
         model.xz=r*model.xz;
