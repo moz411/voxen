@@ -22,6 +22,7 @@
 #include "proceduralFrag.spv.hpp"
 #include "organicaVert.spv.hpp"
 #include "fractalFrag.spv.hpp"
+#include "voxenPlasmaFrag.spv.hpp"
 #include "fractalVert.spv.hpp"
 #include "laserFrag.spv.hpp"
 #include "liquidRoomFrag.spv.hpp"
@@ -557,6 +558,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(cubeVert, cubeVertSize, proceduralFrag, proceduralFragSize, pipeline_);
     buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, solidWallFrag, solidWallFragSize, solidWallPipeline_);
@@ -682,6 +684,36 @@ void XrSwapchainRenderer::updateControllerInteraction(
         if(hand==1 && panelAimed_) {
             hoveredArtwork_[hand]=-1;
             heldArtwork_[hand]=-1;
+            previousPress_[hand]=pressed[hand];
+            continue;
+        }
+#endif
+#ifdef VOXEN_WITH_IMGUI
+        if(hand==1 && imguiCarousel_.voxenPaintEnabled) {
+            heldArtwork_[hand]=-1;
+            if(pressed[hand]){
+                const auto& q=poses[hand].orientation;
+                const std::array<float,3> dir{
+                    -2.f*(q.x*q.z+q.w*q.y),
+                    -2.f*(q.y*q.z-q.w*q.x),
+                    -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+                PlasmaVoxen v;
+                v.position={poses[hand].position.x+0.17f*dir[0],
+                            poses[hand].position.y+0.17f*dir[1],
+                            poses[hand].position.z+0.17f*dir[2]};
+                v.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.6f);
+                v.hue=imguiCarousel_.voxenHue;
+                v.density=imguiCarousel_.voxenDensity;
+                v.speed=imguiCarousel_.voxenSpeed;
+                const float dx=v.position[0]-lastVoxenPos_[0];
+                const float dy=v.position[1]-lastVoxenPos_[1];
+                const float dz=v.position[2]-lastVoxenPos_[2];
+                if(!lastVoxenValid_ || dx*dx+dy*dy+dz*dz >= v.scale*v.scale*0.45f){
+                    if(voxens_.size()<256)voxens_.push_back(v);
+                    lastVoxenPos_=v.position;
+                    lastVoxenValid_=true;
+                }
+            }else lastVoxenValid_=false;
             previousPress_[hand]=pressed[hand];
             continue;
         }
@@ -984,7 +1016,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(constants),&constants);
         vkCmdDraw(commandBuffer_,meshWireVertexCount_,1,0,0);
     }
-    if (artworksVisible) for (const auto& artwork : scene_.artworks()) {
+    if (false && artworksVisible) for (const auto& artwork : scene_.artworks()) {
         VkPipeline artPipeline = pipeline_;
         uint32_t vertices = 36;
         float shape = 0.0F;
@@ -1034,6 +1066,37 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0, sizeof(constants), &constants);
         vkCmdDraw(commandBuffer_, vertices, 1, 0, 0);
+    }
+    if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,voxenPlasmaPipeline_);
+        auto paintPlasma=[&](const PlasmaVoxen& v){
+            const Mat4 mvp=multiply(projView,modelMatrix(
+                v.position[0],v.position[1],v.scale,v.position[2],0.f));
+            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,v.density}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,6,1,0,0);
+        };
+        for(const auto& v:voxens_)paintPlasma(v);
+#ifdef VOXEN_WITH_IMGUI
+        if(imguiCarousel_.voxenPaintEnabled && controllerTracked_[1] && !panelAimed_){
+            const auto& pose=controllerPoses_[1];
+            const auto& q=pose.orientation;
+            const std::array<float,3> dir{
+                -2.f*(q.x*q.z+q.w*q.y),
+                -2.f*(q.y*q.z-q.w*q.x),
+                -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+            PlasmaVoxen tip;
+            tip.position={pose.position.x+0.17f*dir[0],
+                          pose.position.y+0.17f*dir[1],
+                          pose.position.z+0.17f*dir[2]};
+            tip.scale=imguiCarousel_.voxenScale;
+            tip.hue=imguiCarousel_.voxenHue;
+            tip.density=imguiCarousel_.voxenDensity;
+            tip.speed=imguiCarousel_.voxenSpeed;
+            paintPlasma(tip);
+        }
+#endif
     }
 #ifdef VOXEN_WITH_IMGUI
     // Minimal native eight-page carousel scaffold, left-hand anchored.
@@ -1165,10 +1228,16 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.gpuAvailable=gpuTimingAvailable() && completedGpuSamples_>0;
         ImGui_ImplVulkan_NewFrame();
         ImGui::NewFrame();
+        imguiCarousel_.voxenCount=static_cast<int>(voxens_.size());
         imguiCarousel_.musicReady=ambientMusic_.ready();
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         voxen::ui::drawCarousel(imguiCarousel_);
+        if(imguiCarousel_.voxenClear){
+            voxens_.clear();
+            lastVoxenValid_=false;
+            imguiCarousel_.voxenClear=false;
+        }
         if(imguiCarousel_.musicRescan){
             imguiCarousel_.musicRescan=false;
             mp3Library_.shutdown();
@@ -1285,6 +1354,8 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (pipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, pipeline_, nullptr); pipeline_ = VK_NULL_HANDLE; }
     if (organicaPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, organicaPipeline_, nullptr); organicaPipeline_ = VK_NULL_HANDLE; }
     if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
+    if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
+    voxens_.clear();
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
     if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
     if (solidWallPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,solidWallPipeline_,nullptr); solidWallPipeline_=VK_NULL_HANDLE; }
