@@ -1,4 +1,5 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
+#include <voxen/render/MandelbulbMesh.hpp>
 #ifdef VOXEN_WITH_IMGUI
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
@@ -131,6 +132,46 @@ void XrSwapchainRenderer::initialize(
     imguiSurface_.initialize(vulkanInstance,physicalDevice_,device_,queue_,queueFamilyIndex_);
 #endif
     createPipeline();
+    // Build fractal surface once, upload an ordinary vertex buffer. No fractal
+    // computation is performed per eye, per instance or per rendered frame.
+    {
+        const auto points=generateMandelbulbMesh();
+        if(!points.empty()){
+            const VkDeviceSize bytes=points.size()*sizeof(XrVector3f);
+            VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+            bi.size=bytes;
+            bi.usage=VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+            bi.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
+            checkVk(vkCreateBuffer(device_,&bi,nullptr,&mandelbulbMeshBuffer_),"vkCreateBuffer(mandelbulb)");
+            VkMemoryRequirements req{};
+            vkGetBufferMemoryRequirements(device_,mandelbulbMeshBuffer_,&req);
+            VkPhysicalDeviceMemoryProperties props{};
+            vkGetPhysicalDeviceMemoryProperties(physicalDevice_,&props);
+            uint32_t memType=UINT32_MAX;
+            for(uint32_t i=0;i<props.memoryTypeCount;i++){
+                const auto flags=props.memoryTypes[i].propertyFlags;
+                if((req.memoryTypeBits&(1u<<i)) &&
+                   (flags&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))==
+                    (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)){
+                    memType=i;break;
+                }
+            }
+            if(memType==UINT32_MAX)throw std::runtime_error("No host-coherent Mandelbulb mesh memory");
+            VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+            ai.allocationSize=req.size;ai.memoryTypeIndex=memType;
+            checkVk(vkAllocateMemory(device_,&ai,nullptr,&mandelbulbMeshMemory_),"vkAllocateMemory(mandelbulb)");
+            checkVk(vkBindBufferMemory(device_,mandelbulbMeshBuffer_,mandelbulbMeshMemory_,0),"vkBindBufferMemory(mandelbulb)");
+            void* dst=nullptr;
+            checkVk(vkMapMemory(device_,mandelbulbMeshMemory_,0,bytes,0,&dst),"vkMapMemory(mandelbulb)");
+            std::memcpy(dst,points.data(),static_cast<size_t>(bytes));
+            vkUnmapMemory(device_,mandelbulbMeshMemory_);
+            mandelbulbMeshVertexCount_=static_cast<uint32_t>(points.size());
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_INFO,"Voxen","Mandelbulb cached mesh: %u triangles, %.2f MiB",
+                mandelbulbMeshVertexCount_/3,double(bytes)/(1024.0*1024.0));
+#endif
+        }
+    }
     createFramebuffers();
 }
 
@@ -497,7 +538,7 @@ void XrSwapchainRenderer::createPipeline() {
         ia.topology = (&out==&meshWirePipeline_ || &out==&voxenAttractorPipeline_) ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         VkVertexInputBindingDescription binding{0,sizeof(XrVector3f),VK_VERTEX_INPUT_RATE_VERTEX};
         VkVertexInputAttributeDescription attribute{0,0,VK_FORMAT_R32G32B32_SFLOAT,0};
-        if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_) {
+        if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_ || &out==&voxenMandelbulbPipeline_) {
             vi.vertexBindingDescriptionCount=1;
             vi.pVertexBindingDescriptions=&binding;
             vi.vertexAttributeDescriptionCount=1;
@@ -565,7 +606,7 @@ void XrSwapchainRenderer::createPipeline() {
     };
     buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
-    buildPipeline(voxenVolumeVert, voxenVolumeVertSize, laserFrag, laserFragSize, voxenMandelbulbPipeline_);
+    buildPipeline(meshWireVert, meshWireVertSize, laserFrag, laserFragSize, voxenMandelbulbPipeline_);
     buildPipeline(voxenAttractorVert, voxenAttractorVertSize, voxenAttractorFrag, voxenAttractorFragSize, voxenAttractorPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
@@ -935,7 +976,15 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,v.density}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
-            vkCmdDraw(commandBuffer_,v.preset==2 ? 32*24*6 : (v.preset==3 ? 24*18*2 : 6),1,0,0);
+            if(v.preset==2){
+                if(mandelbulbMeshVertexCount_!=0){
+                    VkDeviceSize offset=0;
+                    vkCmdBindVertexBuffers(commandBuffer_,0,1,&mandelbulbMeshBuffer_,&offset);
+                    vkCmdDraw(commandBuffer_,mandelbulbMeshVertexCount_,1,0,0);
+                }
+            }else{
+                vkCmdDraw(commandBuffer_,v.preset==3 ? 24*18*2 : 6,1,0,0);
+            }
         };
         for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
@@ -1200,6 +1249,9 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
+    if(mandelbulbMeshBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,mandelbulbMeshBuffer_,nullptr);mandelbulbMeshBuffer_=VK_NULL_HANDLE;}
+    if(mandelbulbMeshMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,mandelbulbMeshMemory_,nullptr);mandelbulbMeshMemory_=VK_NULL_HANDLE;}
+    mandelbulbMeshVertexCount_=0;
     if(voxenAttractorPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenAttractorPipeline_,nullptr);voxenAttractorPipeline_=VK_NULL_HANDLE;}
     voxens_.clear();
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
