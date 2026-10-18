@@ -973,7 +973,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     }
 #ifdef VOXEN_WITH_IMGUI
     // Minimal native eight-page carousel scaffold, left-hand anchored.
-    if (controllerTracked_[0] && imguiSurface_.ready() && imguiPanelPipeline_ != VK_NULL_HANDLE) {
+    if (imguiCarousel_.visible && controllerTracked_[0] && imguiSurface_.ready() && imguiPanelPipeline_ != VK_NULL_HANDLE) {
         const auto& cp=controllerPoses_[0].position;
         // Keep the panel at a readable distance from both eyes, rather than
         // having the left controller push it through the headset near plane.
