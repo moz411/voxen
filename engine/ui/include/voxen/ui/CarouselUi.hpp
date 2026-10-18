@@ -20,20 +20,28 @@ struct CarouselState {
     std::vector<std::string> musicFiles;
     std::string musicError;
     bool visible = true;
-    bool liquidRoom = true;
+    bool liquidRoom = false;
     float liquidOpacity = 0.42f;
-    int maxLiquidWalls = 3;
+    int maxLiquidWalls = 8;
     bool includeFloorCeiling = true;
     bool showSceneMesh = false;
     bool sceneOcclusion = false;
     float sceneDepthBias = 0.002f;
-    bool cycleWallShaders = true;
+    bool cycleWallShaders = false;
     float wallCycleSeconds = 30.f;
     int wallShaderMode = 0; // 0 Liquid Room, 1 solid diagnostic
     float wallColor[3] = {0.12f,0.55f,1.0f};
     float wallSolidOpacity = 0.85f;
     float animationSpeed = 1.0f;
-    bool showArtworks = true;
+    int voxenPreset = 0; // Plasma or Spheres Intersections
+    bool voxenPaintEnabled = true;
+    float voxenScale = 0.18f;
+    float voxenHue = 0.52f;
+    float voxenDensity = 1.0f;
+    float voxenSpeed = 1.0f;
+    bool voxenClear = false;
+    int voxenCount = 0;
+    bool showArtworks = false;
     bool animateArtworks = true;
     int artworkMotion = 0; // 0 none, 1 breathe, 2 rotate, 3 float, 4 orbit
     float motionAmplitude = 0.25f;
@@ -42,9 +50,8 @@ struct CarouselState {
     float gpuMs = 0.0f;
     bool gpuAvailable = false;
 };
-inline constexpr std::array<std::string_view, 9> pages = {
-    "COLORS","SHAPES","ALGORITHMS","SHADERS",
-    "PARAMS","ANIMATIONS","SAVE / LOAD","BACKGROUNDS","MUSIC"
+inline constexpr std::array<std::string_view, 3> pages = {
+    "VOXENS","BACKGROUNDS","MUSIC"
 };
 // Caller owns ImGui frame lifecycle. Draws controls into ImDrawData; no XR
 // input/passthrough assumptions are hidden in this unit.

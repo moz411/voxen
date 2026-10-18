@@ -19,9 +19,12 @@
 #endif
 
 #include "cubeVert.spv.hpp"
-#include "proceduralFrag.spv.hpp"
-#include "organicaVert.spv.hpp"
-#include "fractalFrag.spv.hpp"
+#include "voxenPlasmaFrag.spv.hpp"
+#include "voxenSpheresFrag.spv.hpp"
+#include "voxenMandelbulbFrag.spv.hpp"
+#include "voxenVolumeVert.spv.hpp"
+#include "voxenAttractorVert.spv.hpp"
+#include "voxenAttractorFrag.spv.hpp"
 #include "fractalVert.spv.hpp"
 #include "laserFrag.spv.hpp"
 #include "liquidRoomFrag.spv.hpp"
@@ -233,6 +236,12 @@ struct ProceduralPushConstants {
     float parameters[4]; // elapsed time, speed, spatial scale, reserved
 };
 static_assert(sizeof(ProceduralPushConstants) == 80);
+struct VolumePushConstants {
+    Mat4 mvp;
+    float parameters[4];
+    float eyeLocal[4];
+};
+static_assert(sizeof(VolumePushConstants)==96);
 
 Mat4 multiply(const Mat4& a, const Mat4& b) {
     Mat4 r{};
@@ -456,7 +465,7 @@ void XrSwapchainRenderer::createPipeline() {
 
     VkPushConstantRange push{};
     push.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-    push.size = sizeof(ProceduralPushConstants);
+    push.size = sizeof(VolumePushConstants);
     VkPipelineLayoutCreateInfo pli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     pli.pushConstantRangeCount = 1; pli.pPushConstantRanges = &push;
     checkVk(vkCreatePipelineLayout(device_, &pli, nullptr, &pipelineLayout_), "vkCreatePipelineLayout");
@@ -485,7 +494,7 @@ void XrSwapchainRenderer::createPipeline() {
         stages[1].stage=VK_SHADER_STAGE_FRAGMENT_BIT; stages[1].module=fs; stages[1].pName="main";
         VkPipelineVertexInputStateCreateInfo vi{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
         VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-        ia.topology = (&out==&meshWirePipeline_) ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        ia.topology = (&out==&meshWirePipeline_ || &out==&voxenAttractorPipeline_) ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         VkVertexInputBindingDescription binding{0,sizeof(XrVector3f),VK_VERTEX_INPUT_RATE_VERTEX};
         VkVertexInputAttributeDescription attribute{0,0,VK_FORMAT_R32G32B32_SFLOAT,0};
         if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_) {
@@ -503,7 +512,7 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
         || &out == &imguiPanelPipeline_
 #endif
@@ -519,7 +528,7 @@ void XrSwapchainRenderer::createPipeline() {
         }
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -554,9 +563,10 @@ void XrSwapchainRenderer::createPipeline() {
         vkDestroyShaderModule(device_, fs, nullptr);
         vkDestroyShaderModule(device_, vs, nullptr);
     };
-    buildPipeline(cubeVert, cubeVertSize, proceduralFrag, proceduralFragSize, pipeline_);
-    buildPipeline(organicaVert, organicaVertSize, proceduralFrag, proceduralFragSize, organicaPipeline_);
-    buildPipeline(fractalVert, fractalVertSize, fractalFrag, fractalFragSize, fractalPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, voxenMandelbulbFrag, voxenMandelbulbFragSize, voxenMandelbulbPipeline_);
+    buildPipeline(voxenAttractorVert, voxenAttractorVertSize, voxenAttractorFrag, voxenAttractorFragSize, voxenAttractorPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, solidWallFrag, solidWallFragSize, solidWallPipeline_);
@@ -644,121 +654,53 @@ void XrSwapchainRenderer::updateControllerInteraction(
     const std::array<bool, 2>& tracked,
     const std::array<bool, 2>& pressed,
     const std::array<XrVector2f, 2>& thumbsticks) {
-    const auto now = std::chrono::steady_clock::now();
-    const float dt = lastInteractionUpdate_.time_since_epoch().count() == 0
-        ? 0.0F : (std::clamp)(std::chrono::duration<float>(now - lastInteractionUpdate_).count(), 0.0F, 0.05F);
-    lastInteractionUpdate_ = now;
-    constexpr float stickSpeed = 0.75F;
-    constexpr float deadzone = 0.15F;
-    auto applyDeadzone = [deadzone](float value) {
-        const float magnitude = std::fabs(value);
-        return magnitude <= deadzone ? 0.0F
-            : std::copysign((magnitude - deadzone) / (1.0F - deadzone), value);
-    };
-    const auto& artworks = scene_.artworks();
-    controllerPoses_ = poses;
-    controllerTracked_ = tracked;
+    controllerPoses_=poses;
+    controllerTracked_=tracked;
 #ifdef VOXEN_WITH_IMGUI
-    uiTrigger_[0]=pressed[0]; uiTrigger_[1]=pressed[1];
+    uiTrigger_[0]=pressed[0];
+    uiTrigger_[1]=pressed[1];
 #endif
-    if (tracked[0] && heldArtwork_[0] < 0) {
-        const float axis=thumbsticks[0].x;
-        if (std::fabs(axis)<0.3f) nativeMenuStickLatched_=false;
-        if (!nativeMenuStickLatched_ && std::fabs(axis)>0.70f) {
-            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:8))%9;
+    if(tracked[0]) {
+        float axis=thumbsticks[0].x;
+        if(std::fabs(axis)<0.3f)nativeMenuStickLatched_=false;
+        if(!nativeMenuStickLatched_ && std::fabs(axis)>0.70f){
+            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:2))%3;
             nativeMenuStickLatched_=true;
         }
     }
-
-    for (std::size_t hand = 0; hand < 2; ++hand) {
-        hoveredArtwork_[hand] = -1;
-        if (!tracked[hand]) {
-            if (!pressed[hand]) heldArtwork_[hand] = -1;
-            previousPress_[hand] = pressed[hand];
-            continue;
-        }
 #ifdef VOXEN_WITH_IMGUI
-        // A UI trigger must not also grab a voxel artwork.
-        if(hand==1 && panelAimed_) {
-            hoveredArtwork_[hand]=-1;
-            heldArtwork_[hand]=-1;
-            previousPress_[hand]=pressed[hand];
-            continue;
-        }
-#endif
-        const auto& pose = poses[hand];
-        const auto& q = pose.orientation;
-        const float dx = -2.0F * (q.x*q.z + q.w*q.y);
-        const float dy = -2.0F * (q.y*q.z - q.w*q.x);
-        const float dz = -(1.0F - 2.0F * (q.x*q.x + q.y*q.y));
-        const std::array<float, 3> origin{pose.position.x, pose.position.y, pose.position.z};
-
-        int nearest = -1;
-        float bestDistance = 10.0F;
-        for (int i = 0; i < 4; ++i) {
-            if (heldArtwork_[1-hand] == i) continue;
-            const auto& c = artworks[i].transform.position;
-            const float vx = c[0] - origin[0];
-            const float vy = c[1] - origin[1];
-            const float vz = c[2] - origin[2];
-            const float along = vx*dx + vy*dy + vz*dz;
-            if (along <= 0.05F || along > 5.0F) continue;
-            const float perpendicularSquared = (std::max)(0.0F, vx*vx + vy*vy + vz*vz - along*along);
-            // Inflate the artwork's invisible pick volume slightly for comfortable selection.
-            const float radius = artworks[i].transform.scale * (i == 0 ? 1.05F : 1.55F) + 0.08F;
-            if (perpendicularSquared <= radius*radius && along < bestDistance) {
-                bestDistance = along;
-                nearest = i;
-            }
-        }
-        hoveredArtwork_[hand] = nearest;
-        if (!pressed[hand]) {
-            heldArtwork_[hand] = -1;
-            previousPress_[hand] = false;
-            continue;
-        }
-        if (!previousPress_[hand]) {
-            heldArtwork_[hand] = nearest;
-            if (nearest >= 0) {
-                // Retain the point on the aim ray and the initial artwork offset.
-                // Rotation of the wrist now moves the artwork, not only translation
-                // of the entire controller.
-                const auto& c = scene_.artworks()[nearest].transform.position;
-                grabDistances_[hand] = (c[0]-origin[0])*dx +
-                                       (c[1]-origin[1])*dy +
-                                       (c[2]-origin[2])*dz;
-                grabOffsets_[hand][0] = c[0] - (origin[0] + dx*grabDistances_[hand]);
-                grabOffsets_[hand][1] = c[1] - (origin[1] + dy*grabDistances_[hand]);
-                grabOffsets_[hand][2] = c[2] - (origin[2] + dz*grabDistances_[hand]);
-                stickOffsets_[hand] = {};
+    if(tracked[1] && pressed[1] && imguiCarousel_.voxenPaintEnabled && !panelAimed_){
+        const auto& pose=poses[1];
+        const auto& q=pose.orientation;
+        const std::array<float,3> dir{
+            -2.f*(q.x*q.z+q.w*q.y),
+            -2.f*(q.y*q.z-q.w*q.x),
+            -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        PlasmaVoxen v;
+        v.preset=imguiCarousel_.voxenPreset;
+        v.position={pose.position.x+0.17f*dir[0],
+                    pose.position.y+0.17f*dir[1],
+                    pose.position.z+0.17f*dir[2]};
+        v.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.6f);
+        v.hue=imguiCarousel_.voxenHue;
+        v.density=imguiCarousel_.voxenDensity;
+        v.speed=imguiCarousel_.voxenSpeed;
+        const float dx=v.position[0]-lastVoxenPos_[0];
+        const float dy=v.position[1]-lastVoxenPos_[1];
+        const float dz=v.position[2]-lastVoxenPos_[2];
+        if(!lastVoxenValid_ || dx*dx+dy*dy+dz*dz >= v.scale*v.scale*0.45f){
+            if(voxens_.size()<256){
+                voxens_.push_back(v);
 #ifdef __ANDROID__
-                __android_log_print(ANDROID_LOG_INFO, "Voxen", "Grabbed artwork %d with hand %d", nearest, static_cast<int>(hand));
-#else
-                std::printf("[Voxen] Grabbed artwork %d with hand %d\n", nearest, static_cast<int>(hand));
+                if(v.preset==2) __android_log_print(ANDROID_LOG_INFO,"Voxen","Mandelbulb instance created: total=%zu, scale=%.2f, pos=(%.2f,%.2f,%.2f)",
+                    voxens_.size(),v.scale,v.position[0],v.position[1],v.position[2]);
 #endif
             }
+            lastVoxenPos_=v.position;
+            lastVoxenValid_=true;
         }
-        if (heldArtwork_[hand] >= 0) {
-            // Y: dolly along the controller's aiming ray. X: move laterally
-            // in the horizontal world plane, relative to controller yaw.
-            const float sx = applyDeadzone(thumbsticks[hand].x);
-            const float sy = applyDeadzone(thumbsticks[hand].y);
-            grabDistances_[hand] = (std::clamp)(
-                grabDistances_[hand] + sy * stickSpeed * dt, 0.25F, 5.0F);
-            const float horizontalLength = std::sqrt(dx*dx + dz*dz);
-            const float rightX = horizontalLength > 0.001F ? -dz/horizontalLength : 1.0F;
-            const float rightZ = horizontalLength > 0.001F ? dx/horizontalLength : 0.0F;
-            stickOffsets_[hand][0] += rightX * sx * stickSpeed * dt;
-            stickOffsets_[hand][2] += rightZ * sx * stickSpeed * dt;
-            auto& c = scene_.artworks()[heldArtwork_[hand]].transform.position;
-            const float dir[3] = {dx, dy, dz};
-            for (int k = 0; k < 3; ++k) {
-                c[k] = origin[k] + dir[k]*grabDistances_[hand] +
-                       grabOffsets_[hand][k] + stickOffsets_[hand][k];
-            }
-        }
-        previousPress_[hand] = true;
-    }
+    }else if(!pressed[1])lastVoxenValid_=false;
+#endif
 }
 
 void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, const XrView& xrView) {
@@ -805,7 +747,6 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     VkViewport viewport{0,static_cast<float>(eye.height),static_cast<float>(eye.width),-static_cast<float>(eye.height),0,1};
     VkRect2D scissor{{0,0},{static_cast<uint32_t>(eye.width),static_cast<uint32_t>(eye.height)}};
     vkCmdSetViewport(commandBuffer_,0,1,&viewport); vkCmdSetScissor(commandBuffer_,0,1,&scissor);
-    vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_);
 
     const float seconds = std::chrono::duration<float>(
         std::chrono::steady_clock::now() - animationStart_).count();
@@ -825,7 +766,6 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     std::array<float,3> wallColor{0.12f,0.55f,1.0f};
     float solidOpacity=0.85f;
     float globalSpeed=1.0f;
-    bool artworksVisible=true;
     bool artworksAnimated=true;
     int motionMode=0;
     float motionAmplitude=0.25f;
@@ -843,7 +783,6 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     wallColor={imguiCarousel_.wallColor[0],imguiCarousel_.wallColor[1],imguiCarousel_.wallColor[2]};
     solidOpacity=imguiCarousel_.wallSolidOpacity;
     globalSpeed=imguiCarousel_.animationSpeed;
-    artworksVisible=imguiCarousel_.showArtworks;
     artworksAnimated=imguiCarousel_.animateArtworks;
     motionMode=imguiCarousel_.artworkMotion;
     motionAmplitude=std::clamp(imguiCarousel_.motionAmplitude,0.0f,0.5f);
@@ -984,60 +923,45 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(constants),&constants);
         vkCmdDraw(commandBuffer_,meshWireVertexCount_,1,0,0);
     }
-    if (artworksVisible) for (const auto& artwork : scene_.artworks()) {
-        VkPipeline artPipeline = pipeline_;
-        uint32_t vertices = 36;
-        float shape = 0.0F;
-        switch (artwork.kind) {
-            case voxen::scene::ArtworkKind::NeonCube:
-                break;
-            case voxen::scene::ArtworkKind::OrganicSphere:
-                artPipeline = organicaPipeline_;
-                vertices = 48 * 24 * 6;
-                break;
-            case voxen::scene::ArtworkKind::OrganicTorus:
-                artPipeline = organicaPipeline_;
-                vertices = 48 * 24 * 6;
-                shape = 1.0F;
-                break;
-            case voxen::scene::ArtworkKind::Fractal:
-                artPipeline = fractalPipeline_;
-                vertices = 6;
-                break;
+    if(voxenPlasmaPipeline_!=VK_NULL_HANDLE && voxenSpheresPipeline_!=VK_NULL_HANDLE &&
+       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE){
+        auto paintPlasma=[&](const PlasmaVoxen& v){
+            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                v.preset==1 ? voxenSpheresPipeline_ :
+                v.preset==2 ? voxenMandelbulbPipeline_ :
+                v.preset==3 ? voxenAttractorPipeline_ : voxenPlasmaPipeline_);
+            const Mat4 mvp=multiply(projView,modelMatrix(
+                v.position[0],v.position[1],v.scale,v.position[2],0.f));
+            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,v.density}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,v.preset==3 ? 24*18*2 : 6,1,0,0);
+        };
+        for(const auto& v:voxens_)paintPlasma(v);
+#ifdef VOXEN_WITH_IMGUI
+        if(imguiCarousel_.voxenPaintEnabled && controllerTracked_[1] && !panelAimed_){
+            const auto& pose=controllerPoses_[1];
+            const auto& q=pose.orientation;
+            const std::array<float,3> dir{
+                -2.f*(q.x*q.z+q.w*q.y),
+                -2.f*(q.y*q.z-q.w*q.x),
+                -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+            PlasmaVoxen tip;
+            tip.preset=imguiCarousel_.voxenPreset;
+            tip.position={pose.position.x+0.17f*dir[0],
+                          pose.position.y+0.17f*dir[1],
+                          pose.position.z+0.17f*dir[2]};
+            tip.scale=imguiCarousel_.voxenScale;
+            tip.hue=imguiCarousel_.voxenHue;
+            tip.density=imguiCarousel_.voxenDensity;
+            tip.speed=imguiCarousel_.voxenSpeed;
+            paintPlasma(tip);
         }
-        vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, artPipeline);
-        const auto& t = artwork.transform;
-        float x=t.position[0],y=t.position[1],z=t.position[2];
-        float scale=t.scale,yaw=t.yawRadians;
-        const float phase=seconds*globalSpeed*artwork.animationSpeed;
-        if (artworksAnimated) {
-            switch (motionMode) {
-            case 1: // Breathe uniformly, without changing the stored artwork.
-                scale*=1.0f+motionAmplitude*std::sin(phase*2.0f);
-                break;
-            case 2: // Rotate in world space around its own center.
-                yaw+=phase;
-                break;
-            case 3: // Float vertically.
-                y+=motionAmplitude*std::sin(phase);
-                break;
-            case 4: // Orbit around the artwork's saved position.
-                x+=motionAmplitude*std::cos(phase);
-                z+=motionAmplitude*std::sin(phase);
-                break;
-            default: break;
-            }
-        }
-        const Mat4 mvp=multiply(projView,modelMatrix(x,y,scale,z,yaw));
-        ProceduralPushConstants constants{mvp, {artworksAnimated ? seconds : 0.0f, artwork.animationSpeed*globalSpeed, 1.0F, shape}};
-        vkCmdPushConstants(commandBuffer_, pipelineLayout_,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            0, sizeof(constants), &constants);
-        vkCmdDraw(commandBuffer_, vertices, 1, 0, 0);
+#endif
     }
 #ifdef VOXEN_WITH_IMGUI
     // Minimal native eight-page carousel scaffold, left-hand anchored.
-    if (controllerTracked_[0] && imguiSurface_.ready() && imguiPanelPipeline_ != VK_NULL_HANDLE) {
+    if (imguiCarousel_.visible && controllerTracked_[0] && imguiSurface_.ready() && imguiPanelPipeline_ != VK_NULL_HANDLE) {
         const auto& cp=controllerPoses_[0].position;
         // Keep the panel at a readable distance from both eyes, rather than
         // having the left controller push it through the headset near plane.
@@ -1070,33 +994,18 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,6,1,0,0);
     }
 #endif
-    // Draw the visible controller rays last; depth testing hides them behind artwork.
-    vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, laserPipeline_);
-    for (std::size_t hand = 0; hand < controllerTracked_.size(); ++hand) {
-        if (!controllerTracked_[hand]) continue;
-        float length = 2.5F;
+    // Ray is shown only on the right controller when it points at the UI.
 #ifdef VOXEN_WITH_IMGUI
-        if(hand==1 && panelAimed_)length=std::max(0.05f,panelHitDistance_);
-#endif
-        const int target = hoveredArtwork_[hand];
-        if (target >= 0) {
-            const auto& q = controllerPoses_[hand].orientation;
-            const float dx = -2.0F * (q.x*q.z + q.w*q.y);
-            const float dy = -2.0F * (q.y*q.z - q.w*q.x);
-            const float dz = -(1.0F - 2.0F * (q.x*q.x + q.y*q.y));
-            const auto& c = scene_.artworks()[target].transform.position;
-            length = std::min(length,std::clamp(
-                (c[0]-controllerPoses_[hand].position.x)*dx +
-                (c[1]-controllerPoses_[hand].position.y)*dy +
-                (c[2]-controllerPoses_[hand].position.z)*dz, 0.1F, 2.5F));
-        }
-        const Mat4 beamMvp = multiply(projView, laserMatrix(controllerPoses_[hand], length));
-        ProceduralPushConstants constants{beamMvp, {seconds, 1.0F, 1.0F, 0.0F}};
-        vkCmdPushConstants(commandBuffer_, pipelineLayout_,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            0, sizeof(constants), &constants);
-        vkCmdDraw(commandBuffer_, 36, 1, 0, 0);
+    if(controllerTracked_[1] && panelAimed_){
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,laserPipeline_);
+        const float length=std::max(0.05f,panelHitDistance_);
+        const Mat4 beamMvp=multiply(projView,laserMatrix(controllerPoses_[1],length));
+        ProceduralPushConstants constants{beamMvp,{seconds,1.0F,1.0F,0.0F}};
+        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(constants),&constants);
+        vkCmdDraw(commandBuffer_,36,1,0,0);
     }
+#endif
     vkCmdEndRenderPass(commandBuffer_);
     if (gpuTimestampPool_ != VK_NULL_HANDLE)
         vkCmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpuTimestampPool_, 1);
@@ -1130,7 +1039,7 @@ void XrSwapchainRenderer::render(
         // transform used by the stereo pass.
         bool aiming=false;
         float cursorX=0.f,cursorY=0.f;
-        if(controllerTracked_[0] && controllerTracked_[1]) {
+        if(imguiCarousel_.visible && controllerTracked_[0] && controllerTracked_[1]) {
             const auto& cp=controllerPoses_[0].position;
             const auto& eye=views[0].pose.position;
             float px=cp.x,py=cp.y+0.29f,pz=cp.z;
@@ -1165,10 +1074,16 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.gpuAvailable=gpuTimingAvailable() && completedGpuSamples_>0;
         ImGui_ImplVulkan_NewFrame();
         ImGui::NewFrame();
+        imguiCarousel_.voxenCount=static_cast<int>(voxens_.size());
         imguiCarousel_.musicReady=ambientMusic_.ready();
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         voxen::ui::drawCarousel(imguiCarousel_);
+        if(imguiCarousel_.voxenClear){
+            voxens_.clear();
+            lastVoxenValid_=false;
+            imguiCarousel_.voxenClear=false;
+        }
         if(imguiCarousel_.musicRescan){
             imguiCarousel_.musicRescan=false;
             mp3Library_.shutdown();
@@ -1282,9 +1197,11 @@ void XrSwapchainRenderer::shutdown() noexcept {
         eye.layouts.clear();
     }
 
-    if (pipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, pipeline_, nullptr); pipeline_ = VK_NULL_HANDLE; }
-    if (organicaPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, organicaPipeline_, nullptr); organicaPipeline_ = VK_NULL_HANDLE; }
-    if (fractalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, fractalPipeline_, nullptr); fractalPipeline_ = VK_NULL_HANDLE; }
+    if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
+    if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
+    if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
+    if(voxenAttractorPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenAttractorPipeline_,nullptr);voxenAttractorPipeline_=VK_NULL_HANDLE;}
+    voxens_.clear();
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
     if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
     if (solidWallPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,solidWallPipeline_,nullptr); solidWallPipeline_=VK_NULL_HANDLE; }

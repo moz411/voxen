@@ -8,7 +8,6 @@
 
 #include <vulkan/vulkan.h>
 #include <openxr/openxr.h>
-#include <voxen/scene/Scene.hpp>
 #include <voxen/audio/AmbientMusic.hpp>
 #include <voxen/audio/Mp3Library.hpp>
 #include <voxen/scene/EnvironmentSurface.hpp>
@@ -45,6 +44,12 @@ public:
         VkQueue queue,
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
+    void toggleUiVisibility() noexcept {
+#ifdef VOXEN_WITH_IMGUI
+        imguiCarousel_.visible=!imguiCarousel_.visible;
+        if(!imguiCarousel_.visible)panelAimed_=false;
+#endif
+    }
 #ifdef __ANDROID__
     void configureMusicJavaVm(JavaVM* vm) {mp3Library_.initialize(vm);}
 #endif
@@ -107,9 +112,10 @@ private:
     VkFormat colorFormat_ = VK_FORMAT_UNDEFINED;
     VkRenderPass renderPass_ = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
-    VkPipeline pipeline_ = VK_NULL_HANDLE;
-    VkPipeline organicaPipeline_ = VK_NULL_HANDLE;
-    VkPipeline fractalPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxenPlasmaPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxenSpheresPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxenMandelbulbPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxenAttractorPipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
     VkPipeline meshWirePipeline_ = VK_NULL_HANDLE;
@@ -141,17 +147,20 @@ private:
 #endif
     VkPipeline laserPipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
-    voxen::scene::Scene scene_{};
     voxen::scene::EnvironmentSurfaceRegistry environmentSurfaces_{};
-    std::array<int, 2> heldArtwork_{{-1, -1}};
-    std::array<int, 2> hoveredArtwork_{{-1, -1}};
+    struct PlasmaVoxen {
+        int preset=0;
+        std::array<float,3> position{};
+        float scale=0.18f;
+        float hue=0.52f;
+        float density=1.0f;
+        float speed=1.0f;
+    };
+    std::vector<PlasmaVoxen> voxens_;
+    std::array<float,3> lastVoxenPos_{};
+    bool lastVoxenValid_=false;
     std::array<XrPosef, 2> controllerPoses_{};
     std::array<bool, 2> controllerTracked_{};
-    std::array<bool, 2> previousPress_{};
-    std::array<std::array<float, 3>, 2> grabOffsets_{};
-    std::array<float, 2> grabDistances_{};
-    std::array<std::array<float, 3>, 2> stickOffsets_{};
-    std::chrono::steady_clock::time_point lastInteractionUpdate_{};
     bool firstFrameLogged_ = false;
     std::chrono::steady_clock::time_point animationStart_ = std::chrono::steady_clock::now();
 };
