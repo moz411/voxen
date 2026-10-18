@@ -113,4 +113,43 @@ inline IndexedMandelbulbMesh generateIndexedMandelbulbMesh(){
     }
     return result;
 }
+struct MandelbulbLitVertex {
+    XrVector3f position;
+    XrVector3f normal;
+};
+inline std::vector<MandelbulbLitVertex> buildMandelbulbLitVertices(const IndexedMandelbulbMesh& mesh){
+    std::vector<MandelbulbLitVertex> result(mesh.vertices.size());
+    for(size_t i=0;i<mesh.vertices.size();++i){
+        result[i].position=mesh.vertices[i];
+        result[i].normal={0.f,0.f,0.f};
+    }
+    auto subtract=[](XrVector3f a,XrVector3f b)->XrVector3f {
+        return {a.x-b.x,a.y-b.y,a.z-b.z};
+    };
+    for(size_t i=0;i+2<mesh.indices.size();i+=3){
+        const uint32_t ia=mesh.indices[i],ib=mesh.indices[i+1],ic=mesh.indices[i+2];
+        const auto ab=subtract(mesh.vertices[ib],mesh.vertices[ia]);
+        const auto ac=subtract(mesh.vertices[ic],mesh.vertices[ia]);
+        XrVector3f n{ab.y*ac.z-ab.z*ac.y,ab.z*ac.x-ab.x*ac.z,ab.x*ac.y-ab.y*ac.x};
+        // Tetrahedral extraction can produce inconsistent winding. Orient
+        // each face using the radial gradient as a robust first approximation.
+        const auto& p=mesh.vertices[ia];
+        if(n.x*p.x+n.y*p.y+n.z*p.z<0.f){n.x=-n.x;n.y=-n.y;n.z=-n.z;}
+        for(uint32_t id:{ia,ib,ic}){
+            auto& sum=result[id].normal;
+            sum.x+=n.x;sum.y+=n.y;sum.z+=n.z;
+        }
+    }
+    for(auto& vertex:result){
+        auto& n=vertex.normal;
+        float length=std::sqrt(n.x*n.x+n.y*n.y+n.z*n.z);
+        if(length<1e-9f){
+            n=vertex.position;
+            length=std::sqrt(n.x*n.x+n.y*n.y+n.z*n.z);
+        }
+        if(length>1e-9f){n.x/=length;n.y/=length;n.z/=length;}
+        else n={0.f,1.f,0.f};
+    }
+    return result;
+}
 } // namespace voxen::render
