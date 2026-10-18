@@ -58,10 +58,6 @@ void drawCarousel(CarouselState& state) {
             ImGui::Checkbox("Render procedural artworks",&state.showArtworks);
             ImGui::TextDisabled("Current: Neon / Organic / Fractal");
             break;
-        case 4:
-            ImGui::SliderFloat("Time multiplier",&state.animationSpeed,0.1f,3.0f);
-            ImGui::Checkbox("Performance metrics",&state.perfHud);
-            break;
         case 5: {
             ImGui::Checkbox("Animate artworks",&state.animateArtworks);
             static constexpr const char* motions[]={"NONE","BREATHE","ROTATE","FLOAT","ORBIT"};
