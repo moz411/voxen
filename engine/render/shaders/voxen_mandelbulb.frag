@@ -9,6 +9,22 @@ layout(push_constant) uniform PushConstants {
     vec4 eyeLocal;
 } pc;
 void main(){
+    int debugMode=clamp(int(pc.parameters.w+0.5),0,3);
+    if(debugMode==0){
+        outColor=vec4(1.0,0.0,0.8,1.0);
+        return;
+    }
+    if(debugMode==1){
+        outColor=vec4(clamp(localPosition*0.45+0.5,0.0,1.0),1.0);
+        return;
+    }
+    if(debugMode==2){
+        vec3 eyeProbe=pc.eyeLocal.xyz;
+        // Identifiable orange; a pathological eye push parameter is bright red.
+        float invalid=float(any(isnan(eyeProbe)) || any(isinf(eyeProbe)));
+        outColor=mix(vec4(1.0,0.55,0.02,1.0),vec4(1.0,0.0,0.0,1.0),invalid);
+        return;
+    }
     vec3 eye=pc.eyeLocal.xyz;
     vec3 dir=normalize(localPosition-eye);
     // Unit-radius local sphere, concentric with invisible cube proxy.
