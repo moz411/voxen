@@ -117,6 +117,9 @@ private:
     VkPipeline voxenMandelbulbPipeline_ = VK_NULL_HANDLE;
     VkBuffer mandelbulbMeshBuffer_ = VK_NULL_HANDLE;
     VkDeviceMemory mandelbulbMeshMemory_ = VK_NULL_HANDLE;
+    VkBuffer mandelbulbIndexBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory mandelbulbIndexMemory_ = VK_NULL_HANDLE;
+    uint32_t mandelbulbIndexCount_ = 0;
     uint32_t mandelbulbMeshVertexCount_ = 0;
     VkPipeline voxenAttractorPipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
