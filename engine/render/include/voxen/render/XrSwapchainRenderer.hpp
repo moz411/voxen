@@ -165,6 +165,7 @@ private:
         float hue=0.52f;
         float density=1.0f;
         float speed=1.0f;
+        int material=0;
         int lodLevel=-1; // Chosen once per stereo frame using both eye positions
     };
     std::vector<PlasmaVoxen> voxens_;
