@@ -31,7 +31,10 @@ vec3 bulbNormal(vec3 p){
 
 // Cube segment in object-local coordinates. Use the real eye position for each eye.
 vec2 cubeInterval(vec3 ro,vec3 rd){
-    vec3 safeRd=sign(rd)*max(abs(rd),vec3(0.00001));
+    vec3 safeRd=mix(vec3(0.00001),vec3(-0.00001),lessThan(rd,vec3(0.0)))+rd;
+    safeRd=vec3(abs(rd.x)<0.00001?safeRd.x:rd.x,
+                abs(rd.y)<0.00001?safeRd.y:rd.y,
+                abs(rd.z)<0.00001?safeRd.z:rd.z);
     vec3 a=(-vec3(1.0)-ro)/safeRd;
     vec3 b=(vec3(1.0)-ro)/safeRd;
     vec3 lo=min(a,b),hi=max(a,b);
