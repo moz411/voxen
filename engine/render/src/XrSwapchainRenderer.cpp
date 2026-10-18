@@ -134,10 +134,8 @@ void XrSwapchainRenderer::initialize(
     imguiSurface_.initialize(vulkanInstance,physicalDevice_,device_,queue_,queueFamilyIndex_);
 #endif
     createPipeline();
-    // Extract the Mandelbulb once, then keep a shared indexed GPU mesh.
+    // Three shared meshes: high/medium/low detail, extracted only once.
     {
-        const auto mesh=generateIndexedMandelbulbMesh();
-        const auto litVertices=buildMandelbulbLitVertices(mesh);
         auto upload=[&](const void* data,VkDeviceSize bytes,VkBufferUsageFlags usage,
                         VkBuffer& buffer,VkDeviceMemory& memory){
             VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -166,20 +164,23 @@ void XrSwapchainRenderer::initialize(
             std::memcpy(dst,data,static_cast<size_t>(bytes));
             vkUnmapMemory(device_,memory);
         };
-        if(!mesh.vertices.empty() && !mesh.indices.empty()){
-            const VkDeviceSize vertexBytes=litVertices.size()*sizeof(MandelbulbLitVertex);
-            const VkDeviceSize indexBytes=mesh.indices.size()*sizeof(uint32_t);
-            upload(litVertices.data(),vertexBytes,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                   mandelbulbMeshBuffer_,mandelbulbMeshMemory_);
-            upload(mesh.indices.data(),indexBytes,VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                   mandelbulbIndexBuffer_,mandelbulbIndexMemory_);
-            mandelbulbMeshVertexCount_=static_cast<uint32_t>(mesh.vertices.size());
-            mandelbulbIndexCount_=static_cast<uint32_t>(mesh.indices.size());
+        constexpr int resolutions[3]={44,28,16};
+        for(int level=0;level<3;++level){
+            const auto mesh=generateIndexedMandelbulbMesh(resolutions[level]);
+            if(mesh.vertices.empty() || mesh.indices.empty())continue;
+            const auto litVertices=buildMandelbulbLitVertices(mesh);
+            auto& lod=mandelbulbLods_[level];
+            const VkDeviceSize vb=litVertices.size()*sizeof(MandelbulbLitVertex);
+            const VkDeviceSize ib=mesh.indices.size()*sizeof(uint32_t);
+            upload(litVertices.data(),vb,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,lod.vertexBuffer,lod.vertexMemory);
+            upload(mesh.indices.data(),ib,VK_BUFFER_USAGE_INDEX_BUFFER_BIT,lod.indexBuffer,lod.indexMemory);
+            lod.vertexCount=static_cast<uint32_t>(mesh.vertices.size());
+            lod.indexCount=static_cast<uint32_t>(mesh.indices.size());
 #ifdef __ANDROID__
             __android_log_print(ANDROID_LOG_INFO,"Voxen",
-                "Mandelbulb indexed mesh: %u triangles, %u unique vertices, %.2f MiB",
-                mandelbulbIndexCount_/3,mandelbulbMeshVertexCount_,
-                double(vertexBytes+indexBytes)/(1024.0*1024.0));
+                "Mandelbulb LOD %d: grid=%d triangles=%u vertices=%u memory=%.2f MiB",
+                level,resolutions[level],lod.indexCount/3,lod.vertexCount,
+                double(vb+ib)/(1024.0*1024.0));
 #endif
         }
     }
@@ -999,11 +1000,20 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             if(v.preset==2){
-                if(mandelbulbMeshVertexCount_!=0){
+                const auto& eyePos=xrView.pose.position;
+                const float dx=v.position[0]-eyePos.x;
+                const float dy=v.position[1]-eyePos.y;
+                const float dz=v.position[2]-eyePos.z;
+                const float distance=std::sqrt(dx*dx+dy*dy+dz*dz);
+                const float apparent=v.scale/std::max(distance,0.15f);
+                // Prefer full resolution for nearby/large artwork.
+                const int level=apparent>=0.24f ? 0 : (apparent>=0.11f ? 1 : 2);
+                const auto& lod=mandelbulbLods_[level];
+                if(lod.indexCount>0){
                     VkDeviceSize offset=0;
-                    vkCmdBindVertexBuffers(commandBuffer_,0,1,&mandelbulbMeshBuffer_,&offset);
-                    vkCmdBindIndexBuffer(commandBuffer_,mandelbulbIndexBuffer_,0,VK_INDEX_TYPE_UINT32);
-                    vkCmdDrawIndexed(commandBuffer_,mandelbulbIndexCount_,1,0,0,0);
+                    vkCmdBindVertexBuffers(commandBuffer_,0,1,&lod.vertexBuffer,&offset);
+                    vkCmdBindIndexBuffer(commandBuffer_,lod.indexBuffer,0,VK_INDEX_TYPE_UINT32);
+                    vkCmdDrawIndexed(commandBuffer_,lod.indexCount,1,0,0,0);
                 }
             }else{
                 vkCmdDraw(commandBuffer_,v.preset==3 ? 24*18*2 : 6,1,0,0);
@@ -1273,12 +1283,13 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbLitPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbLitPipeline_,nullptr);voxenMandelbulbLitPipeline_=VK_NULL_HANDLE;}
-    if(mandelbulbMeshBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,mandelbulbMeshBuffer_,nullptr);mandelbulbMeshBuffer_=VK_NULL_HANDLE;}
-    if(mandelbulbMeshMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,mandelbulbMeshMemory_,nullptr);mandelbulbMeshMemory_=VK_NULL_HANDLE;}
-    if(mandelbulbIndexBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,mandelbulbIndexBuffer_,nullptr);mandelbulbIndexBuffer_=VK_NULL_HANDLE;}
-    if(mandelbulbIndexMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,mandelbulbIndexMemory_,nullptr);mandelbulbIndexMemory_=VK_NULL_HANDLE;}
-    mandelbulbIndexCount_=0;
-    mandelbulbMeshVertexCount_=0;
+    for(auto& lod:mandelbulbLods_){
+        if(lod.vertexBuffer!=VK_NULL_HANDLE)vkDestroyBuffer(device_,lod.vertexBuffer,nullptr);
+        if(lod.indexBuffer!=VK_NULL_HANDLE)vkDestroyBuffer(device_,lod.indexBuffer,nullptr);
+        if(lod.vertexMemory!=VK_NULL_HANDLE)vkFreeMemory(device_,lod.vertexMemory,nullptr);
+        if(lod.indexMemory!=VK_NULL_HANDLE)vkFreeMemory(device_,lod.indexMemory,nullptr);
+        lod={};
+    }
     if(voxenAttractorPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenAttractorPipeline_,nullptr);voxenAttractorPipeline_=VK_NULL_HANDLE;}
     voxens_.clear();
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
