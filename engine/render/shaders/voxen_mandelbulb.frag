@@ -60,7 +60,14 @@ void main(){
         travel+=clamp(d,0.007,0.12);
         if(travel>endTravel)break;
     }
-    if(!hit)discard;
+    // Temporary diagnostic: magenta = the volume proxy is rasterized,
+    // but this eye's ray did not intersect the Mandelbulb surface.
+    // If the Voxen remains completely invisible, investigate Vulkan culling,
+    // depth testing, positioning or the shader pipeline instead.
+    if(!hit){
+        outColor=vec4(1.0,0.0,0.75,1.0);
+        return;
+    }
     vec3 modelHit=hitPoint;
     modelHit.xz=r*modelHit.xz;
     vec3 n=bulbNormal(modelHit);
