@@ -108,6 +108,8 @@ private:
     VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline voxenPlasmaPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenSpheresPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxenMandelbulbPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxenAttractorPipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
     VkPipeline meshWirePipeline_ = VK_NULL_HANDLE;
