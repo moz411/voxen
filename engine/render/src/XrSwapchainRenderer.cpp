@@ -726,7 +726,6 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     VkViewport viewport{0,static_cast<float>(eye.height),static_cast<float>(eye.width),-static_cast<float>(eye.height),0,1};
     VkRect2D scissor{{0,0},{static_cast<uint32_t>(eye.width),static_cast<uint32_t>(eye.height)}};
     vkCmdSetViewport(commandBuffer_,0,1,&viewport); vkCmdSetScissor(commandBuffer_,0,1,&scissor);
-    vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_);
 
     const float seconds = std::chrono::duration<float>(
         std::chrono::steady_clock::now() - animationStart_).count();
@@ -746,7 +745,6 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     std::array<float,3> wallColor{0.12f,0.55f,1.0f};
     float solidOpacity=0.85f;
     float globalSpeed=1.0f;
-    bool artworksVisible=true;
     bool artworksAnimated=true;
     int motionMode=0;
     float motionAmplitude=0.25f;
@@ -764,7 +762,6 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     wallColor={imguiCarousel_.wallColor[0],imguiCarousel_.wallColor[1],imguiCarousel_.wallColor[2]};
     solidOpacity=imguiCarousel_.wallSolidOpacity;
     globalSpeed=imguiCarousel_.animationSpeed;
-    artworksVisible=imguiCarousel_.showArtworks;
     artworksAnimated=imguiCarousel_.animateArtworks;
     motionMode=imguiCarousel_.artworkMotion;
     motionAmplitude=std::clamp(imguiCarousel_.motionAmplitude,0.0f,0.5f);
