@@ -935,7 +935,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 // World-space eye for this XR view, expressed in Voxen-local units.
                 // Model is translation + uniform scale, so the inverse is cheap.
                 const float inverseScale=1.0f/std::max(v.scale,0.01f);
-                VolumePushConstants pc{mvp,{seconds,v.speed,v.hue,v.density},{
+                VolumePushConstants pc{mvp,{seconds,v.speed,v.hue,float(imguiCarousel_.volumeDebugMode)},{
                     (xrView.pose.position.x-v.position[0])*inverseScale,
                     (xrView.pose.position.y-v.position[1])*inverseScale,
                     (xrView.pose.position.z-v.position[2])*inverseScale,0.0f}};
