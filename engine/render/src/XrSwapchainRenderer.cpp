@@ -935,7 +935,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,v.density}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
-            vkCmdDraw(commandBuffer_,v.preset==2 ? 24*18*6 : (v.preset==3 ? 24*18*2 : 6),1,0,0);
+            vkCmdDraw(commandBuffer_,v.preset==2 ? 32*24*6 : (v.preset==3 ? 24*18*2 : 6),1,0,0);
         };
         for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
