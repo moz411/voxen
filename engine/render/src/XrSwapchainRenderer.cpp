@@ -971,33 +971,18 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,6,1,0,0);
     }
 #endif
-    // Draw the visible controller rays last; depth testing hides them behind artwork.
-    vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_GRAPHICS, laserPipeline_);
-    for (std::size_t hand = 0; hand < controllerTracked_.size(); ++hand) {
-        if (!controllerTracked_[hand]) continue;
-        float length = 2.5F;
+    // Ray is shown only on the right controller when it points at the UI.
 #ifdef VOXEN_WITH_IMGUI
-        if(hand==1 && panelAimed_)length=std::max(0.05f,panelHitDistance_);
-#endif
-        const int target = hoveredArtwork_[hand];
-        if (target >= 0) {
-            const auto& q = controllerPoses_[hand].orientation;
-            const float dx = -2.0F * (q.x*q.z + q.w*q.y);
-            const float dy = -2.0F * (q.y*q.z - q.w*q.x);
-            const float dz = -(1.0F - 2.0F * (q.x*q.x + q.y*q.y));
-            const auto& c = scene_.artworks()[target].transform.position;
-            length = std::min(length,std::clamp(
-                (c[0]-controllerPoses_[hand].position.x)*dx +
-                (c[1]-controllerPoses_[hand].position.y)*dy +
-                (c[2]-controllerPoses_[hand].position.z)*dz, 0.1F, 2.5F));
-        }
-        const Mat4 beamMvp = multiply(projView, laserMatrix(controllerPoses_[hand], length));
-        ProceduralPushConstants constants{beamMvp, {seconds, 1.0F, 1.0F, 0.0F}};
-        vkCmdPushConstants(commandBuffer_, pipelineLayout_,
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-            0, sizeof(constants), &constants);
-        vkCmdDraw(commandBuffer_, 36, 1, 0, 0);
+    if(controllerTracked_[1] && panelAimed_){
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,laserPipeline_);
+        const float length=std::max(0.05f,panelHitDistance_);
+        const Mat4 beamMvp=multiply(projView,laserMatrix(controllerPoses_[1],length));
+        ProceduralPushConstants constants{beamMvp,{seconds,1.0F,1.0F,0.0F}};
+        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(constants),&constants);
+        vkCmdDraw(commandBuffer_,36,1,0,0);
     }
+#endif
     vkCmdEndRenderPass(commandBuffer_);
     if (gpuTimestampPool_ != VK_NULL_HANDLE)
         vkCmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpuTimestampPool_, 1);
