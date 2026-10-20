@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <vector>
+#include <map>
 #include <utility>
 
 #include <vulkan/vulkan.h>
@@ -143,6 +144,8 @@ private:
     XrPosef meshWirePose_{};
     struct CollisionTriangle { std::array<float,3> a,b,c; };
     std::vector<CollisionTriangle> roomCollisionTriangles_;
+    // 0.5m uniform grid: broad-phase candidate triangles, built on mesh updates.
+    std::map<std::array<int,3>,std::vector<uint32_t>> roomCollisionGrid_;
     VkPipeline carouselPipeline_ = VK_NULL_HANDLE;
     int nativeMenuPage_ = 0;
     bool nativeMenuStickLatched_ = false;
