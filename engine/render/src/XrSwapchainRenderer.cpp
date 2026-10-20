@@ -1107,8 +1107,45 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 
 // Fixed-step, world-space sphere proxy physics. One update per stereo frame.
 // The procedural surface deformation stays entirely in the Vulkan shaders.
-void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float bounce, float floorY) {
+void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float bounce, float floorY,
+    int mode, float swarmRadius, float swarmStrength, float swarmSeparation) {
     constexpr float kMaxSpeed=4.f;
+    if(mode==1 && voxens_.size()>1){
+        // Snapshot neighbor state: steering is independent of iteration order.
+        std::vector<std::array<float,3>> acceleration(voxens_.size());
+        const float radius2=swarmRadius*swarmRadius;
+        for(size_t i=0;i<voxens_.size();++i){
+            std::array<float,3> cohesion{}, alignment{}, separation{};
+            int count=0;
+            for(size_t j=0;j<voxens_.size();++j){
+                if(i==j)continue;
+                float delta[3];
+                for(int k=0;k<3;++k)delta[k]=voxens_[j].position[k]-voxens_[i].position[k];
+                const float d2=delta[0]*delta[0]+delta[1]*delta[1]+delta[2]*delta[2];
+                if(d2<1e-8f || d2>radius2)continue;
+                ++count;
+                for(int k=0;k<3;++k){
+                    cohesion[k]+=delta[k];
+                    alignment[k]+=voxens_[j].velocity[k]-voxens_[i].velocity[k];
+                    separation[k]-=delta[k]/std::max(d2,0.015f);
+                }
+            }
+            if(count){
+                const float inv=1.f/static_cast<float>(count);
+                for(int k=0;k<3;++k){
+                    acceleration[i][k]=swarmStrength*(0.85f*cohesion[k]*inv+
+                        0.65f*alignment[k]*inv+
+                        0.09f*swarmSeparation*separation[k]*inv);
+                }
+            }
+        }
+        for(size_t i=0;i<voxens_.size();++i){
+            for(int k=0;k<3;++k){
+                voxens_[i].velocity[k]+=std::clamp(acceleration[i][k],-5.f,5.f)*dt;
+                voxens_[i].velocity[k]*=1.f-0.12f*dt;
+            }
+        }
+    }
     for(auto& v:voxens_){
         if(gravity) v.velocity[1]-=9.81f*dt;
         for(int k=0;k<3;++k){
@@ -1256,7 +1293,9 @@ void XrSwapchainRenderer::render(
         constexpr float step=1.f/60.f;
         for(int steps=0;physicsAccumulator_>=step && steps<6;++steps){
             advanceVoxenPhysics(step,imguiCarousel_.motionGravity,
-                imguiCarousel_.motionBounce,imguiCarousel_.motionFloorY);
+                imguiCarousel_.motionBounce,imguiCarousel_.motionFloorY,
+                imguiCarousel_.motionMode,imguiCarousel_.swarmRadius,
+                imguiCarousel_.swarmStrength,imguiCarousel_.swarmSeparation);
             physicsAccumulator_-=step;
         }
     }else physicsAccumulator_=0.f;
