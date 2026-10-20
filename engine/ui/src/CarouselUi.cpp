@@ -40,6 +40,14 @@ void drawCarousel(CarouselState& state) {
             ImGui::Separator();
             ImGui::TextUnformatted("FREE FLOAT / PHYSICS");
             ImGui::Checkbox("Enable motion",&state.motionEnabled);
+            static constexpr const char* motionModes[]={"FREE FLOAT","SWARM / BOIDS"};
+            ImGui::Combo("Motion mode",&state.motionMode,motionModes,2);
+            if(state.motionMode==1){
+                ImGui::SliderFloat("Swarm radius (m)",&state.swarmRadius,0.25f,2.5f,"%.2f");
+                ImGui::SliderFloat("Swarm strength",&state.swarmStrength,0.1f,4.f,"%.2f");
+                ImGui::SliderFloat("Separation",&state.swarmSeparation,0.1f,4.f,"%.2f");
+                ImGui::TextDisabled("Local cohesion + alignment + separation");
+            }
             ImGui::Checkbox("Gravity",&state.motionGravity);
             ImGui::SliderFloat("Initial speed (m/s)",&state.motionSpeed,0.05f,1.5f,"%.2f");
             ImGui::SliderFloat("Bounce",&state.motionBounce,0.f,1.f,"%.2f");
