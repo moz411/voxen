@@ -166,10 +166,14 @@ private:
         float hue=0.52f;
         float density=1.0f;
         float speed=1.0f;
+        std::array<float,3> velocity{};
         int material=0;
         int lodLevel=-1; // Chosen once per stereo frame using both eye positions
     };
     std::vector<PlasmaVoxen> voxens_;
+    std::chrono::steady_clock::time_point lastPhysicsFrame_{};
+    float physicsAccumulator_=0.f;
+    void advanceVoxenPhysics(float dt, bool gravity, float bounce, float floorY);
     std::array<float,3> lastVoxenPos_{};
     bool lastVoxenValid_=false;
     std::array<XrPosef, 2> controllerPoses_{};
