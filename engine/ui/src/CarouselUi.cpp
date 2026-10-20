@@ -37,6 +37,14 @@ void drawCarousel(CarouselState& state) {
             ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
             ImGui::SliderFloat(state.voxenPreset==4 ? "Deformation" : "Density",&state.voxenDensity,0.3f,2.f);
             ImGui::SliderFloat("Speed",&state.voxenSpeed,0.1f,3.f);
+            ImGui::Separator();
+            ImGui::TextUnformatted("FREE FLOAT / PHYSICS");
+            ImGui::Checkbox("Enable motion",&state.motionEnabled);
+            ImGui::Checkbox("Gravity",&state.motionGravity);
+            ImGui::SliderFloat("Initial speed (m/s)",&state.motionSpeed,0.05f,1.5f,"%.2f");
+            ImGui::SliderFloat("Bounce",&state.motionBounce,0.f,1.f,"%.2f");
+            ImGui::SliderFloat("Floor height (m)",&state.motionFloorY,-2.f,2.f,"%.2f");
+            ImGui::TextDisabled("Sphere collisions + virtual floor (not room mesh)");
             ImGui::Text("Voxens: %d / 256",state.voxenCount);
             if(ImGui::Button("CLEAR VOXENS"))state.voxenClear=true;
             ImGui::TextDisabled("Right trigger paints in space");
