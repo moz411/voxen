@@ -141,6 +141,8 @@ private:
     VkDeviceMemory meshWireMemory_ = VK_NULL_HANDLE;
     uint32_t meshWireVertexCount_ = 0;
     XrPosef meshWirePose_{};
+    struct CollisionTriangle { std::array<float,3> a,b,c; };
+    std::vector<CollisionTriangle> roomCollisionTriangles_;
     VkPipeline carouselPipeline_ = VK_NULL_HANDLE;
     int nativeMenuPage_ = 0;
     bool nativeMenuStickLatched_ = false;
@@ -177,7 +179,7 @@ private:
     std::chrono::steady_clock::time_point lastPhysicsFrame_{};
     float physicsAccumulator_=0.f;
     void advanceVoxenPhysics(float dt, bool gravity, float bounce, float floorY,
-        int mode, float swarmRadius, float swarmStrength, float swarmSeparation);
+        int mode, float swarmRadius, float swarmStrength, float swarmSeparation, bool collideRoomMesh);
     std::array<float,3> lastVoxenPos_{};
     bool lastVoxenValid_=false;
     std::array<XrPosef, 2> controllerPoses_{};
