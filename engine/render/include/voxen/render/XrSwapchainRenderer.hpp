@@ -173,7 +173,8 @@ private:
     std::vector<PlasmaVoxen> voxens_;
     std::chrono::steady_clock::time_point lastPhysicsFrame_{};
     float physicsAccumulator_=0.f;
-    void advanceVoxenPhysics(float dt, bool gravity, float bounce, float floorY);
+    void advanceVoxenPhysics(float dt, bool gravity, float bounce, float floorY,
+        int mode, float swarmRadius, float swarmStrength, float swarmSeparation);
     std::array<float,3> lastVoxenPos_{};
     bool lastVoxenValid_=false;
     std::array<XrPosef, 2> controllerPoses_{};
