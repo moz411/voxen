@@ -455,8 +455,8 @@ void XrSwapchainRenderer::setSceneMeshes(const std::vector<MeshGeometry>& meshes
             const float vx=wc[0]-wa[0],vy=wc[1]-wa[1],vz=wc[2]-wa[2];
             const float nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
             const float n2=nx*nx+ny*ny+nz*nz;
-            // Only near-vertical faces (walls); skip floors, ceilings and degenerate triangles.
-            if(n2<1e-10f || ny*ny>0.25f*n2)continue;
+            // Keep near-vertical walls and near-horizontal ceiling candidates.
+            if(n2<1e-10f || (ny*ny>0.25f*n2 && ny*ny<0.75f*n2))continue;
             roomCollisionTriangles_.push_back({wa,wb,wc});
         }
     }
@@ -1164,7 +1164,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 
 // Fixed-step, world-space sphere proxy physics. One update per stereo frame.
 // The procedural surface deformation stays entirely in the Vulkan shaders.
-void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float bounce, float floorY,
+void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float bounce,
     int mode, float swarmRadius, float swarmStrength, float swarmSeparation, bool collideRoomMesh) {
     constexpr float kMaxSpeed=4.f;
     if(mode==1 && voxens_.size()>1){
@@ -1210,8 +1210,8 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
             v.position[k]+=v.velocity[k]*dt;
         }
         const float radius=std::max(0.025f,v.scale*0.5f);
-        if(v.position[1]-radius<floorY){
-            v.position[1]=floorY+radius;
+        if(hasTrackedFloor_ && v.position[1]-radius<trackedFloorY_){
+            v.position[1]=trackedFloorY_+radius;
             if(v.velocity[1]<0.f) v.velocity[1]=-v.velocity[1]*bounce;
             if(gravity && std::fabs(v.velocity[1])<0.07f) v.velocity[1]=0.f;
         }
@@ -1271,6 +1271,14 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
             candidates.erase(std::unique(candidates.begin(),candidates.end()),candidates.end());
             for(uint32_t triangleIndex:candidates){
                 const auto& t=roomCollisionTriangles_[triangleIndex];
+                // Only horizontal faces sufficiently above the calibrated floor are ceilings.
+                const float abx=t.b[0]-t.a[0],aby=t.b[1]-t.a[1],abz=t.b[2]-t.a[2];
+                const float acx=t.c[0]-t.a[0],acy=t.c[1]-t.a[1],acz=t.c[2]-t.a[2];
+                const float nx=aby*acz-abz*acy,ny=abz*acx-abx*acz,nz=abx*acy-aby*acx;
+                const float norm2=nx*nx+ny*ny+nz*nz;
+                if(ny*ny>=0.75f*norm2 &&
+                   (!hasTrackedFloor_ || std::min({t.a[1],t.b[1],t.c[1]})<trackedFloorY_+1.8f))
+                    continue;
                 bool distant=false;
                 for(int k=0;k<3;++k){
                     const float lo=std::min({t.a[k],t.b[k],t.c[k]})-radius;
@@ -1433,7 +1441,7 @@ void XrSwapchainRenderer::render(
         constexpr float step=1.f/60.f;
         for(int steps=0;physicsAccumulator_>=step && steps<6;++steps){
             advanceVoxenPhysics(step,imguiCarousel_.motionGravity,
-                imguiCarousel_.motionBounce,hasTrackedFloor_ ? trackedFloorY_ : imguiCarousel_.motionFloorY,
+                imguiCarousel_.motionBounce,
                 imguiCarousel_.motionMode,imguiCarousel_.swarmRadius,
                 imguiCarousel_.swarmStrength,imguiCarousel_.swarmSeparation,
                 imguiCarousel_.collideRoomMesh);
