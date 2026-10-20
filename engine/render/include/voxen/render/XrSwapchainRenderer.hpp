@@ -184,7 +184,7 @@ private:
     float physicsAccumulator_=0.f;
     float trackedFloorY_=0.f;
     bool hasTrackedFloor_=false;
-    void advanceVoxenPhysics(float dt, bool gravity, float bounce, float floorY,
+    void advanceVoxenPhysics(float dt, bool gravity, float bounce,
         int mode, float swarmRadius, float swarmStrength, float swarmSeparation, bool collideRoomMesh);
     std::array<float,3> lastVoxenPos_{};
     bool lastVoxenValid_=false;
