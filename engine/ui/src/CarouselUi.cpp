@@ -53,11 +53,12 @@ void drawCarousel(CarouselState& state) {
                 ImGui::TextDisabled("Local cohesion + alignment + separation");
             }
             ImGui::Checkbox("Gravity",&state.motionGravity);
-            ImGui::Checkbox("Room mesh collisions",&state.collideRoomMesh);
+            ImGui::Checkbox("Wall collisions",&state.collideRoomMesh);
             ImGui::SliderFloat("Initial speed (m/s)",&state.motionSpeed,0.05f,1.5f,"%.2f");
             ImGui::SliderFloat("Bounce",&state.motionBounce,0.f,1.f,"%.2f");
-            ImGui::SliderFloat("Floor height (m)",&state.motionFloorY,-2.f,2.f,"%.2f");
-            ImGui::TextDisabled("Scene mesh triangles used when available");
+            ImGui::TextDisabled("Floor: headset STAGE reference (manual fallback)");
+            ImGui::SliderFloat("Fallback floor (m)",&state.motionFloorY,-2.f,2.f,"%.2f");
+            ImGui::TextDisabled("Vertical scene triangles only; floor from headset");
             ImGui::Text("Voxens: %d / 256",state.voxenCount);
             if(ImGui::Button("CLEAR VOXENS"))state.voxenClear=true;
             ImGui::TextDisabled("Right trigger paints in space");
