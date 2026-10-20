@@ -56,6 +56,7 @@ public:
 #endif
     // Provider output is empty until Meta OpenXR scene acquisition succeeds.
     struct MeshGeometry { XrPosef pose{}; const std::vector<XrVector3f>* vertices=nullptr; const std::vector<uint32_t>* indices=nullptr; };
+    void setTrackedFloorHeight(float height) noexcept { trackedFloorY_=height; hasTrackedFloor_=true; }
     void setSceneMeshes(const std::vector<MeshGeometry>& meshes);
     void setEnvironmentSurfaces(std::vector<voxen::scene::EnvironmentSurface> surfaces) {
         environmentSurfaces_.replace(std::move(surfaces));
@@ -181,6 +182,8 @@ private:
     std::vector<PlasmaVoxen> voxens_;
     std::chrono::steady_clock::time_point lastPhysicsFrame_{};
     float physicsAccumulator_=0.f;
+    float trackedFloorY_=0.f;
+    bool hasTrackedFloor_=false;
     void advanceVoxenPhysics(float dt, bool gravity, float bounce, float floorY,
         int mode, float swarmRadius, float swarmStrength, float swarmSeparation, bool collideRoomMesh);
     std::array<float,3> lastVoxenPos_{};
