@@ -1066,7 +1066,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                     vkCmdDrawIndexed(commandBuffer_,lod.indexCount,1,0,0,0);
                 }
             }else{
-                vkCmdDraw(commandBuffer_,v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6),1,0,0);
+                vkCmdDraw(commandBuffer_,v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6)),1,0,0);
             }
         };
         for(const auto& v:voxens_)paintPlasma(v);
