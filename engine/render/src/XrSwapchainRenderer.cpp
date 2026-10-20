@@ -753,7 +753,8 @@ void XrSwapchainRenderer::updateControllerInteraction(
         v.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.6f);
         v.hue=imguiCarousel_.voxenHue;
         v.density=imguiCarousel_.voxenDensity;
-        v.material=std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
+        v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,3) :
+            std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
         v.speed=imguiCarousel_.voxenSpeed;
         const float dx=v.position[0]-lastVoxenPos_[0];
         const float dy=v.position[1]-lastVoxenPos_[1];
@@ -1012,7 +1013,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             // For Mandelbulbs, pack material into the otherwise unchanged float slot.
             // Density remains in [0.3,2.0], while material uses multiples of 4.
             const float packedDensity=v.preset==2 ? v.density+4.0f*float(v.material) : v.density;
-            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,v.preset>=4 ? std::clamp(v.density*0.20f,0.06f,0.40f) : packedDensity}};
+            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue+(v.preset>=4?float(v.material):0.f),v.preset>=4 ? std::clamp(v.density*0.20f,0.06f,0.40f) : packedDensity}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             if(v.preset==2){
@@ -1116,7 +1117,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 // Fixed-step, world-space sphere proxy physics. One update per stereo frame.
 // The procedural surface deformation stays entirely in the Vulkan shaders.
 void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float bounce, float floorY,
-    int mode, float swarmRadius, float swarmStrength, float swarmSeparation) {
+    int mode, float swarmRadius, float swarmStrength, float swarmSeparation, bool collideRoomMesh) {
     constexpr float kMaxSpeed=4.f;
     if(mode==1 && voxens_.size()>1){
         // Snapshot neighbor state: steering is independent of iteration order.
@@ -1303,7 +1304,8 @@ void XrSwapchainRenderer::render(
             advanceVoxenPhysics(step,imguiCarousel_.motionGravity,
                 imguiCarousel_.motionBounce,imguiCarousel_.motionFloorY,
                 imguiCarousel_.motionMode,imguiCarousel_.swarmRadius,
-                imguiCarousel_.swarmStrength,imguiCarousel_.swarmSeparation);
+                imguiCarousel_.swarmStrength,imguiCarousel_.swarmSeparation,
+                imguiCarousel_.collideRoomMesh);
             physicsAccumulator_-=step;
         }
     }else physicsAccumulator_=0.f;
