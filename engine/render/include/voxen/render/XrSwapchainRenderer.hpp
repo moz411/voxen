@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <vector>
+#include <map>
 #include <utility>
 
 #include <vulkan/vulkan.h>
@@ -55,6 +56,7 @@ public:
 #endif
     // Provider output is empty until Meta OpenXR scene acquisition succeeds.
     struct MeshGeometry { XrPosef pose{}; const std::vector<XrVector3f>* vertices=nullptr; const std::vector<uint32_t>* indices=nullptr; };
+    void setTrackedFloorHeight(float height) noexcept { trackedFloorY_=height; hasTrackedFloor_=true; }
     void setSceneMeshes(const std::vector<MeshGeometry>& meshes);
     void setEnvironmentSurfaces(std::vector<voxen::scene::EnvironmentSurface> surfaces) {
         environmentSurfaces_.replace(std::move(surfaces));
@@ -141,6 +143,10 @@ private:
     VkDeviceMemory meshWireMemory_ = VK_NULL_HANDLE;
     uint32_t meshWireVertexCount_ = 0;
     XrPosef meshWirePose_{};
+    struct CollisionTriangle { std::array<float,3> a,b,c; };
+    std::vector<CollisionTriangle> roomCollisionTriangles_;
+    // 0.5m uniform grid: broad-phase candidate triangles, built on mesh updates.
+    std::map<std::array<int,3>,std::vector<uint32_t>> roomCollisionGrid_;
     VkPipeline carouselPipeline_ = VK_NULL_HANDLE;
     int nativeMenuPage_ = 0;
     bool nativeMenuStickLatched_ = false;
@@ -156,6 +162,9 @@ private:
     std::chrono::steady_clock::time_point lastUiFrame_{};
 #endif
     VkPipeline organicSpherePipeline_ = VK_NULL_HANDLE;
+    VkPipeline torusKnotPipeline_ = VK_NULL_HANDLE;
+    VkPipeline spikeBloomPipeline_ = VK_NULL_HANDLE;
+    VkPipeline jellyfishPipeline_ = VK_NULL_HANDLE;
     VkPipeline laserPipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
     voxen::scene::EnvironmentSurfaceRegistry environmentSurfaces_{};
@@ -166,10 +175,17 @@ private:
         float hue=0.52f;
         float density=1.0f;
         float speed=1.0f;
+        std::array<float,3> velocity{};
         int material=0;
         int lodLevel=-1; // Chosen once per stereo frame using both eye positions
     };
     std::vector<PlasmaVoxen> voxens_;
+    std::chrono::steady_clock::time_point lastPhysicsFrame_{};
+    float physicsAccumulator_=0.f;
+    float trackedFloorY_=0.f;
+    bool hasTrackedFloor_=false;
+    void advanceVoxenPhysics(float dt, bool gravity, float bounce,
+        int mode, float swarmRadius, float swarmStrength, float swarmSeparation, bool collideRoomMesh);
     std::array<float,3> lastVoxenPos_{};
     bool lastVoxenValid_=false;
     std::array<XrPosef, 2> controllerPoses_{};

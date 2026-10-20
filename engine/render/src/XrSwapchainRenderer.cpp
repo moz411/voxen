@@ -19,6 +19,9 @@
 #include <cstdio>
 #endif
 
+#include "torusKnotVert.spv.hpp"
+#include "spikeBloomVert.spv.hpp"
+#include "jellyfishVert.spv.hpp"
 #include "organicSphereVert.spv.hpp"
 #include "organicSphereFrag.spv.hpp"
 #include "cubeVert.spv.hpp"
@@ -427,6 +430,54 @@ static Mat4 meshPoseMatrix(const XrPosef& pose) {
 }
 
 void XrSwapchainRenderer::setSceneMeshes(const std::vector<MeshGeometry>& meshes) {
+    // Cache world-space triangles for physics; never read transient XR mesh pointers
+    // during the simulation. Scene meshes may be absent until capture completes.
+    roomCollisionTriangles_.clear();
+    roomCollisionGrid_.clear();
+    for(const auto& part:meshes){
+        if(!part.vertices || !part.indices)continue;
+        const auto& q=part.pose.orientation;
+        const auto& origin=part.pose.position;
+        auto world=[&](const XrVector3f& p)->std::array<float,3>{
+            const float tx=2.f*(q.y*p.z-q.z*p.y);
+            const float ty=2.f*(q.z*p.x-q.x*p.z);
+            const float tz=2.f*(q.x*p.y-q.y*p.x);
+            return {p.x+q.w*tx+(q.y*tz-q.z*ty)+origin.x,
+                    p.y+q.w*ty+(q.z*tx-q.x*tz)+origin.y,
+                    p.z+q.w*tz+(q.x*ty-q.y*tx)+origin.z};
+        };
+        for(size_t i=0;i+2<part.indices->size();i+=3){
+            const auto a=(*part.indices)[i],b=(*part.indices)[i+1],c=(*part.indices)[i+2];
+            if(a>=part.vertices->size()||b>=part.vertices->size()||c>=part.vertices->size())continue;
+            const auto wa=world((*part.vertices)[a]),wb=world((*part.vertices)[b]),
+                wc=world((*part.vertices)[c]);
+            const float ux=wb[0]-wa[0],uy=wb[1]-wa[1],uz=wb[2]-wa[2];
+            const float vx=wc[0]-wa[0],vy=wc[1]-wa[1],vz=wc[2]-wa[2];
+            const float nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
+            const float n2=nx*nx+ny*ny+nz*nz;
+            // Keep near-vertical walls and near-horizontal ceiling candidates.
+            if(n2<1e-10f || (ny*ny>0.25f*n2 && ny*ny<0.75f*n2))continue;
+            roomCollisionTriangles_.push_back({wa,wb,wc});
+        }
+    }
+    // Index each triangle in a 0.5m spatial grid, once per mesh update.
+    // Per-voxel collision checks then visit only overlapping cells.
+    constexpr float cellSize=0.5f;
+    for(uint32_t i=0;i<roomCollisionTriangles_.size();++i){
+        const auto& t=roomCollisionTriangles_[i];
+        std::array<int,3> lo{},hi{};
+        for(int k=0;k<3;++k){
+            lo[k]=static_cast<int>(std::floor(std::min({t.a[k],t.b[k],t.c[k]})/cellSize));
+            hi[k]=static_cast<int>(std::floor(std::max({t.a[k],t.b[k],t.c[k]})/cellSize));
+        }
+        // Huge malformed triangles are excluded from the index for safety.
+        if((int64_t(hi[0])-lo[0]+1)*(int64_t(hi[1])-lo[1]+1)*
+           (int64_t(hi[2])-lo[2]+1)>4096)continue;
+        for(int x=lo[0];x<=hi[0];++x)
+            for(int y=lo[1];y<=hi[1];++y)
+                for(int z=lo[2];z<=hi[2];++z)
+                    roomCollisionGrid_[{x,y,z}].push_back(i);
+    }
     if(meshes.empty())return;
     const auto& mesh=meshes.front();
     meshWirePose_=mesh.pose;
@@ -573,7 +624,7 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &organicSpherePipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &organicSpherePipeline_ || &out == &torusKnotPipeline_ || &out == &spikeBloomPipeline_ || &out == &jellyfishPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
         || &out == &imguiPanelPipeline_
 #endif
@@ -625,6 +676,9 @@ void XrSwapchainRenderer::createPipeline() {
         vkDestroyShaderModule(device_, vs, nullptr);
     };
     buildPipeline(organicSphereVert, organicSphereVertSize, organicSphereFrag, organicSphereFragSize, organicSpherePipeline_);
+    buildPipeline(torusKnotVert, torusKnotVertSize, organicSphereFrag, organicSphereFragSize, torusKnotPipeline_);
+    buildPipeline(spikeBloomVert, spikeBloomVertSize, organicSphereFrag, organicSphereFragSize, spikeBloomPipeline_);
+    buildPipeline(jellyfishVert, jellyfishVertSize, organicSphereFrag, organicSphereFragSize, jellyfishPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
     buildPipeline(meshWireVert, meshWireVertSize, laserFrag, laserFragSize, voxenMandelbulbPipeline_);
@@ -747,13 +801,15 @@ void XrSwapchainRenderer::updateControllerInteraction(
         v.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.6f);
         v.hue=imguiCarousel_.voxenHue;
         v.density=imguiCarousel_.voxenDensity;
-        v.material=std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
+        v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,3) :
+            std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
         v.speed=imguiCarousel_.voxenSpeed;
         const float dx=v.position[0]-lastVoxenPos_[0];
         const float dy=v.position[1]-lastVoxenPos_[1];
         const float dz=v.position[2]-lastVoxenPos_[2];
         if(!lastVoxenValid_ || dx*dx+dy*dy+dz*dz >= v.scale*v.scale*0.45f){
             if(voxens_.size()<256){
+                v.velocity={dir[0]*imguiCarousel_.motionSpeed,dir[1]*imguiCarousel_.motionSpeed,dir[2]*imguiCarousel_.motionSpeed};
                 voxens_.push_back(v);
 #ifdef __ANDROID__
                 if(v.preset==2) __android_log_print(ANDROID_LOG_INFO,"Voxen","Mandelbulb instance created: total=%zu, scale=%.2f, pos=(%.2f,%.2f,%.2f)",
@@ -988,7 +1044,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,meshWireVertexCount_,1,0,0);
     }
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE && voxenSpheresPipeline_!=VK_NULL_HANDLE &&
-       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE){
+       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE && torusKnotPipeline_!=VK_NULL_HANDLE && spikeBloomPipeline_!=VK_NULL_HANDLE && jellyfishPipeline_!=VK_NULL_HANDLE){
         auto paintPlasma=[&](const PlasmaVoxen& v){
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 v.preset==1 ? voxenSpheresPipeline_ :
@@ -997,13 +1053,15 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 imguiCarousel_.mandelbulbLighting ? voxenMandelbulbLitPipeline_ :
 #endif
                 voxenMandelbulbPipeline_) :
-                v.preset==3 ? voxenAttractorPipeline_ : v.preset==4 ? organicSpherePipeline_ : voxenPlasmaPipeline_);
+                v.preset==3 ? voxenAttractorPipeline_ : v.preset==4 ? organicSpherePipeline_ :
+                v.preset==5 ? torusKnotPipeline_ : v.preset==6 ? spikeBloomPipeline_ :
+                v.preset==7 ? jellyfishPipeline_ : voxenPlasmaPipeline_);
             const Mat4 mvp=multiply(projView,modelMatrix(
                 v.position[0],v.position[1],v.scale,v.position[2],0.f));
             // For Mandelbulbs, pack material into the otherwise unchanged float slot.
             // Density remains in [0.3,2.0], while material uses multiples of 4.
             const float packedDensity=v.preset==2 ? v.density+4.0f*float(v.material) : v.density;
-            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,v.preset==4 ? std::clamp(v.density*0.20f,0.06f,0.40f) : packedDensity}};
+            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue+(v.preset>=4?float(v.material):0.f),v.preset>=4 ? std::clamp(v.density*0.20f,0.06f,0.40f) : packedDensity}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             if(v.preset==2){
@@ -1015,7 +1073,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                     vkCmdDrawIndexed(commandBuffer_,lod.indexCount,1,0,0,0);
                 }
             }else{
-                vkCmdDraw(commandBuffer_,v.preset==4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6),1,0,0);
+                vkCmdDraw(commandBuffer_,v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6)),1,0,0);
             }
         };
         for(const auto& v:voxens_)paintPlasma(v);
@@ -1100,6 +1158,184 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 VK_QUERY_RESULT_64_BIT) == VK_SUCCESS && ts[1] >= ts[0]) {
             const float ms = static_cast<float>(ts[1]-ts[0])*timestampPeriodNs_*1e-6f;
             lastGpuMs_ = completedGpuSamples_++ == 0 ? ms : lastGpuMs_*0.9f+ms*0.1f;
+        }
+    }
+}
+
+// Fixed-step, world-space sphere proxy physics. One update per stereo frame.
+// The procedural surface deformation stays entirely in the Vulkan shaders.
+void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float bounce,
+    int mode, float swarmRadius, float swarmStrength, float swarmSeparation, bool collideRoomMesh) {
+    constexpr float kMaxSpeed=4.f;
+    if(mode==1 && voxens_.size()>1){
+        // Snapshot neighbor state: steering is independent of iteration order.
+        std::vector<std::array<float,3>> acceleration(voxens_.size());
+        const float radius2=swarmRadius*swarmRadius;
+        for(size_t i=0;i<voxens_.size();++i){
+            std::array<float,3> cohesion{}, alignment{}, separation{};
+            int count=0;
+            for(size_t j=0;j<voxens_.size();++j){
+                if(i==j)continue;
+                float delta[3];
+                for(int k=0;k<3;++k)delta[k]=voxens_[j].position[k]-voxens_[i].position[k];
+                const float d2=delta[0]*delta[0]+delta[1]*delta[1]+delta[2]*delta[2];
+                if(d2<1e-8f || d2>radius2)continue;
+                ++count;
+                for(int k=0;k<3;++k){
+                    cohesion[k]+=delta[k];
+                    alignment[k]+=voxens_[j].velocity[k]-voxens_[i].velocity[k];
+                    separation[k]-=delta[k]/std::max(d2,0.015f);
+                }
+            }
+            if(count){
+                const float inv=1.f/static_cast<float>(count);
+                for(int k=0;k<3;++k){
+                    acceleration[i][k]=swarmStrength*(0.85f*cohesion[k]*inv+
+                        0.65f*alignment[k]*inv+
+                        0.09f*swarmSeparation*separation[k]*inv);
+                }
+            }
+        }
+        for(size_t i=0;i<voxens_.size();++i){
+            for(int k=0;k<3;++k){
+                voxens_[i].velocity[k]+=std::clamp(acceleration[i][k],-5.f,5.f)*dt;
+                voxens_[i].velocity[k]*=1.f-0.12f*dt;
+            }
+        }
+    }
+    for(auto& v:voxens_){
+        if(gravity) v.velocity[1]-=9.81f*dt;
+        for(int k=0;k<3;++k){
+            v.velocity[k]=std::clamp(v.velocity[k],-kMaxSpeed,kMaxSpeed);
+            v.position[k]+=v.velocity[k]*dt;
+        }
+        const float radius=std::max(0.025f,v.scale*0.5f);
+        if(hasTrackedFloor_ && v.position[1]-radius<trackedFloorY_){
+            v.position[1]=trackedFloorY_+radius;
+            if(v.velocity[1]<0.f) v.velocity[1]=-v.velocity[1]*bounce;
+            if(gravity && std::fabs(v.velocity[1])<0.07f) v.velocity[1]=0.f;
+        }
+    }
+    if(collideRoomMesh && !roomCollisionTriangles_.empty()){
+        // Sphere against actual scene triangles (closest point on triangle).
+        // Broad-phase AABB avoids expensive closest-point tests for distant faces.
+        auto sub=[](const std::array<float,3>& a,const std::array<float,3>& b){
+            return std::array<float,3>{a[0]-b[0],a[1]-b[1],a[2]-b[2]};};
+        auto dot=[](const std::array<float,3>& a,const std::array<float,3>& b){
+            return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];};
+        auto closest=[&](const std::array<float,3>& p,const CollisionTriangle& t){
+            const auto ab=sub(t.b,t.a),ac=sub(t.c,t.a),ap=sub(p,t.a);
+            const float d1=dot(ab,ap),d2=dot(ac,ap);
+            if(d1<=0.f&&d2<=0.f)return t.a;
+            const auto bp=sub(p,t.b);
+            const float d3=dot(ab,bp),d4=dot(ac,bp);
+            if(d3>=0.f&&d4<=d3)return t.b;
+            const float vc=d1*d4-d3*d2;
+            if(vc<=0.f&&d1>=0.f&&d3<=0.f){
+                const float v=d1/(d1-d3);
+                return std::array<float,3>{t.a[0]+v*ab[0],t.a[1]+v*ab[1],t.a[2]+v*ab[2]};}
+            const auto cp=sub(p,t.c);
+            const float d5=dot(ab,cp),d6=dot(ac,cp);
+            if(d6>=0.f&&d5<=d6)return t.c;
+            const float vb=d5*d2-d1*d6;
+            if(vb<=0.f&&d2>=0.f&&d6<=0.f){
+                const float w=d2/(d2-d6);
+                return std::array<float,3>{t.a[0]+w*ac[0],t.a[1]+w*ac[1],t.a[2]+w*ac[2]};}
+            const float va=d3*d6-d5*d4;
+            if(va<=0.f&&(d4-d3)>=0.f&&(d5-d6)>=0.f){
+                const auto bc=sub(t.c,t.b);
+                const float w=(d4-d3)/((d4-d3)+(d5-d6));
+                return std::array<float,3>{t.b[0]+w*bc[0],t.b[1]+w*bc[1],t.b[2]+w*bc[2]};}
+            const float denom=va+vb+vc;
+            if(std::fabs(denom)<1e-10f)return t.a;
+            const float inv=1.f/denom,v=vb*inv,w=vc*inv;
+            return std::array<float,3>{t.a[0]+v*ab[0]+w*ac[0],
+                t.a[1]+v*ab[1]+w*ac[1],t.a[2]+v*ab[2]+w*ac[2]};
+        };
+        for(auto& v:voxens_){
+            const float radius=std::max(0.025f,v.scale*0.5f);
+            std::vector<uint32_t> candidates;
+            std::array<int,3> lo{},hi{};
+            for(int k=0;k<3;++k){
+                lo[k]=static_cast<int>(std::floor((v.position[k]-radius)/0.5f));
+                hi[k]=static_cast<int>(std::floor((v.position[k]+radius)/0.5f));
+            }
+            for(int x=lo[0];x<=hi[0];++x)
+                for(int y=lo[1];y<=hi[1];++y)
+                    for(int z=lo[2];z<=hi[2];++z){
+                        auto it=roomCollisionGrid_.find({x,y,z});
+                        if(it!=roomCollisionGrid_.end())
+                            candidates.insert(candidates.end(),it->second.begin(),it->second.end());
+                    }
+            std::sort(candidates.begin(),candidates.end());
+            candidates.erase(std::unique(candidates.begin(),candidates.end()),candidates.end());
+            for(uint32_t triangleIndex:candidates){
+                const auto& t=roomCollisionTriangles_[triangleIndex];
+                // Only horizontal faces sufficiently above the calibrated floor are ceilings.
+                const float abx=t.b[0]-t.a[0],aby=t.b[1]-t.a[1],abz=t.b[2]-t.a[2];
+                const float acx=t.c[0]-t.a[0],acy=t.c[1]-t.a[1],acz=t.c[2]-t.a[2];
+                const float nx=aby*acz-abz*acy,ny=abz*acx-abx*acz,nz=abx*acy-aby*acx;
+                const float norm2=nx*nx+ny*ny+nz*nz;
+                if(ny*ny>=0.75f*norm2 &&
+                   (!hasTrackedFloor_ || std::min({t.a[1],t.b[1],t.c[1]})<trackedFloorY_+1.8f))
+                    continue;
+                bool distant=false;
+                for(int k=0;k<3;++k){
+                    const float lo=std::min({t.a[k],t.b[k],t.c[k]})-radius;
+                    const float hi=std::max({t.a[k],t.b[k],t.c[k]})+radius;
+                    if(v.position[k]<lo||v.position[k]>hi){distant=true;break;}
+                }
+                if(distant)continue;
+                const auto p=closest(v.position,t);
+                auto delta=sub(v.position,p);
+                float d2=dot(delta,delta);
+                if(d2>=radius*radius)continue;
+                const float d=std::sqrt(d2);
+                if(d<1e-6f){
+                    const auto ab=sub(t.b,t.a),ac=sub(t.c,t.a);
+                    delta={ab[1]*ac[2]-ab[2]*ac[1],
+                           ab[2]*ac[0]-ab[0]*ac[2],
+                           ab[0]*ac[1]-ab[1]*ac[0]};
+                    const float length=std::sqrt(dot(delta,delta));
+                    if(length<1e-7f)continue;
+                    for(float& x:delta)x/=length;
+                    if(dot(delta,v.velocity)>0.f)for(float& x:delta)x=-x;
+                }else for(float& x:delta)x/=d;
+                for(int k=0;k<3;++k)v.position[k]+=delta[k]*(radius-d+0.001f);
+                const float vn=dot(v.velocity,delta);
+                if(vn<0.f)for(int k=0;k<3;++k)v.velocity[k]-=(1.f+bounce)*vn*delta[k];
+            }
+        }
+    }
+    // At most 256 voxens: O(n^2) narrow phase is fine for this first prototype.
+    for(size_t i=0;i<voxens_.size();++i){
+        for(size_t j=i+1;j<voxens_.size();++j){
+            auto& a=voxens_[i]; auto& b=voxens_[j];
+            const float radius=0.5f*(a.scale+b.scale);
+            const float dx=b.position[0]-a.position[0];
+            const float dy=b.position[1]-a.position[1];
+            const float dz=b.position[2]-a.position[2];
+            const float dist2=dx*dx+dy*dy+dz*dz;
+            if(dist2>=radius*radius) continue;
+            const float dist=std::sqrt(dist2);
+            const float nx=dist>1e-5f?dx/dist:1.f;
+            const float ny=dist>1e-5f?dy/dist:0.f;
+            const float nz=dist>1e-5f?dz/dist:0.f;
+            const float penetration=radius-dist;
+            const float normal[3]={nx,ny,nz};
+            for(int k=0;k<3;++k){
+                a.position[k]-=normal[k]*penetration*0.5f;
+                b.position[k]+=normal[k]*penetration*0.5f;
+            }
+            const float relative=(b.velocity[0]-a.velocity[0])*nx+
+                (b.velocity[1]-a.velocity[1])*ny+(b.velocity[2]-a.velocity[2])*nz;
+            if(relative<0.f){
+                const float impulse=-(1.f+bounce)*relative*0.5f; // equal masses
+                for(int k=0;k<3;++k){
+                    a.velocity[k]-=impulse*normal[k];
+                    b.velocity[k]+=impulse*normal[k];
+                }
+            }
         }
     }
 }
@@ -1194,6 +1430,25 @@ void XrSwapchainRenderer::render(
         std::printf("[Voxen] Rendering first stereo projection frame\n");
 #endif
     }
+    // Advance physics once per stereo frame, never separately for each eye.
+#ifdef VOXEN_WITH_IMGUI
+    const auto physicsNow=std::chrono::steady_clock::now();
+    const float physicsDt=lastPhysicsFrame_.time_since_epoch().count()==0 ? 0.f :
+        std::clamp(std::chrono::duration<float>(physicsNow-lastPhysicsFrame_).count(),0.f,0.1f);
+    lastPhysicsFrame_=physicsNow;
+    if(imguiCarousel_.motionEnabled){
+        physicsAccumulator_=std::min(physicsAccumulator_+physicsDt,0.1f);
+        constexpr float step=1.f/60.f;
+        for(int steps=0;physicsAccumulator_>=step && steps<6;++steps){
+            advanceVoxenPhysics(step,imguiCarousel_.motionGravity,
+                imguiCarousel_.motionBounce,
+                imguiCarousel_.motionMode,imguiCarousel_.swarmRadius,
+                imguiCarousel_.swarmStrength,imguiCarousel_.swarmSeparation,
+                imguiCarousel_.collideRoomMesh);
+            physicsAccumulator_-=step;
+        }
+    }else physicsAccumulator_=0.f;
+#endif
     // Select one LOD per object before rendering either eye. Hysteresis
     // prevents thrashing at thresholds and guarantees identical stereo meshes.
     const XrVector3f center{
@@ -1317,6 +1572,9 @@ void XrSwapchainRenderer::shutdown() noexcept {
     }
 
     if(organicSpherePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,organicSpherePipeline_,nullptr);organicSpherePipeline_=VK_NULL_HANDLE;}
+    if(torusKnotPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,torusKnotPipeline_,nullptr);torusKnotPipeline_=VK_NULL_HANDLE;}
+    if(spikeBloomPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,spikeBloomPipeline_,nullptr);spikeBloomPipeline_=VK_NULL_HANDLE;}
+    if(jellyfishPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,jellyfishPipeline_,nullptr);jellyfishPipeline_=VK_NULL_HANDLE;}
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}

@@ -22,9 +22,9 @@ void drawCarousel(CarouselState& state) {
         case 0:
             ImGui::TextUnformatted("VOXENS / PROCEDURAL PRESETS");
             ImGui::Separator();
-            static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE"};
-            ImGui::Combo("Voxen preset",&state.voxenPreset,presets,5);
-            ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : "Animated deforming 3D sphere");
+            static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH"};
+            ImGui::Combo("Voxen preset",&state.voxenPreset,presets,8);
+            ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : state.voxenPreset==4 ? "Animated deforming 3D sphere" : state.voxenPreset==5 ? "Twisting torus knot" : state.voxenPreset==6 ? "Spiky bloom" : "Jellyfish bell");
             if(state.voxenPreset==2){
                 ImGui::Checkbox("Experimental 3D lighting",&state.mandelbulbLighting);
                 if(state.mandelbulbLighting){
@@ -32,11 +32,32 @@ void drawCarousel(CarouselState& state) {
                     ImGui::Combo("Mandelbulb material",&state.mandelbulbMaterial,materials,3);
                 }
             }
+            if(state.voxenPreset>=4){
+                static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS","MATRIX"};
+                ImGui::Combo("Surface material",&state.voxenMaterial,materials,4);
+            }
             ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.06f,0.60f,"%.2f");
             ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
-            ImGui::SliderFloat(state.voxenPreset==4 ? "Deformation" : "Density",&state.voxenDensity,0.3f,2.f);
+            ImGui::SliderFloat(state.voxenPreset>=4 ? "Deformation" : "Density",&state.voxenDensity,0.3f,2.f);
             ImGui::SliderFloat("Speed",&state.voxenSpeed,0.1f,3.f);
+            ImGui::Separator();
+            ImGui::TextUnformatted("FREE FLOAT / PHYSICS");
+            ImGui::Checkbox("Enable motion",&state.motionEnabled);
+            static constexpr const char* motionModes[]={"FREE FLOAT","SWARM / BOIDS"};
+            ImGui::Combo("Motion mode",&state.motionMode,motionModes,2);
+            if(state.motionMode==1){
+                ImGui::SliderFloat("Swarm radius (m)",&state.swarmRadius,0.25f,2.5f,"%.2f");
+                ImGui::SliderFloat("Swarm strength",&state.swarmStrength,0.1f,4.f,"%.2f");
+                ImGui::SliderFloat("Separation",&state.swarmSeparation,0.1f,4.f,"%.2f");
+                ImGui::TextDisabled("Local cohesion + alignment + separation");
+            }
+            ImGui::Checkbox("Gravity",&state.motionGravity);
+            ImGui::Checkbox("Wall + ceiling collisions",&state.collideRoomMesh);
+            ImGui::SliderFloat("Initial speed (m/s)",&state.motionSpeed,0.05f,1.5f,"%.2f");
+            ImGui::SliderFloat("Bounce",&state.motionBounce,0.f,1.f,"%.2f");
+            ImGui::TextDisabled("Floor: headset STAGE; ceiling: scanned mesh");
+            ImGui::TextDisabled("No floor collision until STAGE is available");
             ImGui::Text("Voxens: %d / 256",state.voxenCount);
             if(ImGui::Button("CLEAR VOXENS"))state.voxenClear=true;
             ImGui::TextDisabled("Right trigger paints in space");

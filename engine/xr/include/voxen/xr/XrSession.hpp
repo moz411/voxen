@@ -50,6 +50,7 @@ private:
 
     XrInstance instance_ = XR_NULL_HANDLE;
     ::XrSession session_ = XR_NULL_HANDLE;
+    XrSpace stageSpace_ = XR_NULL_HANDLE;
     XrSpace localSpace_ = XR_NULL_HANDLE;
     XrActionSet actionSet_ = XR_NULL_HANDLE;
     XrAction selectAction_ = XR_NULL_HANDLE;

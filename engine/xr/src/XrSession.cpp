@@ -65,6 +65,9 @@ void XrSession::initialize(
     spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL;
     spaceInfo.poseInReferenceSpace.orientation.w = 1.0F;
     checkXr(xrCreateReferenceSpace(session_, &spaceInfo, &localSpace_), "xrCreateReferenceSpace(LOCAL)");
+    // STAGE origin is on the headset-calibrated floor; locate it in LOCAL space.
+    spaceInfo.referenceSpaceType=XR_REFERENCE_SPACE_TYPE_STAGE;
+    if(XR_FAILED(xrCreateReferenceSpace(session_,&spaceInfo,&stageSpace_)))stageSpace_=XR_NULL_HANDLE;
     initializeActions();
     if(enableScene_) metaScene_.initialize(instance_,session_);
     if (enablePassthrough_) {
@@ -431,6 +434,12 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
 #endif
                 firstLocatedViewsLogged = true;
             }
+            if(stageSpace_!=XR_NULL_HANDLE){
+                XrSpaceLocation floorLocation{XR_TYPE_SPACE_LOCATION};
+                if(XR_SUCCEEDED(xrLocateSpace(stageSpace_,localSpace_,frameState.predictedDisplayTime,&floorLocation)) &&
+                    (floorLocation.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT))
+                    renderer.setTrackedFloorHeight(floorLocation.pose.position.y);
+            }
             renderer.render(views, projectionViews);
             layer.space = localSpace_;
             layer.viewCount = static_cast<uint32_t>(projectionViews.size());
@@ -475,6 +484,7 @@ void XrSession::shutdown() noexcept {
         thumbstickAction_ = XR_NULL_HANDLE;
     }
     selectionPressed_ = {};
+    if(stageSpace_!=XR_NULL_HANDLE){xrDestroySpace(stageSpace_);stageSpace_=XR_NULL_HANDLE;}
     if (localSpace_ != XR_NULL_HANDLE) {
         xrDestroySpace(localSpace_);
         localSpace_ = XR_NULL_HANDLE;
