@@ -430,6 +430,28 @@ static Mat4 meshPoseMatrix(const XrPosef& pose) {
 }
 
 void XrSwapchainRenderer::setSceneMeshes(const std::vector<MeshGeometry>& meshes) {
+    // Cache world-space triangles for physics; never read transient XR mesh pointers
+    // during the simulation. Scene meshes may be absent until capture completes.
+    roomCollisionTriangles_.clear();
+    for(const auto& part:meshes){
+        if(!part.vertices || !part.indices)continue;
+        const auto& q=part.pose.orientation;
+        const auto& origin=part.pose.position;
+        auto world=[&](const XrVector3f& p)->std::array<float,3>{
+            const float tx=2.f*(q.y*p.z-q.z*p.y);
+            const float ty=2.f*(q.z*p.x-q.x*p.z);
+            const float tz=2.f*(q.x*p.y-q.y*p.x);
+            return {p.x+q.w*tx+(q.y*tz-q.z*ty)+origin.x,
+                    p.y+q.w*ty+(q.z*tx-q.x*tz)+origin.y,
+                    p.z+q.w*tz+(q.x*ty-q.y*tx)+origin.z};
+        };
+        for(size_t i=0;i+2<part.indices->size();i+=3){
+            const auto a=(*part.indices)[i],b=(*part.indices)[i+1],c=(*part.indices)[i+2];
+            if(a>=part.vertices->size()||b>=part.vertices->size()||c>=part.vertices->size())continue;
+            roomCollisionTriangles_.push_back({world((*part.vertices)[a]),
+                world((*part.vertices)[b]),world((*part.vertices)[c])});
+        }
+    }
     if(meshes.empty())return;
     const auto& mesh=meshes.front();
     meshWirePose_=mesh.pose;
@@ -1166,6 +1188,73 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
             v.position[1]=floorY+radius;
             if(v.velocity[1]<0.f) v.velocity[1]=-v.velocity[1]*bounce;
             if(gravity && std::fabs(v.velocity[1])<0.07f) v.velocity[1]=0.f;
+        }
+    }
+    if(collideRoomMesh && !roomCollisionTriangles_.empty()){
+        // Sphere against actual scene triangles (closest point on triangle).
+        // Broad-phase AABB avoids expensive closest-point tests for distant faces.
+        auto sub=[](const std::array<float,3>& a,const std::array<float,3>& b){
+            return std::array<float,3>{a[0]-b[0],a[1]-b[1],a[2]-b[2]};};
+        auto dot=[](const std::array<float,3>& a,const std::array<float,3>& b){
+            return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];};
+        auto closest=[&](const std::array<float,3>& p,const CollisionTriangle& t){
+            const auto ab=sub(t.b,t.a),ac=sub(t.c,t.a),ap=sub(p,t.a);
+            const float d1=dot(ab,ap),d2=dot(ac,ap);
+            if(d1<=0.f&&d2<=0.f)return t.a;
+            const auto bp=sub(p,t.b);
+            const float d3=dot(ab,bp),d4=dot(ac,bp);
+            if(d3>=0.f&&d4<=d3)return t.b;
+            const float vc=d1*d4-d3*d2;
+            if(vc<=0.f&&d1>=0.f&&d3<=0.f){
+                const float v=d1/(d1-d3);
+                return std::array<float,3>{t.a[0]+v*ab[0],t.a[1]+v*ab[1],t.a[2]+v*ab[2]};}
+            const auto cp=sub(p,t.c);
+            const float d5=dot(ab,cp),d6=dot(ac,cp);
+            if(d6>=0.f&&d5<=d6)return t.c;
+            const float vb=d5*d2-d1*d6;
+            if(vb<=0.f&&d2>=0.f&&d6<=0.f){
+                const float w=d2/(d2-d6);
+                return std::array<float,3>{t.a[0]+w*ac[0],t.a[1]+w*ac[1],t.a[2]+w*ac[2]};}
+            const float va=d3*d6-d5*d4;
+            if(va<=0.f&&(d4-d3)>=0.f&&(d5-d6)>=0.f){
+                const auto bc=sub(t.c,t.b);
+                const float w=(d4-d3)/((d4-d3)+(d5-d6));
+                return std::array<float,3>{t.b[0]+w*bc[0],t.b[1]+w*bc[1],t.b[2]+w*bc[2]};}
+            const float denom=va+vb+vc;
+            if(std::fabs(denom)<1e-10f)return t.a;
+            const float inv=1.f/denom,v=vb*inv,w=vc*inv;
+            return std::array<float,3>{t.a[0]+v*ab[0]+w*ac[0],
+                t.a[1]+v*ab[1]+w*ac[1],t.a[2]+v*ab[2]+w*ac[2]};
+        };
+        for(auto& v:voxens_){
+            const float radius=std::max(0.025f,v.scale*0.5f);
+            for(const auto& t:roomCollisionTriangles_){
+                bool distant=false;
+                for(int k=0;k<3;++k){
+                    const float lo=std::min({t.a[k],t.b[k],t.c[k]})-radius;
+                    const float hi=std::max({t.a[k],t.b[k],t.c[k]})+radius;
+                    if(v.position[k]<lo||v.position[k]>hi){distant=true;break;}
+                }
+                if(distant)continue;
+                const auto p=closest(v.position,t);
+                auto delta=sub(v.position,p);
+                float d2=dot(delta,delta);
+                if(d2>=radius*radius)continue;
+                const float d=std::sqrt(d2);
+                if(d<1e-6f){
+                    const auto ab=sub(t.b,t.a),ac=sub(t.c,t.a);
+                    delta={ab[1]*ac[2]-ab[2]*ac[1],
+                           ab[2]*ac[0]-ab[0]*ac[2],
+                           ab[0]*ac[1]-ab[1]*ac[0]};
+                    const float length=std::sqrt(dot(delta,delta));
+                    if(length<1e-7f)continue;
+                    for(float& x:delta)x/=length;
+                    if(dot(delta,v.velocity)>0.f)for(float& x:delta)x=-x;
+                }else for(float& x:delta)x/=d;
+                for(int k=0;k<3;++k)v.position[k]+=delta[k]*(radius-d+0.001f);
+                const float vn=dot(v.velocity,delta);
+                if(vn<0.f)for(int k=0;k<3;++k)v.velocity[k]-=(1.f+bounce)*vn*delta[k];
+            }
         }
     }
     // At most 256 voxens: O(n^2) narrow phase is fine for this first prototype.
