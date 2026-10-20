@@ -42,6 +42,10 @@ struct CarouselState {
     float voxenDensity = 1.0f;
     float voxenSpeed = 1.0f;
     bool motionEnabled = false;
+    int motionMode = 0; // 0 free float, 1 swarm
+    float swarmRadius = 0.9f;
+    float swarmStrength = 1.2f;
+    float swarmSeparation = 1.0f;
     bool motionGravity = false;
     float motionSpeed = 0.35f;
     float motionBounce = 0.82f;
