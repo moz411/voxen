@@ -1,6 +1,6 @@
 #version 450
 // Procedural animated mesh; compatible with Organic Sphere fragment shader.
-// 48x32 quads, 9216 vertices, no vertex buffers.
+// 24x16 quads, 2304 vertices, no vertex buffers.
 layout(push_constant) uniform PushConstants {
     mat4 mvp;
     vec4 parameters; // time, speed, hue, deformation
@@ -9,8 +9,8 @@ layout(location=0) out vec3 vNormal;
 layout(location=1) out vec3 vPosition;
 layout(location=2) out float vPulse;
 const float PI=3.141592653589793;
-const int SEG=48;
-const int RINGS=32;
+const int SEG=24;
+const int RINGS=16;
 vec3 surface(vec2 uv,float t,float amp){
     float theta=uv.x*2.0*PI;
     float phi=uv.y*PI;
