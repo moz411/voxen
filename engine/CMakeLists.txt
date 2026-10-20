@@ -32,6 +32,8 @@ if(ANDROID OR WIN32)
         set(VOXEN_SHADER_HEADERS ${VOXEN_SHADER_HEADERS} "${HEADER}" PARENT_SCOPE)
     endfunction()
 
+    voxen_embed_shader(organicSphereVert organic_sphere.vert)
+    voxen_embed_shader(organicSphereFrag organic_sphere.frag)
     voxen_embed_shader(cubeVert cube.vert)
     voxen_embed_shader(cubeFrag cube.frag)
     voxen_embed_shader(voxenPlasmaFrag voxen_plasma.frag)

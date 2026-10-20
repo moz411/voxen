@@ -22,9 +22,9 @@ void drawCarousel(CarouselState& state) {
         case 0:
             ImGui::TextUnformatted("VOXENS / PROCEDURAL PRESETS");
             ImGui::Separator();
-            static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR"};
-            ImGui::Combo("Voxen preset",&state.voxenPreset,presets,4);
-            ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : "Animated 3D trajectory lines");
+            static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE"};
+            ImGui::Combo("Voxen preset",&state.voxenPreset,presets,5);
+            ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : "Animated deforming 3D sphere");
             if(state.voxenPreset==2){
                 ImGui::Checkbox("Experimental 3D lighting",&state.mandelbulbLighting);
                 if(state.mandelbulbLighting){
@@ -35,7 +35,7 @@ void drawCarousel(CarouselState& state) {
             ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.06f,0.60f,"%.2f");
             ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
-            ImGui::SliderFloat("Density",&state.voxenDensity,0.3f,2.f);
+            ImGui::SliderFloat(state.voxenPreset==4 ? "Deformation" : "Density",&state.voxenDensity,0.3f,2.f);
             ImGui::SliderFloat("Speed",&state.voxenSpeed,0.1f,3.f);
             ImGui::Text("Voxens: %d / 256",state.voxenCount);
             if(ImGui::Button("CLEAR VOXENS"))state.voxenClear=true;

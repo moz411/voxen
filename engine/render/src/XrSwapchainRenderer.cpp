@@ -19,6 +19,8 @@
 #include <cstdio>
 #endif
 
+#include "organicSphereVert.spv.hpp"
+#include "organicSphereFrag.spv.hpp"
 #include "cubeVert.spv.hpp"
 #include "voxenPlasmaFrag.spv.hpp"
 #include "voxenSpheresFrag.spv.hpp"
@@ -571,7 +573,7 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &organicSpherePipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
         || &out == &imguiPanelPipeline_
 #endif
@@ -622,6 +624,7 @@ void XrSwapchainRenderer::createPipeline() {
         vkDestroyShaderModule(device_, fs, nullptr);
         vkDestroyShaderModule(device_, vs, nullptr);
     };
+    buildPipeline(organicSphereVert, organicSphereVertSize, organicSphereFrag, organicSphereFragSize, organicSpherePipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
     buildPipeline(meshWireVert, meshWireVertSize, laserFrag, laserFragSize, voxenMandelbulbPipeline_);
@@ -985,7 +988,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,meshWireVertexCount_,1,0,0);
     }
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE && voxenSpheresPipeline_!=VK_NULL_HANDLE &&
-       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE){
+       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE){
         auto paintPlasma=[&](const PlasmaVoxen& v){
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 v.preset==1 ? voxenSpheresPipeline_ :
@@ -994,13 +997,13 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 imguiCarousel_.mandelbulbLighting ? voxenMandelbulbLitPipeline_ :
 #endif
                 voxenMandelbulbPipeline_) :
-                v.preset==3 ? voxenAttractorPipeline_ : voxenPlasmaPipeline_);
+                v.preset==3 ? voxenAttractorPipeline_ : v.preset==4 ? organicSpherePipeline_ : voxenPlasmaPipeline_);
             const Mat4 mvp=multiply(projView,modelMatrix(
                 v.position[0],v.position[1],v.scale,v.position[2],0.f));
             // For Mandelbulbs, pack material into the otherwise unchanged float slot.
             // Density remains in [0.3,2.0], while material uses multiples of 4.
             const float packedDensity=v.preset==2 ? v.density+4.0f*float(v.material) : v.density;
-            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,packedDensity}};
+            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue,v.preset==4 ? std::clamp(v.density*0.20f,0.06f,0.40f) : packedDensity}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             if(v.preset==2){
@@ -1012,7 +1015,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                     vkCmdDrawIndexed(commandBuffer_,lod.indexCount,1,0,0,0);
                 }
             }else{
-                vkCmdDraw(commandBuffer_,v.preset==3 ? 24*18*2 : 6,1,0,0);
+                vkCmdDraw(commandBuffer_,v.preset==4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6),1,0,0);
             }
         };
         for(const auto& v:voxens_)paintPlasma(v);
@@ -1313,6 +1316,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
         eye.layouts.clear();
     }
 
+    if(organicSpherePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,organicSpherePipeline_,nullptr);organicSpherePipeline_=VK_NULL_HANDLE;}
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
