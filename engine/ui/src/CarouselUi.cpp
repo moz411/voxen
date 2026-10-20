@@ -32,6 +32,10 @@ void drawCarousel(CarouselState& state) {
                     ImGui::Combo("Mandelbulb material",&state.mandelbulbMaterial,materials,3);
                 }
             }
+            if(state.voxenPreset>=4){
+                static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS","MATRIX"};
+                ImGui::Combo("Surface material",&state.voxenMaterial,materials,4);
+            }
             ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.06f,0.60f,"%.2f");
             ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
@@ -49,10 +53,11 @@ void drawCarousel(CarouselState& state) {
                 ImGui::TextDisabled("Local cohesion + alignment + separation");
             }
             ImGui::Checkbox("Gravity",&state.motionGravity);
+            ImGui::Checkbox("Room mesh collisions",&state.collideRoomMesh);
             ImGui::SliderFloat("Initial speed (m/s)",&state.motionSpeed,0.05f,1.5f,"%.2f");
             ImGui::SliderFloat("Bounce",&state.motionBounce,0.f,1.f,"%.2f");
             ImGui::SliderFloat("Floor height (m)",&state.motionFloorY,-2.f,2.f,"%.2f");
-            ImGui::TextDisabled("Sphere collisions + virtual floor (not room mesh)");
+            ImGui::TextDisabled("Scene mesh triangles used when available");
             ImGui::Text("Voxens: %d / 256",state.voxenCount);
             if(ImGui::Button("CLEAR VOXENS"))state.voxenClear=true;
             ImGui::TextDisabled("Right trigger paints in space");
