@@ -449,8 +449,15 @@ void XrSwapchainRenderer::setSceneMeshes(const std::vector<MeshGeometry>& meshes
         for(size_t i=0;i+2<part.indices->size();i+=3){
             const auto a=(*part.indices)[i],b=(*part.indices)[i+1],c=(*part.indices)[i+2];
             if(a>=part.vertices->size()||b>=part.vertices->size()||c>=part.vertices->size())continue;
-            roomCollisionTriangles_.push_back({world((*part.vertices)[a]),
-                world((*part.vertices)[b]),world((*part.vertices)[c])});
+            const auto wa=world((*part.vertices)[a]),wb=world((*part.vertices)[b]),
+                wc=world((*part.vertices)[c]);
+            const float ux=wb[0]-wa[0],uy=wb[1]-wa[1],uz=wb[2]-wa[2];
+            const float vx=wc[0]-wa[0],vy=wc[1]-wa[1],vz=wc[2]-wa[2];
+            const float nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
+            const float n2=nx*nx+ny*ny+nz*nz;
+            // Only near-vertical faces (walls); skip floors, ceilings and degenerate triangles.
+            if(n2<1e-10f || ny*ny>0.25f*n2)continue;
+            roomCollisionTriangles_.push_back({wa,wb,wc});
         }
     }
     // Index each triangle in a 0.5m spatial grid, once per mesh update.
@@ -1426,7 +1433,7 @@ void XrSwapchainRenderer::render(
         constexpr float step=1.f/60.f;
         for(int steps=0;physicsAccumulator_>=step && steps<6;++steps){
             advanceVoxenPhysics(step,imguiCarousel_.motionGravity,
-                imguiCarousel_.motionBounce,imguiCarousel_.motionFloorY,
+                imguiCarousel_.motionBounce,hasTrackedFloor_ ? trackedFloorY_ : imguiCarousel_.motionFloorY,
                 imguiCarousel_.motionMode,imguiCarousel_.swarmRadius,
                 imguiCarousel_.swarmStrength,imguiCarousel_.swarmSeparation,
                 imguiCarousel_.collideRoomMesh);
