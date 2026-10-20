@@ -35,6 +35,8 @@ struct CarouselState {
     float animationSpeed = 1.0f;
     int mandelbulbMaterial = 0; // 0 iridescent, 1 ember, 2 abyss
     bool mandelbulbLighting = false; // Opt-in: proven cyan shader remains default
+    int voxenMaterial = 0; // independent surface material for procedural mesh shapes
+    bool collideRoomMesh = true;
     int voxenPreset = 0; // Plasma or Spheres Intersections
     bool voxenPaintEnabled = true;
     float voxenScale = 0.18f;
