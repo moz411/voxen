@@ -433,6 +433,7 @@ void XrSwapchainRenderer::setSceneMeshes(const std::vector<MeshGeometry>& meshes
     // Cache world-space triangles for physics; never read transient XR mesh pointers
     // during the simulation. Scene meshes may be absent until capture completes.
     roomCollisionTriangles_.clear();
+    roomCollisionGrid_.clear();
     for(const auto& part:meshes){
         if(!part.vertices || !part.indices)continue;
         const auto& q=part.pose.orientation;
@@ -451,6 +452,24 @@ void XrSwapchainRenderer::setSceneMeshes(const std::vector<MeshGeometry>& meshes
             roomCollisionTriangles_.push_back({world((*part.vertices)[a]),
                 world((*part.vertices)[b]),world((*part.vertices)[c])});
         }
+    }
+    // Index each triangle in a 0.5m spatial grid, once per mesh update.
+    // Per-voxel collision checks then visit only overlapping cells.
+    constexpr float cellSize=0.5f;
+    for(uint32_t i=0;i<roomCollisionTriangles_.size();++i){
+        const auto& t=roomCollisionTriangles_[i];
+        std::array<int,3> lo{},hi{};
+        for(int k=0;k<3;++k){
+            lo[k]=static_cast<int>(std::floor(std::min({t.a[k],t.b[k],t.c[k]})/cellSize));
+            hi[k]=static_cast<int>(std::floor(std::max({t.a[k],t.b[k],t.c[k]})/cellSize));
+        }
+        // Huge malformed triangles are excluded from the index for safety.
+        if((int64_t(hi[0])-lo[0]+1)*(int64_t(hi[1])-lo[1]+1)*
+           (int64_t(hi[2])-lo[2]+1)>4096)continue;
+        for(int x=lo[0];x<=hi[0];++x)
+            for(int y=lo[1];y<=hi[1];++y)
+                for(int z=lo[2];z<=hi[2];++z)
+                    roomCollisionGrid_[{x,y,z}].push_back(i);
     }
     if(meshes.empty())return;
     const auto& mesh=meshes.front();
@@ -1228,7 +1247,23 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
         };
         for(auto& v:voxens_){
             const float radius=std::max(0.025f,v.scale*0.5f);
-            for(const auto& t:roomCollisionTriangles_){
+            std::vector<uint32_t> candidates;
+            std::array<int,3> lo{},hi{};
+            for(int k=0;k<3;++k){
+                lo[k]=static_cast<int>(std::floor((v.position[k]-radius)/0.5f));
+                hi[k]=static_cast<int>(std::floor((v.position[k]+radius)/0.5f));
+            }
+            for(int x=lo[0];x<=hi[0];++x)
+                for(int y=lo[1];y<=hi[1];++y)
+                    for(int z=lo[2];z<=hi[2];++z){
+                        auto it=roomCollisionGrid_.find({x,y,z});
+                        if(it!=roomCollisionGrid_.end())
+                            candidates.insert(candidates.end(),it->second.begin(),it->second.end());
+                    }
+            std::sort(candidates.begin(),candidates.end());
+            candidates.erase(std::unique(candidates.begin(),candidates.end()),candidates.end());
+            for(uint32_t triangleIndex:candidates){
+                const auto& t=roomCollisionTriangles_[triangleIndex];
                 bool distant=false;
                 for(int k=0;k<3;++k){
                     const float lo=std::min({t.a[k],t.b[k],t.c[k]})-radius;
