@@ -41,6 +41,11 @@ struct CarouselState {
     float voxenHue = 0.52f;
     float voxenDensity = 1.0f;
     float voxenSpeed = 1.0f;
+    bool motionEnabled = false;
+    bool motionGravity = false;
+    float motionSpeed = 0.35f;
+    float motionBounce = 0.82f;
+    float motionFloorY = 0.0f; // Tracking-space floor; user adjustable
     bool voxenClear = false;
     int voxenCount = 0;
     bool showArtworks = false;
