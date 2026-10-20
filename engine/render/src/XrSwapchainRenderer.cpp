@@ -754,6 +754,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         const float dz=v.position[2]-lastVoxenPos_[2];
         if(!lastVoxenValid_ || dx*dx+dy*dy+dz*dz >= v.scale*v.scale*0.45f){
             if(voxens_.size()<256){
+                v.velocity={dir[0]*imguiCarousel_.motionSpeed,dir[1]*imguiCarousel_.motionSpeed,dir[2]*imguiCarousel_.motionSpeed};
                 voxens_.push_back(v);
 #ifdef __ANDROID__
                 if(v.preset==2) __android_log_print(ANDROID_LOG_INFO,"Voxen","Mandelbulb instance created: total=%zu, scale=%.2f, pos=(%.2f,%.2f,%.2f)",
@@ -1104,6 +1105,56 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     }
 }
 
+// Fixed-step, world-space sphere proxy physics. One update per stereo frame.
+// The procedural surface deformation stays entirely in the Vulkan shaders.
+void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float bounce, float floorY) {
+    constexpr float kMaxSpeed=4.f;
+    for(auto& v:voxens_){
+        if(gravity) v.velocity[1]-=9.81f*dt;
+        for(int k=0;k<3;++k){
+            v.velocity[k]=std::clamp(v.velocity[k],-kMaxSpeed,kMaxSpeed);
+            v.position[k]+=v.velocity[k]*dt;
+        }
+        const float radius=std::max(0.025f,v.scale*0.5f);
+        if(v.position[1]-radius<floorY){
+            v.position[1]=floorY+radius;
+            if(v.velocity[1]<0.f) v.velocity[1]=-v.velocity[1]*bounce;
+            if(gravity && std::fabs(v.velocity[1])<0.07f) v.velocity[1]=0.f;
+        }
+    }
+    // At most 256 voxens: O(n^2) narrow phase is fine for this first prototype.
+    for(size_t i=0;i<voxens_.size();++i){
+        for(size_t j=i+1;j<voxens_.size();++j){
+            auto& a=voxens_[i]; auto& b=voxens_[j];
+            const float radius=0.5f*(a.scale+b.scale);
+            const float dx=b.position[0]-a.position[0];
+            const float dy=b.position[1]-a.position[1];
+            const float dz=b.position[2]-a.position[2];
+            const float dist2=dx*dx+dy*dy+dz*dz;
+            if(dist2>=radius*radius) continue;
+            const float dist=std::sqrt(dist2);
+            const float nx=dist>1e-5f?dx/dist:1.f;
+            const float ny=dist>1e-5f?dy/dist:0.f;
+            const float nz=dist>1e-5f?dz/dist:0.f;
+            const float penetration=radius-dist;
+            const float normal[3]={nx,ny,nz};
+            for(int k=0;k<3;++k){
+                a.position[k]-=normal[k]*penetration*0.5f;
+                b.position[k]+=normal[k]*penetration*0.5f;
+            }
+            const float relative=(b.velocity[0]-a.velocity[0])*nx+
+                (b.velocity[1]-a.velocity[1])*ny+(b.velocity[2]-a.velocity[2])*nz;
+            if(relative<0.f){
+                const float impulse=-(1.f+bounce)*relative*0.5f; // equal masses
+                for(int k=0;k<3;++k){
+                    a.velocity[k]-=impulse*normal[k];
+                    b.velocity[k]+=impulse*normal[k];
+                }
+            }
+        }
+    }
+}
+
 void XrSwapchainRenderer::render(
     const std::array<XrView, 2>& views,
     std::array<XrCompositionLayerProjectionView, 2>& projectionViews) {
@@ -1194,6 +1245,22 @@ void XrSwapchainRenderer::render(
         std::printf("[Voxen] Rendering first stereo projection frame\n");
 #endif
     }
+    // Advance physics once per stereo frame, never separately for each eye.
+#ifdef VOXEN_WITH_IMGUI
+    const auto physicsNow=std::chrono::steady_clock::now();
+    const float physicsDt=lastPhysicsFrame_.time_since_epoch().count()==0 ? 0.f :
+        std::clamp(std::chrono::duration<float>(physicsNow-lastPhysicsFrame_).count(),0.f,0.1f);
+    lastPhysicsFrame_=physicsNow;
+    if(imguiCarousel_.motionEnabled){
+        physicsAccumulator_=std::min(physicsAccumulator_+physicsDt,0.1f);
+        constexpr float step=1.f/60.f;
+        for(int steps=0;physicsAccumulator_>=step && steps<6;++steps){
+            advanceVoxenPhysics(step,imguiCarousel_.motionGravity,
+                imguiCarousel_.motionBounce,imguiCarousel_.motionFloorY);
+            physicsAccumulator_-=step;
+        }
+    }else physicsAccumulator_=0.f;
+#endif
     // Select one LOD per object before rendering either eye. Hysteresis
     // prevents thrashing at thresholds and guarantees identical stereo meshes.
     const XrVector3f center{
