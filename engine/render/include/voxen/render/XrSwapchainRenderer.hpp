@@ -155,6 +155,7 @@ private:
     VkPipelineLayout imguiPanelPipelineLayout_ = VK_NULL_HANDLE;
     std::chrono::steady_clock::time_point lastUiFrame_{};
 #endif
+    VkPipeline organicSpherePipeline_ = VK_NULL_HANDLE;
     VkPipeline laserPipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
     voxen::scene::EnvironmentSurfaceRegistry environmentSurfaces_{};
