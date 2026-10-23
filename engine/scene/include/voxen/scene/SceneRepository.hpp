@@ -45,7 +45,7 @@ public:
         return write(dir / r.payloadAsset, payload) && write(dir / "metadata.vxs", meta.str());
     }
 
-    std::optional<std::pair<SceneRecord, std::string>> loadScene(const SceneId& id) const {
+    std::optional<SceneRecord> loadSceneMetadata(const SceneId& id) const {
         if (!safe(id)) return std::nullopt;
         auto m = read(root_ / "scenes" / id / "metadata.vxs", 16384);
         if (!m) return std::nullopt;
@@ -57,10 +57,17 @@ public:
                  >> std::quoted(r.payloadAsset) >> std::quoted(r.preview.proxyAsset)
                  >> r.preview.boundingRadiusMeters >> r.preview.materialPreset) ||
             r.id != id || !safe(r.payloadAsset) || r.displayName.size() > 4096 ||
-            r.preview.proxyAsset.size() > 4096 || !radius(r.preview.boundingRadiusMeters)) return std::nullopt;
-        auto payload = read(root_ / "scenes" / id / r.payloadAsset, 64u*1024u*1024u);
+            r.preview.proxyAsset.size() > 4096 || !radius(r.preview.boundingRadiusMeters))
+            return std::nullopt;
+        return r;
+    }
+
+    std::optional<std::pair<SceneRecord, std::string>> loadScene(const SceneId& id) const {
+        auto r=loadSceneMetadata(id);
+        if (!r) return std::nullopt;
+        auto payload=read(root_ / "scenes" / id / r->payloadAsset, 64u*1024u*1024u);
         if (!payload) return std::nullopt;
-        return std::make_pair(std::move(r), std::move(*payload));
+        return std::make_pair(std::move(*r),std::move(*payload));
     }
 
     std::vector<SceneId> listScenes() const {
