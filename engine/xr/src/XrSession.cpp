@@ -1,5 +1,6 @@
 #include <voxen/xr/XrSession.hpp>
 #include <voxen/render/XrSwapchainRenderer.hpp>
+#include <voxen/scene/MetaFloorLocalization.hpp>
 
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -366,6 +367,10 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
     if(enableScene_) {
         metaScene_.refresh(localSpace_,frameState.predictedDisplayTime);
         renderer.setEnvironmentSurfaces(metaScene_.surfaces());
+        // Use only currently located Meta persistent floor entities.
+        // Missing tracking hides portals instead of pinning them to stale LOCAL coordinates.
+        renderer.setLocalizedGalleryRoom(
+            voxen::gallery::localizedFloorAnchor(metaScene_.surfaces()));
         std::vector<voxen::render::XrSwapchainRenderer::MeshGeometry> meshes;
         for(const auto& mesh:metaScene_.meshes()) {
             if(!mesh.located || mesh.vertices.empty())continue;
