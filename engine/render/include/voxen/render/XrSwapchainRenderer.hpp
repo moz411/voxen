@@ -162,6 +162,7 @@ private:
     // 0.5m uniform grid: broad-phase candidate triangles, built on mesh updates.
     std::map<std::array<int,3>,std::vector<uint32_t>> roomCollisionGrid_;
     VkPipeline carouselPipeline_ = VK_NULL_HANDLE;
+    VkPipeline galleryPortalPipeline_ = VK_NULL_HANDLE;
     int nativeMenuPage_ = 0;
     bool nativeMenuStickLatched_ = false;
 #ifdef VOXEN_WITH_IMGUI
