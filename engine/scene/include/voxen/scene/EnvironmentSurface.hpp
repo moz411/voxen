@@ -2,6 +2,7 @@
 #include <array>
 #include <cstdint>
 #include <vector>
+#include <string>
 #include <utility>
 
 namespace voxen::scene {
@@ -19,6 +20,9 @@ struct EnvironmentSurface {
     // Rotation quaternion (x,y,z,w), unit-length.
     std::array<float, 4> orientation{0.f,0.f,0.f,1.f};
     bool tracked = false;
+    // Stable Meta spatial-entity UUID, never an XrSpace handle or LOCAL pose.
+    // Empty for providers that cannot guarantee persistent identity.
+    std::string persistentUuid;
 };
 
 class EnvironmentSurfaceRegistry {
