@@ -115,7 +115,11 @@ void drawCarousel(CarouselState& state) {
             if(ImGui::Button("SAVE CURRENT SCENE")) state.sceneSave=true;
             ImGui::Text("Saved scenes: %zu",state.savedSceneIds.size());
             for(std::size_t i=0;i<state.savedSceneIds.size();++i) {
-                if(ImGui::Selectable(state.savedSceneIds[i].c_str(),state.selectedScene==static_cast<int>(i)))
+                const auto& label=i<state.savedSceneLabels.size()?state.savedSceneLabels[i]:state.savedSceneIds[i];
+                ImGui::PushID(static_cast<int>(i));
+                const bool selected=ImGui::Selectable(label.c_str(),state.selectedScene==static_cast<int>(i));
+                ImGui::PopID();
+                if(selected)
                     state.selectedScene=static_cast<int>(i);
             }
             if(!state.savedSceneIds.empty() && ImGui::Button("LOAD SELECTED SCENE"))
