@@ -35,7 +35,9 @@ void android_main(android_app* app) {
         if (app->activity->internalDataPath != nullptr) {
             voxen::gallery::SceneRepository scenes(
                 std::filesystem::path(app->activity->internalDataPath) / "voxen-gallery");
-            const auto saved = scenes.listScenes();
+            renderer.configureSceneStorage(
+                std::filesystem::path(app->activity->internalDataPath) / "voxen-gallery");
+            const auto saved = renderer.savedSceneIds();
             __android_log_print(ANDROID_LOG_INFO, kTag,
                 "Gallery repository initialized: %zu saved scenes", saved.size());
         } else {
