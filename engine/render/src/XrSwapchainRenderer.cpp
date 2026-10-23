@@ -74,6 +74,85 @@ void checkVk(VkResult result, const char* operation) {
 
 } // namespace
 
+void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& root) {
+    sceneRepository_ = std::make_unique<voxen::gallery::SceneRepository>(root);
+    sceneIds_ = sceneRepository_->listScenes();
+    selectedSceneIndex_ = 0;
+}
+
+std::vector<voxen::gallery::SceneId> XrSwapchainRenderer::savedSceneIds() const {
+    return sceneRepository_ ? sceneRepository_->listScenes()
+                            : std::vector<voxen::gallery::SceneId>{};
+}
+
+bool XrSwapchainRenderer::saveCurrentScene() {
+    if (!sceneRepository_) return false;
+    voxen::gallery::SavedRuntime runtime;
+    runtime.voxens.reserve(voxens_.size());
+    for (const auto& v : voxens_) {
+        voxen::gallery::SavedVoxen saved;
+        saved.preset=v.preset; saved.position=v.position; saved.velocity=v.velocity;
+        saved.scale=v.scale; saved.hue=v.hue; saved.density=v.density;
+        saved.speed=v.speed; saved.material=v.material;
+        runtime.voxens.push_back(saved);
+    }
+#ifdef VOXEN_WITH_IMGUI
+    runtime.musicSource=imguiCarousel_.musicSource;
+    runtime.musicTrack=imguiCarousel_.musicTrack;
+    runtime.musicFile=imguiCarousel_.musicFile;
+    runtime.musicVolume=imguiCarousel_.musicVolume;
+    runtime.musicPlaying=imguiCarousel_.musicPlaying;
+    runtime.motionEnabled=imguiCarousel_.motionEnabled;
+    runtime.motionMode=imguiCarousel_.motionMode;
+    runtime.motionGravity=imguiCarousel_.motionGravity;
+    runtime.motionBounce=imguiCarousel_.motionBounce;
+#endif
+    const auto payload=voxen::gallery::encodeRuntime(runtime);
+    if(payload.empty()) return false;
+    auto record=voxen::gallery::SceneRepository::newScene(
+        "Scene " + std::to_string(sceneIds_.size()+1));
+    record.preview.materialPreset=voxens_.empty()?0u:
+        static_cast<std::uint32_t>(voxens_.front().preset);
+    if(!sceneRepository_->saveScene(record,payload)) return false;
+    sceneIds_=sceneRepository_->listScenes();
+    const auto it=std::find(sceneIds_.begin(),sceneIds_.end(),record.id);
+    selectedSceneIndex_=it==sceneIds_.end()?0:static_cast<int>(it-sceneIds_.begin());
+    return true;
+}
+
+bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
+    if(!sceneRepository_) return false;
+    auto stored=sceneRepository_->loadScene(id);
+    if(!stored) return false;
+    auto snapshot=voxen::gallery::decodeRuntime(stored->second);
+    if(!snapshot) return false;
+    std::vector<PlasmaVoxen> restored;
+    restored.reserve(snapshot->voxens.size());
+    for(const auto& v:snapshot->voxens) {
+        PlasmaVoxen item;
+        item.preset=v.preset; item.position=v.position; item.velocity=v.velocity;
+        item.scale=v.scale; item.hue=v.hue; item.density=v.density;
+        item.speed=v.speed; item.material=v.material;
+        restored.push_back(item);
+    }
+    voxens_=std::move(restored);
+    lastVoxenValid_=false;
+    physicsAccumulator_=0.f;
+#ifdef VOXEN_WITH_IMGUI
+    imguiCarousel_.musicSource=snapshot->musicSource;
+    imguiCarousel_.musicTrack=snapshot->musicTrack;
+    imguiCarousel_.musicFile=snapshot->musicFile;
+    imguiCarousel_.musicVolume=snapshot->musicVolume;
+    // Deliberately do not auto-start playback on load.
+    imguiCarousel_.musicPlaying=false;
+    imguiCarousel_.motionEnabled=snapshot->motionEnabled;
+    imguiCarousel_.motionMode=snapshot->motionMode;
+    imguiCarousel_.motionGravity=snapshot->motionGravity;
+    imguiCarousel_.motionBounce=snapshot->motionBounce;
+#endif
+    return true;
+}
+
 XrSwapchainRenderer::~XrSwapchainRenderer() {
     shutdown();
 }
@@ -1396,6 +1475,21 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         voxen::ui::drawCarousel(imguiCarousel_);
+        if (ImGui::Begin("SAVED SCENES")) {
+            if(ImGui::Button("SAVE CURRENT SCENE"))
+                sceneStatus_=saveCurrentScene()?"Scene saved":"Save failed";
+            ImGui::Text("Saved scenes: %zu",sceneIds_.size());
+            for(std::size_t i=0;i<sceneIds_.size();++i) {
+                ImGui::PushID(static_cast<int>(i));
+                if(ImGui::Selectable(sceneIds_[i].c_str(),selectedSceneIndex_==static_cast<int>(i)))
+                    selectedSceneIndex_=static_cast<int>(i);
+                ImGui::PopID();
+            }
+            if(!sceneIds_.empty() && ImGui::Button("LOAD SELECTED SCENE"))
+                sceneStatus_=loadSavedScene(sceneIds_[selectedSceneIndex_])?"Scene loaded":"Load failed";
+            if(!sceneStatus_.empty()) ImGui::TextUnformatted(sceneStatus_.c_str());
+        }
+        ImGui::End();
         if(imguiCarousel_.voxenClear){
             voxens_.clear();
             lastVoxenValid_=false;
