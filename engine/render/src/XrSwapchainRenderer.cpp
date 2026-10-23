@@ -1474,22 +1474,20 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.musicReady=ambientMusic_.ready();
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
+        imguiCarousel_.savedSceneIds=sceneIds_;
         voxen::ui::drawCarousel(imguiCarousel_);
-        if (ImGui::Begin("SAVED SCENES")) {
-            if(ImGui::Button("SAVE CURRENT SCENE"))
-                sceneStatus_=saveCurrentScene()?"Scene saved":"Save failed";
-            ImGui::Text("Saved scenes: %zu",sceneIds_.size());
-            for(std::size_t i=0;i<sceneIds_.size();++i) {
-                ImGui::PushID(static_cast<int>(i));
-                if(ImGui::Selectable(sceneIds_[i].c_str(),selectedSceneIndex_==static_cast<int>(i)))
-                    selectedSceneIndex_=static_cast<int>(i);
-                ImGui::PopID();
-            }
-            if(!sceneIds_.empty() && ImGui::Button("LOAD SELECTED SCENE"))
-                sceneStatus_=loadSavedScene(sceneIds_[selectedSceneIndex_])?"Scene loaded":"Load failed";
-            if(!sceneStatus_.empty()) ImGui::TextUnformatted(sceneStatus_.c_str());
+        if(imguiCarousel_.sceneSave) {
+            imguiCarousel_.sceneSave=false;
+            imguiCarousel_.sceneStatus=saveCurrentScene()?"Scene saved":"Save failed";
         }
-        ImGui::End();
+        imguiCarousel_.savedSceneIds=sceneIds_;
+        if(imguiCarousel_.sceneLoad) {
+            imguiCarousel_.sceneLoad=false;
+            if(imguiCarousel_.selectedScene>=0 &&
+               static_cast<std::size_t>(imguiCarousel_.selectedScene)<sceneIds_.size())
+                imguiCarousel_.sceneStatus=loadSavedScene(sceneIds_[imguiCarousel_.selectedScene])?
+                    "Scene loaded":"Load failed";
+        }
         if(imguiCarousel_.voxenClear){
             voxens_.clear();
             lastVoxenValid_=false;
