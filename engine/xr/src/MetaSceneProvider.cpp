@@ -349,6 +349,13 @@ void MetaSceneProvider::refresh(XrSpace localSpace,XrTime time) {
             uuidHash*=1099511628211ull;
         }
         wall.id=uuidHash;
+        // Persist the actual spatial-entity UUID, not the transient XrSpace.
+        constexpr char hex[]="0123456789abcdef";
+        wall.persistentUuid.reserve(sizeof(result.uuid.data)*2);
+        for(unsigned char byte:result.uuid.data) {
+            wall.persistentUuid.push_back(hex[byte>>4]);
+            wall.persistentUuid.push_back(hex[byte&15]);
+        }
         wall.classification=planeClass;
         wall.center={pose.position.x+delta.x,pose.position.y+delta.y,pose.position.z+delta.z};
         wall.orientation={pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w};
