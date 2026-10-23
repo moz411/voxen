@@ -195,6 +195,8 @@ private:
     std::unique_ptr<voxen::gallery::SceneRepository> sceneRepository_;
     std::unique_ptr<voxen::gallery::PortalManager> portalManager_;
     std::vector<voxen::gallery::SceneId> sceneIds_;
+    std::vector<std::string> sceneLabels_;
+    void refreshSceneIndex();
     int selectedSceneIndex_ = 0;
     std::string sceneStatus_;
     std::chrono::steady_clock::time_point lastPhysicsFrame_{};
