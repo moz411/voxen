@@ -131,6 +131,32 @@ std::vector<voxen::gallery::SceneId> XrSwapchainRenderer::savedSceneIds() const 
                             : std::vector<voxen::gallery::SceneId>{};
 }
 
+bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id) {
+    if(immersiveSceneActive_ || !sceneRepository_) return false;
+    // Validate and parse before touching the current live scene.
+    auto saved=sceneRepository_->loadScene(id);
+    if(!saved || !voxen::gallery::decodeRuntime(saved->second)) return false;
+    if(!loadSavedScene(id)) return false;
+    immersiveSceneActive_=true;
+    return true;
+}
+
+bool XrSwapchainRenderer::leaveImmersiveScene() {
+    if(!immersiveSceneActive_) return false;
+#ifdef VOXEN_WITH_IMGUI
+    imguiCarousel_.musicPlaying=false;
+#endif
+    ambientMusic_.configure(0,false,0.f);
+    mp3Library_.update(-1,false,0.f);
+    // Release the per-scene CPU instance storage. Global pipelines, mesh
+    // caches and descriptor allocations remain resident for now.
+    std::vector<PlasmaVoxen>{}.swap(voxens_);
+    lastVoxenValid_=false;
+    physicsAccumulator_=0.f;
+    immersiveSceneActive_=false;
+    return true;
+}
+
 bool XrSwapchainRenderer::saveCurrentScene() {
     if (!sceneRepository_) return false;
     voxen::gallery::SavedRuntime runtime;
@@ -1542,6 +1568,7 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.savedSceneIds=sceneIds_;
         imguiCarousel_.savedSceneLabels=sceneLabels_;
         imguiCarousel_.sceneAnchorReady=portalManager_ && portalManager_->localized();
+        imguiCarousel_.sceneImmersive=immersiveSceneActive_;
         imguiCarousel_.visiblePortalCount=visibleGalleryPortals().size();
         voxen::ui::drawCarousel(imguiCarousel_);
         if(imguiCarousel_.sceneSave) {
@@ -1549,6 +1576,19 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.sceneStatus=saveCurrentScene()?"Scene saved":"Save failed";
         }
         imguiCarousel_.savedSceneIds=sceneIds_;
+        if(imguiCarousel_.sceneEnter) {
+            imguiCarousel_.sceneEnter=false;
+            const int index=imguiCarousel_.selectedScene;
+            imguiCarousel_.sceneStatus=index>=0 &&
+                static_cast<std::size_t>(index)<sceneIds_.size() &&
+                enterImmersiveScene(sceneIds_[index]) ?
+                "Immersive scene entered":"Cannot enter scene";
+        }
+        if(imguiCarousel_.sceneLeave) {
+            imguiCarousel_.sceneLeave=false;
+            imguiCarousel_.sceneStatus=leaveImmersiveScene()?
+                "Gallery restored (CPU scene instances released)":"Not in immersive mode";
+        }
         if(imguiCarousel_.scenePlace) {
             imguiCarousel_.scenePlace=false;
             selectedSceneIndex_=imguiCarousel_.selectedScene;
