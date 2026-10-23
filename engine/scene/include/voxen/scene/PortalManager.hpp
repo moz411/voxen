@@ -71,6 +71,11 @@ public:
             gallery_.reset();
             return;
         }
+        if(localized_ && gallery_ && localized_->roomId==localized->roomId &&
+           localized_->persistentAnchorId==localized->persistentAnchorId) {
+            localized_=std::move(localized); // update pose; avoid disk I/O per XR frame
+            return;
+        }
         auto saved=repository_.loadGallery(localized->roomId);
         if(saved && saved->persistentAnchorId!=localized->persistentAnchorId) {
             localized_.reset();
