@@ -12,6 +12,10 @@
 #include <voxen/audio/AmbientMusic.hpp>
 #include <voxen/audio/Mp3Library.hpp>
 #include <voxen/scene/EnvironmentSurface.hpp>
+#include <voxen/scene/RuntimeSnapshot.hpp>
+#include <voxen/scene/SceneRepository.hpp>
+#include <memory>
+#include <filesystem>
 #ifdef VOXEN_WITH_IMGUI
 #include <voxen/ui/CarouselUi.hpp>
 #include <voxen/ui/ImGuiSurface.hpp>
@@ -45,6 +49,10 @@ public:
         VkQueue queue,
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
+    void configureSceneStorage(const std::filesystem::path& root);
+    bool saveCurrentScene();
+    bool loadSavedScene(const voxen::gallery::SceneId& id);
+    [[nodiscard]] std::vector<voxen::gallery::SceneId> savedSceneIds() const;
     void toggleUiVisibility() noexcept {
 #ifdef VOXEN_WITH_IMGUI
         imguiCarousel_.visible=!imguiCarousel_.visible;
@@ -180,6 +188,10 @@ private:
         int lodLevel=-1; // Chosen once per stereo frame using both eye positions
     };
     std::vector<PlasmaVoxen> voxens_;
+    std::unique_ptr<voxen::gallery::SceneRepository> sceneRepository_;
+    std::vector<voxen::gallery::SceneId> sceneIds_;
+    int selectedSceneIndex_ = 0;
+    std::string sceneStatus_;
     std::chrono::steady_clock::time_point lastPhysicsFrame_{};
     float physicsAccumulator_=0.f;
     float trackedFloorY_=0.f;
