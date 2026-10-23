@@ -17,6 +17,7 @@ struct CarouselState {
     std::size_t visiblePortalCount = 0;
     int selectedScene = 0;
     std::vector<std::string> savedSceneIds;
+    std::vector<std::string> savedSceneLabels;
     std::string sceneStatus;
     int musicTrack = 0;
     bool musicPlaying = false;
