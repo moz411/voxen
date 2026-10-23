@@ -37,3 +37,15 @@ Branch: `feature/room-scene-gallery`
 - **Not yet connected:** the Meta Scene/OpenXR runtime must supply a genuinely localized persistent room anchor to `setLocalizedGalleryRoom`. Without it the button correctly remains disabled. Do not synthesize a room ID or anchor pose from LOCAL tracking.
 - **Not yet rendered:** iridescent floor rings, low-cost scene previews, portal picking, GPU resource unload/reload, and MP3-driven shader features. Current code is not proof of headset functionality.
 - Host smoke tests are defined under `tests/CMakeLists.txt`, independently of Android/Vulkan. Run with `cmake -S tests -B /tmp/voxen-gallery-tests && cmake --build /tmp/voxen-gallery-tests && ctest --test-dir /tmp/voxen-gallery-tests --output-on-failure`.
+
+## Immersive-mode prototype
+
+The SCENES carousel now exposes ENTER IMMERSIVE SCENE and EXIT TO GALLERY.
+Entry validates and restores a serialized runtime snapshot. Exit stops ambient
+and MP3 playback and releases the CPU Voxen instance vector capacity.
+**This is not the complete lifecycle described above:** shared Vulkan pipelines,
+mesh caches and GPU allocations remain resident; no claim of VRAM reclamation is
+made. The gallery renderer still needs visible rings, scene picking, and real
+Meta persistent-anchor localization. The UI enter action is intentionally
+available for saved scenes even before room localization, to test snapshot
+roundtrips independently of the Meta Scene service.
