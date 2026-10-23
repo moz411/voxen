@@ -124,6 +124,13 @@ void drawCarousel(CarouselState& state) {
             }
             if(!state.savedSceneIds.empty() && ImGui::Button("LOAD SELECTED SCENE"))
                 state.sceneLoad=true;
+            if(!state.sceneImmersive) {
+                if(!state.savedSceneIds.empty() && ImGui::Button("ENTER IMMERSIVE SCENE"))
+                    state.sceneEnter=true;
+            } else {
+                ImGui::TextUnformatted("IMMERSIVE MODE");
+                if(ImGui::Button("EXIT TO GALLERY")) state.sceneLeave=true;
+            }
             ImGui::Text("Portals: %zu",state.visiblePortalCount);
             if(!state.sceneAnchorReady) ImGui::BeginDisabled();
             if(ImGui::Button("PLACE PORTAL ON TRACKED FLOOR")) state.scenePlace=true;
