@@ -77,8 +77,24 @@ void checkVk(VkResult result, const char* operation) {
 void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& root) {
     sceneRepository_ = std::make_unique<voxen::gallery::SceneRepository>(root);
     portalManager_ = std::make_unique<voxen::gallery::PortalManager>(*sceneRepository_);
-    sceneIds_ = sceneRepository_->listScenes();
+    refreshSceneIndex();
     selectedSceneIndex_ = 0;
+}
+
+void XrSwapchainRenderer::refreshSceneIndex() {
+    sceneIds_=sceneRepository_?sceneRepository_->listScenes():
+        std::vector<voxen::gallery::SceneId>{};
+    sceneLabels_.clear();
+    sceneLabels_.reserve(sceneIds_.size());
+    for(const auto& id:sceneIds_) {
+        const auto metadata=sceneRepository_->loadSceneMetadata(id);
+        if(metadata) {
+            sceneLabels_.push_back(metadata->displayName+
+                "  [proxy " + std::to_string(metadata->preview.boundingRadiusMeters).substr(0,4) + "m]");
+        } else {
+            sceneLabels_.push_back(id);
+        }
+    }
 }
 
 void XrSwapchainRenderer::setLocalizedGalleryRoom(
@@ -160,7 +176,7 @@ bool XrSwapchainRenderer::saveCurrentScene() {
         record.preview.boundingRadiusMeters=std::clamp(std::sqrt(radius2),0.05f,99.f);
     }
     if(!sceneRepository_->saveScene(record,payload)) return false;
-    sceneIds_=sceneRepository_->listScenes();
+    refreshSceneIndex();
     const auto it=std::find(sceneIds_.begin(),sceneIds_.end(),record.id);
     selectedSceneIndex_=it==sceneIds_.end()?0:static_cast<int>(it-sceneIds_.begin());
 #ifdef VOXEN_WITH_IMGUI
@@ -1524,6 +1540,7 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         imguiCarousel_.savedSceneIds=sceneIds_;
+        imguiCarousel_.savedSceneLabels=sceneLabels_;
         imguiCarousel_.sceneAnchorReady=portalManager_ && portalManager_->localized();
         imguiCarousel_.visiblePortalCount=visibleGalleryPortals().size();
         voxen::ui::drawCarousel(imguiCarousel_);
