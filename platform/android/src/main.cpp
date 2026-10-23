@@ -2,6 +2,8 @@
 #include <android_native_app_glue.h>
 
 #include <exception>
+#include <filesystem>
+#include <voxen/scene/SceneRepository.hpp>
 
 #include <voxen/core/Engine.hpp>
 #include <voxen/render/VulkanContext.hpp>
@@ -28,6 +30,18 @@ void android_main(android_app* app) {
     try {
         __android_log_print(ANDROID_LOG_INFO, kTag, "Initializing engine");
         engine.initialize();
+        // Metadata is stored in Android app-private storage, not a shared Music folder.
+        // No gallery portals are rendered until a persistent Meta room anchor localizes.
+        if (app->activity->internalDataPath != nullptr) {
+            voxen::gallery::SceneRepository scenes(
+                std::filesystem::path(app->activity->internalDataPath) / "voxen-gallery");
+            const auto saved = scenes.listScenes();
+            __android_log_print(ANDROID_LOG_INFO, kTag,
+                "Gallery repository initialized: %zu saved scenes", saved.size());
+        } else {
+            __android_log_print(ANDROID_LOG_WARN, kTag,
+                "Gallery repository unavailable: no private data path");
+        }
         __android_log_print(ANDROID_LOG_INFO, kTag, "Initializing OpenXR");
         xr.initialize(app->activity->vm, app->activity->clazz);
         __android_log_print(ANDROID_LOG_INFO, kTag, "OpenXR initialized; passthrough=%d", xr.passthroughEnabled() ? 1 : 0);
