@@ -1,5 +1,8 @@
 #pragma once
 #include <voxen/scene/RoomGallery.hpp>
+#include <voxen/scene/SceneIds.hpp>
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -17,6 +20,15 @@ namespace voxen::gallery {
 class SceneRepository {
 public:
     explicit SceneRepository(std::filesystem::path root) : root_(std::move(root)) {}
+
+    // Allocates a stable ID once; the caller owns the returned record.
+    static SceneRecord newScene(std::string name) {
+        SceneRecord r;
+        r.id = newUuid();
+        r.displayName = std::move(name);
+        r.payloadAsset = "payload-" + newUuid() + ".bin";
+        return r;
+    }
 
     bool saveScene(const SceneRecord& r, const std::string& payload) const {
         if (!safe(r.id) || !safe(r.payloadAsset) || r.schemaVersion != 1 ||
@@ -60,6 +72,7 @@ public:
             auto id = it->path().filename().string();
             if (safe(id) && loadScene(id)) ids.push_back(std::move(id));
         }
+        std::sort(ids.begin(), ids.end());
         return ids;
     }
 
@@ -71,7 +84,7 @@ public:
             << std::quoted(g.persistentAnchorId) << '\n' << g.placements.size() << '\n'
             << std::setprecision(std::numeric_limits<float>::max_digits10);
         for (const auto& p : g.placements) {
-            if (!safe(p.id) || !safe(p.sceneId) || !scale(p.scale)) return false;
+            if (!safe(p.id) || !safe(p.sceneId) || !scale(p.scale) || !loadScene(p.sceneId)) return false;
             float norm = 0;
             for (float x : p.roomLocalPose.positionMeters) if (!std::isfinite(x)) return false;
             for (float x : p.roomLocalPose.orientationXyzw) {
@@ -140,7 +153,8 @@ private:
         std::error_code ec;
         std::filesystem::create_directories(p.parent_path(), ec);
         if (ec) return false;
-        auto tmp=p; tmp+=".tmp";
+        // Unique temporary path avoids clobbering another pending writer.
+        auto tmp=p; tmp += "." + newUuid() + ".tmp";
         {
             std::ofstream f(tmp, std::ios::binary|std::ios::trunc);
             if (!f || !f.write(s.data(), static_cast<std::streamsize>(s.size())) || !f.flush())
