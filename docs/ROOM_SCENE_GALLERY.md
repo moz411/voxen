@@ -27,3 +27,13 @@ Branch: `feature/room-scene-gallery`
 
 ## Important
 `engine/scene/include/voxen/scene/Scene.hpp` currently defines four demo artworks with a fixed-size array; it is **not** a complete saved-scene representation. Migration to full serialization is prerequisite to claiming multi-scene persistence.
+
+## Integration progress (2026-10-23)
+
+- Runtime snapshots of up to 256 live Voxens are versioned and stored under Android private data. Scene controls live in the four-page XR carousel. A saved snapshot is not yet a full asset graph; audio playback is intentionally not resumed on load.
+- `FloorPortalPlacement.hpp` computes controller-ray intersections only with tracked Meta Scene floor rectangles; no synthetic fallback floor is used.
+- `PortalManager.hpp` converts verified LOCAL floor hits into persistent-anchor-local poses, and hides saved placements when the anchor is unlocalized. A different anchor identity is rejected. Host smoke tests cover origin changes, loss of localization, and deletion.
+- Renderer has `setLocalizedGalleryRoom(...)`, `visibleGalleryPortals()` and `placeGalleryPortalFromRightController()`. The SCENES page exposes a guarded placement button.
+- **Not yet connected:** the Meta Scene/OpenXR runtime must supply a genuinely localized persistent room anchor to `setLocalizedGalleryRoom`. Without it the button correctly remains disabled. Do not synthesize a room ID or anchor pose from LOCAL tracking.
+- **Not yet rendered:** iridescent floor rings, low-cost scene previews, portal picking, GPU resource unload/reload, and MP3-driven shader features. Current code is not proof of headset functionality.
+- Host smoke tests are defined under `tests/CMakeLists.txt`, independently of Android/Vulkan. Run with `cmake -S tests -B /tmp/voxen-gallery-tests && cmake --build /tmp/voxen-gallery-tests && ctest --test-dir /tmp/voxen-gallery-tests --output-on-failure`.
