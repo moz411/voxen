@@ -56,6 +56,8 @@ public:
     void setLocalizedGalleryRoom(std::optional<voxen::gallery::LocalizedRoom> room);
     [[nodiscard]] std::vector<voxen::gallery::VisiblePortal> visibleGalleryPortals() const;
     bool placeGalleryPortalFromRightController();
+    bool enterImmersiveScene(const voxen::gallery::SceneId& id);
+    bool leaveImmersiveScene();
     [[nodiscard]] std::vector<voxen::gallery::SceneId> savedSceneIds() const;
     void toggleUiVisibility() noexcept {
 #ifdef VOXEN_WITH_IMGUI
@@ -194,6 +196,7 @@ private:
     std::vector<PlasmaVoxen> voxens_;
     std::unique_ptr<voxen::gallery::SceneRepository> sceneRepository_;
     std::unique_ptr<voxen::gallery::PortalManager> portalManager_;
+    voxen::gallery::Lifecycle galleryLifecycle_{};
     std::vector<voxen::gallery::SceneId> sceneIds_;
     std::vector<std::string> sceneLabels_;
     void refreshSceneIndex();
