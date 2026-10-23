@@ -76,8 +76,38 @@ void checkVk(VkResult result, const char* operation) {
 
 void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& root) {
     sceneRepository_ = std::make_unique<voxen::gallery::SceneRepository>(root);
+    portalManager_ = std::make_unique<voxen::gallery::PortalManager>(*sceneRepository_);
     sceneIds_ = sceneRepository_->listScenes();
     selectedSceneIndex_ = 0;
+}
+
+void XrSwapchainRenderer::setLocalizedGalleryRoom(
+    std::optional<voxen::gallery::LocalizedRoom> room) {
+    if(portalManager_) portalManager_->setLocalization(std::move(room));
+}
+
+std::vector<voxen::gallery::VisiblePortal> XrSwapchainRenderer::visibleGalleryPortals() const {
+    return portalManager_ ? portalManager_->visible()
+                          : std::vector<voxen::gallery::VisiblePortal>{};
+}
+
+bool XrSwapchainRenderer::placeGalleryPortalFromRightController() {
+    if(!portalManager_ || !portalManager_->localized() ||
+       !controllerTracked_[1] || sceneIds_.empty() ||
+       selectedSceneIndex_<0 ||
+       static_cast<std::size_t>(selectedSceneIndex_)>=sceneIds_.size())
+        return false;
+    const auto& pose=controllerPoses_[1];
+    const auto& q=pose.orientation;
+    const std::array<float,3> direction{
+        -2.f*(q.x*q.z+q.w*q.y),
+        -2.f*(q.y*q.z-q.w*q.x),
+        -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+    const auto hit=voxen::gallery::intersectTrackedFloor(
+        environmentSurfaces_.surfaces(),
+        {pose.position.x,pose.position.y,pose.position.z},direction);
+    if(!hit) return false;
+    return portalManager_->place(sceneIds_[selectedSceneIndex_],*hit).has_value();
 }
 
 std::vector<voxen::gallery::SceneId> XrSwapchainRenderer::savedSceneIds() const {
@@ -860,7 +890,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         float axis=thumbsticks[0].x;
         if(std::fabs(axis)<0.3f)nativeMenuStickLatched_=false;
         if(!nativeMenuStickLatched_ && std::fabs(axis)>0.70f){
-            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:2))%3;
+            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:3))%4;
             nativeMenuStickLatched_=true;
         }
     }
@@ -1475,12 +1505,20 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         imguiCarousel_.savedSceneIds=sceneIds_;
+        imguiCarousel_.sceneAnchorReady=portalManager_ && portalManager_->localized();
+        imguiCarousel_.visiblePortalCount=visibleGalleryPortals().size();
         voxen::ui::drawCarousel(imguiCarousel_);
         if(imguiCarousel_.sceneSave) {
             imguiCarousel_.sceneSave=false;
             imguiCarousel_.sceneStatus=saveCurrentScene()?"Scene saved":"Save failed";
         }
         imguiCarousel_.savedSceneIds=sceneIds_;
+        if(imguiCarousel_.scenePlace) {
+            imguiCarousel_.scenePlace=false;
+            selectedSceneIndex_=imguiCarousel_.selectedScene;
+            imguiCarousel_.sceneStatus=placeGalleryPortalFromRightController()?
+                "Portal placed":"Requires localized room and tracked floor hit";
+        }
         if(imguiCarousel_.sceneLoad) {
             imguiCarousel_.sceneLoad=false;
             if(imguiCarousel_.selectedScene>=0 &&
