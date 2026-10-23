@@ -17,6 +17,9 @@ int main() {
         assert(repo.saveScene(s,payload));
         auto restored=repo.loadScene(s.id);
         assert(restored && restored->second==payload && restored->first.displayName==s.displayName);
+        auto proxy=repo.loadSceneMetadata(s.id);
+        assert(proxy && proxy->displayName==s.displayName);
+        assert(proxy->preview.boundingRadiusMeters==s.preview.boundingRadiusMeters);
     }
     assert(repo.listScenes().size()==3);
     auto generated = SceneRepository::newScene("Generated");
