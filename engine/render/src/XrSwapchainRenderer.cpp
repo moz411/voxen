@@ -147,6 +147,9 @@ bool XrSwapchainRenderer::saveCurrentScene() {
     sceneIds_=sceneRepository_->listScenes();
     const auto it=std::find(sceneIds_.begin(),sceneIds_.end(),record.id);
     selectedSceneIndex_=it==sceneIds_.end()?0:static_cast<int>(it-sceneIds_.begin());
+#ifdef VOXEN_WITH_IMGUI
+    imguiCarousel_.selectedScene=selectedSceneIndex_;
+#endif
     return true;
 }
 
