@@ -65,3 +65,20 @@ rather than reading each saved binary payload. Remaining work includes
 Meta anchor localization, portal picking and previews, correct gallery
 resource ownership, and Quest device verification. No headset render
 or CI success has been verified for this branch.
+
+## First live Meta floor-anchor bridge
+
+`MetaSceneProvider` now carries each discovered spatial entity's 128-bit
+UUID into tracked surfaces. On each XR frame, `localizedFloorAnchor()`
+selects a stable UUID from currently tracked, upward-facing floor entities,
+uses that entity's located LOCAL pose as the gallery anchor, and sends it to
+`PortalManager`. Losing tracking hides all saved rings immediately.
+Same UUID with a newly localized pose updates ring positions without reading
+the gallery file on every frame. A new UUID is treated as a different gallery.
+
+**Important:** This is *floor-entity-scoped* persistence, not Meta Room-level
+identity. Multiple floor entities in one room and recapture/replacement of a
+floor anchor can change which gallery is selected. A proper Meta Room UUID,
+anchor lifecycle/persistence guarantees, and a migration strategy are still
+required. The implementation deliberately does not invent a room ID from
+headset LOCAL coordinates. No Quest hardware test has been run.
