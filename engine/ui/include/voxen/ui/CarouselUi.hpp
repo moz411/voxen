@@ -12,6 +12,9 @@ struct CarouselState {
     int page = 0;
     bool sceneSave = false;
     bool sceneLoad = false;
+    bool scenePlace = false;
+    bool sceneAnchorReady = false;
+    std::size_t visiblePortalCount = 0;
     int selectedScene = 0;
     std::vector<std::string> savedSceneIds;
     std::string sceneStatus;
