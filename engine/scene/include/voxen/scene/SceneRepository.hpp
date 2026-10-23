@@ -77,7 +77,7 @@ public:
              !ec && it != end; it.increment(ec)) {
             if (!it->is_directory(ec)) continue;
             auto id = it->path().filename().string();
-            if (safe(id) && loadScene(id)) ids.push_back(std::move(id));
+            if (safe(id) && loadSceneMetadata(id)) ids.push_back(std::move(id));
         }
         std::sort(ids.begin(), ids.end());
         return ids;
@@ -91,7 +91,7 @@ public:
             << std::quoted(g.persistentAnchorId) << '\n' << g.placements.size() << '\n'
             << std::setprecision(std::numeric_limits<float>::max_digits10);
         for (const auto& p : g.placements) {
-            if (!safe(p.id) || !safe(p.sceneId) || !scale(p.scale) || !loadScene(p.sceneId)) return false;
+            if (!safe(p.id) || !safe(p.sceneId) || !scale(p.scale) || !loadSceneMetadata(p.sceneId)) return false;
             float norm = 0;
             for (float x : p.roomLocalPose.positionMeters) if (!std::isfinite(x)) return false;
             for (float x : p.roomLocalPose.orientationXyzw) {
