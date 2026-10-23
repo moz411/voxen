@@ -60,6 +60,7 @@ if(ANDROID OR WIN32)
     voxen_embed_shader(phiFieldFrag phi_field.frag)
     voxen_embed_shader(mandelbrotZoomFrag mandelbrot_zoom.frag)
     voxen_embed_shader(carouselFrag carousel.frag)
+    voxen_embed_shader(galleryPortalFrag gallery_portal.frag)
     voxen_embed_shader(imguiPanelFrag imgui_panel.frag)
 endif()
 
