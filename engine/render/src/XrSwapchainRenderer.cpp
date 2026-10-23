@@ -143,6 +143,22 @@ bool XrSwapchainRenderer::saveCurrentScene() {
         "Scene " + std::to_string(sceneIds_.size()+1));
     record.preview.materialPreset=voxens_.empty()?0u:
         static_cast<std::uint32_t>(voxens_.front().preset);
+    // Lightweight proxy: bounding sphere and dominant preset, never a second
+    // copy of the Vulkan mesh or full scene in gallery mode.
+    if(!voxens_.empty()) {
+        std::array<float,3> minP=voxens_.front().position;
+        std::array<float,3> maxP=minP;
+        for(const auto& v:voxens_) for(int k=0;k<3;++k) {
+            minP[k]=std::min(minP[k],v.position[k]-v.scale);
+            maxP[k]=std::max(maxP[k],v.position[k]+v.scale);
+        }
+        float radius2=0.f;
+        for(int k=0;k<3;++k) {
+            const float half=(maxP[k]-minP[k])*0.5f;
+            radius2+=half*half;
+        }
+        record.preview.boundingRadiusMeters=std::clamp(std::sqrt(radius2),0.05f,99.f);
+    }
     if(!sceneRepository_->saveScene(record,payload)) return false;
     sceneIds_=sceneRepository_->listScenes();
     const auto it=std::find(sceneIds_.begin(),sceneIds_.end(),record.id);
