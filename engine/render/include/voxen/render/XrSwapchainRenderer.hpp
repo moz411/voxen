@@ -14,6 +14,7 @@
 #include <voxen/scene/EnvironmentSurface.hpp>
 #include <voxen/scene/RuntimeSnapshot.hpp>
 #include <voxen/scene/SceneRepository.hpp>
+#include <voxen/scene/PortalManager.hpp>
 #include <memory>
 #include <filesystem>
 #ifdef VOXEN_WITH_IMGUI
@@ -52,6 +53,9 @@ public:
     void configureSceneStorage(const std::filesystem::path& root);
     bool saveCurrentScene();
     bool loadSavedScene(const voxen::gallery::SceneId& id);
+    void setLocalizedGalleryRoom(std::optional<voxen::gallery::LocalizedRoom> room);
+    [[nodiscard]] std::vector<voxen::gallery::VisiblePortal> visibleGalleryPortals() const;
+    bool placeGalleryPortalFromRightController();
     [[nodiscard]] std::vector<voxen::gallery::SceneId> savedSceneIds() const;
     void toggleUiVisibility() noexcept {
 #ifdef VOXEN_WITH_IMGUI
@@ -189,6 +193,7 @@ private:
     };
     std::vector<PlasmaVoxen> voxens_;
     std::unique_ptr<voxen::gallery::SceneRepository> sceneRepository_;
+    std::unique_ptr<voxen::gallery::PortalManager> portalManager_;
     std::vector<voxen::gallery::SceneId> sceneIds_;
     int selectedSceneIndex_ = 0;
     std::string sceneStatus_;
