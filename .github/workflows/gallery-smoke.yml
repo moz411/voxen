@@ -1,0 +1,27 @@
+name: Gallery host smoke tests
+
+on:
+  pull_request:
+    paths:
+      - 'engine/scene/include/voxen/scene/**'
+      - 'tests/**'
+      - '.github/workflows/gallery-smoke.yml'
+  push:
+    branches:
+      - feature/gallery-runtime-integration
+    paths:
+      - 'engine/scene/include/voxen/scene/**'
+      - 'tests/**'
+      - '.github/workflows/gallery-smoke.yml'
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S tests -B build/gallery-tests -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: cmake --build build/gallery-tests --parallel 2
+      - name: Test
+        run: ctest --test-dir build/gallery-tests --output-on-failure
