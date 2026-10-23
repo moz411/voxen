@@ -49,3 +49,19 @@ made. The gallery renderer still needs visible rings, scene picking, and real
 Meta persistent-anchor localization. The UI enter action is intentionally
 available for saved scenes even before room localization, to test snapshot
 roundtrips independently of the Meta Scene service.
+
+## Vulkan ring pass
+
+`gallery_portal.frag` now draws animated iridescent floor rings in the
+stereo Vulkan pass using the existing `fractal.vert` quad, one shared
+pipeline and no per-ring GPU allocations. Rendering is bounded to 64 rings
+per eye. It consumes `PortalManager::visible()` and therefore intentionally
+draws nothing until a real persistent Meta room anchor has been localized.
+Rings are hidden while an immersive scene is active. The cyan Sobel
+passthrough configuration is unchanged.
+
+The gallery index and portal validation now use `loadSceneMetadata()`
+rather than reading each saved binary payload. Remaining work includes
+Meta anchor localization, portal picking and previews, correct gallery
+resource ownership, and Quest device verification. No headset render
+or CI success has been verified for this branch.
