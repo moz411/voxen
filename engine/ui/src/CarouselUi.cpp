@@ -120,8 +120,13 @@ void drawCarousel(CarouselState& state) {
             }
             if(!state.savedSceneIds.empty() && ImGui::Button("LOAD SELECTED SCENE"))
                 state.sceneLoad=true;
+            ImGui::Text("Portals: %zu",state.visiblePortalCount);
+            if(!state.sceneAnchorReady) ImGui::BeginDisabled();
+            if(ImGui::Button("PLACE PORTAL ON TRACKED FLOOR")) state.scenePlace=true;
+            if(!state.sceneAnchorReady) ImGui::EndDisabled();
             if(!state.sceneStatus.empty()) ImGui::TextWrapped("%s",state.sceneStatus.c_str());
-            ImGui::TextDisabled("Portals require a localized Meta room anchor");
+            ImGui::TextDisabled(state.sceneAnchorReady ? "Aim right controller at tracked floor" :
+                "Awaiting persistent Meta room anchor localization");
             break;
         }
         }
