@@ -19,6 +19,11 @@ int main() {
         assert(restored && restored->second==payload && restored->first.displayName==s.displayName);
     }
     assert(repo.listScenes().size()==3);
+    auto generated = SceneRepository::newScene("Generated");
+    assert(generated.id.size()==36);
+    assert(repo.saveScene(generated,"scene-data"));
+    assert(repo.loadScene(generated.id)->second=="scene-data");
+    assert(repo.listScenes().size()==4);
     RoomGallery room;
     room.roomId="test-room";
     room.persistentAnchorId="persistent-anchor";
@@ -30,6 +35,9 @@ int main() {
         room.placements.push_back(p);
     }
     assert(repo.saveGallery(room));
+    RoomGallery invalid=room;
+    invalid.placements[0].sceneId="missing-scene";
+    assert(!repo.saveGallery(invalid));
     auto restored=repo.loadGallery(room.roomId);
     assert(restored && restored->placements.size()==3);
     assert(restored->placements[2].roomLocalPose.positionMeters[0]==2.f);
