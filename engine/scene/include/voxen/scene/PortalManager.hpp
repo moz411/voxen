@@ -93,7 +93,7 @@ public:
         std::vector<VisiblePortal> out;
         if (!localized_ || !gallery_) return out;
         for(const auto& p:gallery_->placements) {
-            if(!repository_.loadScene(p.sceneId)) continue;
+            if(!repository_.loadSceneMetadata(p.sceneId)) continue;
             out.push_back({p.id,p.sceneId,
                            compose(localized_->anchorInLocal,p.roomLocalPose),p.scale});
         }
@@ -104,7 +104,7 @@ public:
     // persistence. Never write the hit's LOCAL coordinates directly.
     [[nodiscard]] std::optional<InstanceId> place(
         const SceneId& sceneId, const FloorHit& hit, float scale=1.f) {
-        if(!localized_ || !gallery_ || !repository_.loadScene(sceneId) ||
+        if(!localized_ || !gallery_ || !repository_.loadSceneMetadata(sceneId) ||
            !std::isfinite(scale) || scale<=0 || scale>10) return std::nullopt;
         Placement p;
         p.id=newUuid();
