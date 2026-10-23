@@ -196,7 +196,8 @@ private:
     std::vector<PlasmaVoxen> voxens_;
     std::unique_ptr<voxen::gallery::SceneRepository> sceneRepository_;
     std::unique_ptr<voxen::gallery::PortalManager> portalManager_;
-    voxen::gallery::Lifecycle galleryLifecycle_{};
+    // Preview/scene mode; global Vulkan pipelines are shared, not freed here.
+    bool immersiveSceneActive_ = false;
     std::vector<voxen::gallery::SceneId> sceneIds_;
     std::vector<std::string> sceneLabels_;
     void refreshSceneIndex();
