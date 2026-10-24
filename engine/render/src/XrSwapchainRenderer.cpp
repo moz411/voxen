@@ -243,6 +243,7 @@ bool XrSwapchainRenderer::deleteSavedScene(const voxen::gallery::SceneId& id) {
        !sceneRepository_->deleteScene(id))return false;
     refreshSceneIndex();
     if(portalManager_)portalManager_->reloadGallery();
+    selectedPortalId_.reset();
     selectedSceneIndex_=sceneIds_.empty()?0:
         std::min(selectedSceneIndex_,static_cast<int>(sceneIds_.size()-1));
 #ifdef VOXEN_WITH_IMGUI
@@ -1644,6 +1645,7 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.sceneAnchorReady=portalManager_ && portalManager_->localized();
         imguiCarousel_.sceneImmersive=immersiveSceneActive_;
         imguiCarousel_.visiblePortalCount=visibleGalleryPortals().size();
+        imguiCarousel_.scenePortalSelected=selectedPortalId_.has_value();
         voxen::ui::drawCarousel(imguiCarousel_);
         if(imguiCarousel_.sceneSave) {
             imguiCarousel_.sceneSave=false;
@@ -1679,6 +1681,21 @@ void XrSwapchainRenderer::render(
             selectedSceneIndex_=imguiCarousel_.selectedScene;
             imguiCarousel_.sceneStatus=placeGalleryPortalFromRightController()?
                 "Portal placed":"Requires localized room and tracked floor hit";
+        }
+        if(imguiCarousel_.scenePortalSelect) {
+            imguiCarousel_.scenePortalSelect=false;
+            imguiCarousel_.sceneStatus=selectGalleryPortalFromRightController()?
+                "Portal selected":"No portal near tracked floor aim";
+        }
+        if(imguiCarousel_.scenePortalMove) {
+            imguiCarousel_.scenePortalMove=false;
+            imguiCarousel_.sceneStatus=moveSelectedGalleryPortalFromRightController()?
+                "Portal moved":"Move failed: aim at tracked floor";
+        }
+        if(imguiCarousel_.scenePortalDelete) {
+            imguiCarousel_.scenePortalDelete=false;
+            imguiCarousel_.sceneStatus=deleteSelectedGalleryPortal()?
+                "Portal removed (saved scene kept)":"Portal removal failed";
         }
         if(imguiCarousel_.sceneLoad) {
             imguiCarousel_.sceneLoad=false;
