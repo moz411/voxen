@@ -72,6 +72,7 @@ void XrSession::initialize(
     spaceInfo.referenceSpaceType=XR_REFERENCE_SPACE_TYPE_STAGE;
     if(XR_FAILED(xrCreateReferenceSpace(session_,&spaceInfo,&stageSpace_)))stageSpace_=XR_NULL_HANDLE;
     initializeActions();
+    initializeHandTracking();
     if(enableScene_) metaScene_.initialize(instance_,session_);
     if (enablePassthrough_) {
         initializePassthrough();
@@ -227,6 +228,61 @@ void XrSession::syncActions() {
     }
 }
 
+void XrSession::initializeHandTracking() {
+    XrSystemHandTrackingPropertiesEXT props{XR_TYPE_SYSTEM_HAND_TRACKING_PROPERTIES_EXT};
+    XrSystemProperties systemProps{XR_TYPE_SYSTEM_PROPERTIES};
+    systemProps.next=&props;
+    // Extension function availability also indicates that the optional
+    // extension was enabled at instance creation.
+    if(XR_FAILED(xrGetInstanceProcAddr(instance_,"xrCreateHandTrackerEXT",
+        reinterpret_cast<PFN_xrVoidFunction*>(&createHandTracker_))) ||
+       !createHandTracker_)return;
+    if(XR_FAILED(xrGetInstanceProcAddr(instance_,"xrDestroyHandTrackerEXT",
+        reinterpret_cast<PFN_xrVoidFunction*>(&destroyHandTracker_))) ||
+       XR_FAILED(xrGetInstanceProcAddr(instance_,"xrLocateHandJointsEXT",
+        reinterpret_cast<PFN_xrVoidFunction*>(&locateHandJoints_))) ||
+       !destroyHandTracker_ || !locateHandJoints_)return;
+    // The session already knows the selected system from initialization.
+    // Tracker creation will fail harmlessly when hand tracking is unavailable.
+    for(int i=0;i<2;++i) {
+        XrHandTrackerCreateInfoEXT info{XR_TYPE_HAND_TRACKER_CREATE_INFO_EXT};
+        info.hand=i==0?XR_HAND_LEFT_EXT:XR_HAND_RIGHT_EXT;
+        info.handJointSet=XR_HAND_JOINT_SET_DEFAULT_EXT;
+        if(XR_FAILED(createHandTracker_(session_,&info,&handTrackers_[i])))
+            handTrackers_[i]=XR_NULL_HANDLE;
+    }
+}
+
+void XrSession::updateHandTracking(voxen::render::XrSwapchainRenderer& renderer,XrTime time) {
+    std::array<voxen::render::XrSwapchainRenderer::HolographicHand,2> hands{};
+    if(!renderer.carouselVisible() && locateHandJoints_) {
+        for(int i=0;i<2;++i) {
+            if(handTrackers_[i]==XR_NULL_HANDLE)continue;
+            std::array<XrHandJointLocationEXT,XR_HAND_JOINT_COUNT_EXT> joints{};
+            XrHandJointLocationsEXT locations{XR_TYPE_HAND_JOINT_LOCATIONS_EXT};
+            locations.jointCount=static_cast<uint32_t>(joints.size());
+            locations.jointLocations=joints.data();
+            XrHandJointsLocateInfoEXT info{XR_TYPE_HAND_JOINTS_LOCATE_INFO_EXT};
+            info.baseSpace=localSpace_;
+            info.time=time;
+            if(XR_FAILED(locateHandJoints_(handTrackers_[i],&info,&locations)) ||
+               locations.isActive!=XR_TRUE)continue;
+            bool valid=true;
+            for(std::size_t j=0;j<joints.size();++j) {
+                constexpr XrSpaceLocationFlags required=
+                    XR_SPACE_LOCATION_POSITION_VALID_BIT;
+                if((joints[j].locationFlags&required)!=required) {
+                    valid=false;break;
+                }
+                hands[i].joints[j]=joints[j].pose.position;
+                hands[i].radii[j]=joints[j].radius;
+            }
+            hands[i].tracked=valid;
+        }
+    }
+    renderer.setHolographicHands(hands);
+}
+
 void XrSession::initializePassthrough() {
     auto load = [this](const char* name, PFN_xrVoidFunction* fn) {
         checkXr(xrGetInstanceProcAddr(instance_, name, fn), name);
@@ -365,7 +421,9 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
             aimPoses[hand] = location.pose;
         }
     }
-    renderer.updateControllerInteraction(aimPoses, aimTracked, selectionPressed_, thumbstickValues_);
+    if(renderer.carouselVisible())
+        renderer.updateControllerInteraction(aimPoses, aimTracked, selectionPressed_, thumbstickValues_);
+    updateHandTracking(renderer,frameState.predictedDisplayTime);
     if(enableScene_) {
         metaScene_.refresh(localSpace_,frameState.predictedDisplayTime);
         renderer.setEnvironmentSurfaces(metaScene_.surfaces());
@@ -478,6 +536,10 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
 
 void XrSession::shutdown() noexcept {
     metaScene_.shutdown();
+    for(auto& tracker:handTrackers_) {
+        if(tracker!=XR_NULL_HANDLE && destroyHandTracker_)destroyHandTracker_(tracker);
+        tracker=XR_NULL_HANDLE;
+    }
     destroyPassthrough();
     for (auto& space : aimSpaces_) {
         if (space != XR_NULL_HANDLE) xrDestroySpace(space);
