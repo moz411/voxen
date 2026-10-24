@@ -151,6 +151,29 @@ void drawCarousel(CarouselState& state) {
             if(!state.sceneAnchorReady) ImGui::BeginDisabled();
             if(ImGui::Button("PLACE PORTAL ON TRACKED FLOOR")) state.scenePlace=true;
             if(!state.sceneAnchorReady) ImGui::EndDisabled();
+            ImGui::Separator();
+            ImGui::TextUnformatted("EDIT FLOOR PORTALS");
+            if(!state.sceneAnchorReady)ImGui::BeginDisabled();
+            if(ImGui::Button("SELECT PORTAL AT AIM")) {
+                state.scenePortalSelect=true;
+                state.scenePortalDeleteConfirm=false;
+            }
+            if(!state.scenePortalSelected)ImGui::BeginDisabled();
+            if(ImGui::Button("MOVE SELECTED TO AIM"))state.scenePortalMove=true;
+            if(!state.scenePortalDeleteConfirm) {
+                if(ImGui::Button("REMOVE SELECTED PORTAL"))
+                    state.scenePortalDeleteConfirm=true;
+            } else {
+                ImGui::TextUnformatted("Remove this portal? Saved scene is kept.");
+                if(ImGui::Button("CONFIRM REMOVE")) {
+                    state.scenePortalDelete=true;
+                    state.scenePortalDeleteConfirm=false;
+                }
+                ImGui::SameLine();
+                if(ImGui::Button("CANCEL REMOVE"))state.scenePortalDeleteConfirm=false;
+            }
+            if(!state.scenePortalSelected)ImGui::EndDisabled();
+            if(!state.sceneAnchorReady)ImGui::EndDisabled();
             if(!state.sceneStatus.empty()) ImGui::TextWrapped("%s",state.sceneStatus.c_str());
             ImGui::TextDisabled(state.sceneAnchorReady ? "Aim right controller at tracked floor" :
                 "Awaiting persistent Meta room anchor localization");
