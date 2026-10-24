@@ -338,6 +338,10 @@ void XrSession::handleSessionStateChanged(const XrEventDataSessionStateChanged& 
     }
 }
 
+void XrSession::requestSceneRefresh() {
+    if(enableScene_ && running_) metaScene_.request();
+}
+
 void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
     if (!running_) {
         return;
