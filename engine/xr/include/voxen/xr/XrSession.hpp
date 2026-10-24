@@ -26,7 +26,8 @@ public:
         VkDevice device,
         uint32_t queueFamilyIndex,
         bool enablePassthrough = false,
-        bool enableScene = false);
+        bool enableScene = false,
+        bool scenePermissionGranted = true);
     void shutdown() noexcept;
 
     // Drains runtime events. Returns false when the runtime asks the app to exit.
@@ -36,6 +37,7 @@ public:
     // until swapchains and the first stereo renderer are added.
     void frame(voxen::render::XrSwapchainRenderer& renderer);
     void requestSceneRefresh();
+    void setScenePermissionGranted(bool granted);
 
     [[nodiscard]] ::XrSession handle() const noexcept { return session_; }
     [[nodiscard]] XrSpace localSpace() const noexcept { return localSpace_; }
@@ -70,6 +72,7 @@ private:
     bool running_ = false;
     bool enablePassthrough_ = false;
     bool enableScene_ = false;
+    bool scenePermissionGranted_ = true;
     MetaSceneProvider metaScene_{};
     XrPassthroughFB passthrough_ = XR_NULL_HANDLE;
     XrPassthroughLayerFB passthroughLayer_ = XR_NULL_HANDLE;
