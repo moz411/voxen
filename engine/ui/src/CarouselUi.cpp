@@ -153,6 +153,7 @@ void drawCarousel(CarouselState& state) {
             if(!state.sceneAnchorReady) ImGui::EndDisabled();
             ImGui::Separator();
             ImGui::TextUnformatted("EDIT FLOOR PORTALS");
+            if(ImGui::Button("CANCEL FLOOR ACTION"))state.scenePortalCancel=true;
             if(!state.sceneAnchorReady)ImGui::BeginDisabled();
             if(ImGui::Button("SELECT PORTAL AT AIM")) {
                 state.scenePortalSelect=true;
