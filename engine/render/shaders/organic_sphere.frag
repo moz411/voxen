@@ -16,7 +16,7 @@ void main(){
     float diffuse=max(dot(n,light),0.0);
     float rim=pow(1.0-abs(n.z),3.0);
     float phase=pc.parameters.z+0.11*vPulse+0.045*pc.parameters.x*pc.parameters.y;
-    int material=clamp(int(floor(pc.parameters.z+0.0001)),0,8);
+    int material=clamp(int(floor(pc.parameters.z+0.0001)),0,9);
     vec3 base=palette(fract(phase));
     float bands=0.5+0.5*sin(22.0*vPulse+6.0*vPosition.y-pc.parameters.x*pc.parameters.y*2.0);
     vec3 color=base*(0.22+0.68*diffuse)+vec3(0.05,0.30,0.44)*bands*0.32;
@@ -75,6 +75,17 @@ void main(){
         vec3 stone=mix(vec3(0.045,0.07,0.15),vec3(0.2,0.7,0.78),
                        0.5+0.5*sin(warp+q.z));
         color=stone*(0.25+0.75*diffuse)+vec3(0.95,0.78,0.5)*vein;
+    }else if(material==9){ // FIRE HANDS: procedural flame field
+        float t=pc.parameters.x*1.7;
+        vec3 q=vPosition;
+        float turbulence=sin(q.x*15.0+t*2.0)*sin(q.z*13.0-t)+
+                         0.5*sin(q.y*24.0-q.x*9.0+t*3.0);
+        float flame=clamp(0.55+0.35*turbulence+q.y*0.4,0.0,1.0);
+        color=mix(vec3(0.9,0.045,0.005),vec3(1.0,0.72,0.10),flame);
+        color+=vec3(0.16,0.32,0.8)*pow(1.0-facing,2.0);
+        outColor=vec4(clamp(color,0.0,1.0),
+                      clamp(0.18+0.65*flame,0.0,0.9));
+        return;
     }else if(material==8){ // CELLULAR: animated glowing Voronoi-like cells
         vec3 q=p*7.0;
         vec3 cell=floor(q);
