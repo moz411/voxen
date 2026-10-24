@@ -130,6 +130,7 @@ void android_main(android_app* app) {
             static_cast<unsigned long long>(xr.systemId()));
 
         bool running = true;
+        unsigned permissionPollCounter=0;
         while (running && app->destroyRequested == 0) {
             int events = 0;
             android_poll_source* source = nullptr;
@@ -154,7 +155,8 @@ void android_main(android_app* app) {
             running = session.pollEvents();
             // Poll the permission state after Android handles the system dialog.
             // Re-request spatial discovery once the user grants access.
-            if(!sceneGranted && scenePermissionGranted(app,false)) {
+            if(!sceneGranted && (++permissionPollCounter % 120u)==0u &&
+               scenePermissionGranted(app,false)) {
                 sceneGranted=true;
                 __android_log_print(ANDROID_LOG_INFO,"VoxenScene",
                     "Meta scene permission granted; refreshing scene discovery");
