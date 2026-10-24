@@ -229,9 +229,6 @@ void XrSession::syncActions() {
 }
 
 void XrSession::initializeHandTracking() {
-    XrSystemHandTrackingPropertiesEXT props{XR_TYPE_SYSTEM_HAND_TRACKING_PROPERTIES_EXT};
-    XrSystemProperties systemProps{XR_TYPE_SYSTEM_PROPERTIES};
-    systemProps.next=&props;
     // Extension function availability also indicates that the optional
     // extension was enabled at instance creation.
     if(XR_FAILED(xrGetInstanceProcAddr(instance_,"xrCreateHandTrackerEXT",
@@ -242,8 +239,7 @@ void XrSession::initializeHandTracking() {
        XR_FAILED(xrGetInstanceProcAddr(instance_,"xrLocateHandJointsEXT",
         reinterpret_cast<PFN_xrVoidFunction*>(&locateHandJoints_))) ||
        !destroyHandTracker_ || !locateHandJoints_)return;
-    // The session already knows the selected system from initialization.
-    // Tracker creation will fail harmlessly when hand tracking is unavailable.
+    // Tracker creation fails harmlessly if tracking is unsupported or disabled.
     for(int i=0;i<2;++i) {
         XrHandTrackerCreateInfoEXT info{XR_TYPE_HAND_TRACKER_CREATE_INFO_EXT};
         info.hand=i==0?XR_HAND_LEFT_EXT:XR_HAND_RIGHT_EXT;
