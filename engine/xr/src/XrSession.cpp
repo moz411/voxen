@@ -16,6 +16,7 @@
 
 #include <stdexcept>
 #include <cstring>
+#include <cmath>
 #include <string>
 
 namespace voxen::xr {
@@ -72,6 +73,7 @@ void XrSession::initialize(
     spaceInfo.referenceSpaceType=XR_REFERENCE_SPACE_TYPE_STAGE;
     if(XR_FAILED(xrCreateReferenceSpace(session_,&spaceInfo,&stageSpace_)))stageSpace_=XR_NULL_HANDLE;
     initializeActions();
+    initializeHandTracking();
     if(enableScene_) metaScene_.initialize(instance_,session_);
     if (enablePassthrough_) {
         initializePassthrough();
@@ -171,29 +173,6 @@ void XrSession::initializeActions() {
     attach.countActionSets = 1;
     attach.actionSets = &actionSet_;
     checkXr(xrAttachSessionActionSets(session_, &attach), "xrAttachSessionActionSets");
-    XrActionStateGetInfo menuGet{XR_TYPE_ACTION_STATE_GET_INFO};
-    menuGet.action=leftMenuAction_;
-    XrActionStateBoolean menuState{XR_TYPE_ACTION_STATE_BOOLEAN};
-    checkXr(xrGetActionStateBoolean(session_,&menuGet,&menuState),"xrGetActionStateBoolean(menu)");
-    const bool menuNow=menuState.isActive==XR_TRUE && menuState.currentState==XR_TRUE;
-    if(menuNow && !menuPressed_){
-        menuTogglePending_=true;
-#ifdef __ANDROID__
-        __android_log_print(ANDROID_LOG_INFO,"Voxen","Left MENU action pressed");
-#endif
-    }
-    menuPressed_=menuNow;
-    menuGet.action=leftYAction_;
-    XrActionStateBoolean yState{XR_TYPE_ACTION_STATE_BOOLEAN};
-    checkXr(xrGetActionStateBoolean(session_,&menuGet,&yState),"xrGetActionStateBoolean(Y)");
-    const bool yNow=yState.isActive==XR_TRUE && yState.currentState==XR_TRUE;
-    if(yNow && !yPressed_){
-        menuTogglePending_=true;
-#ifdef __ANDROID__
-        __android_log_print(ANDROID_LOG_INFO,"Voxen","Left Y action pressed");
-#endif
-    }
-    yPressed_=yNow;
     for (std::size_t hand = 0; hand < handPaths_.size(); ++hand) {
         XrActionSpaceCreateInfo space{XR_TYPE_ACTION_SPACE_CREATE_INFO};
         space.action = aimAction_;
@@ -215,6 +194,19 @@ void XrSession::syncActions() {
     sync.activeActionSets = &active;
     checkXr(xrSyncActions(session_, &sync), "xrSyncActions");
 
+    // Poll menu buttons every XR frame, not only once during initialization.
+    XrActionStateGetInfo menuGet{XR_TYPE_ACTION_STATE_GET_INFO};
+    menuGet.action=leftMenuAction_;
+    XrActionStateBoolean menuState{XR_TYPE_ACTION_STATE_BOOLEAN};
+    checkXr(xrGetActionStateBoolean(session_,&menuGet,&menuState),"xrGetActionStateBoolean(menu)");
+    const bool menuNow=menuState.isActive==XR_TRUE && menuState.currentState==XR_TRUE;
+    if(menuNow && !menuPressed_){
+        menuTogglePending_=true;
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"Voxen","Left MENU action pressed");
+#endif
+    }
+    menuPressed_=menuNow;
     for (std::size_t hand = 0; hand < handPaths_.size(); ++hand) {
         XrActionStateGetInfo get{XR_TYPE_ACTION_STATE_GET_INFO};
         get.action = selectAction_;
@@ -235,6 +227,91 @@ void XrSession::syncActions() {
         checkXr(xrGetActionStateVector2f(session_, &get, &stickState), "xrGetActionStateVector2f(thumbstick)");
         thumbstickValues_[hand] = stickState.isActive == XR_TRUE ? stickState.currentState : XrVector2f{};
     }
+}
+
+void XrSession::initializeHandTracking() {
+    // Extension function availability also indicates that the optional
+    // extension was enabled at instance creation.
+    if(XR_FAILED(xrGetInstanceProcAddr(instance_,"xrCreateHandTrackerEXT",
+        reinterpret_cast<PFN_xrVoidFunction*>(&createHandTracker_))) ||
+       !createHandTracker_)return;
+    if(XR_FAILED(xrGetInstanceProcAddr(instance_,"xrDestroyHandTrackerEXT",
+        reinterpret_cast<PFN_xrVoidFunction*>(&destroyHandTracker_))) ||
+       XR_FAILED(xrGetInstanceProcAddr(instance_,"xrLocateHandJointsEXT",
+        reinterpret_cast<PFN_xrVoidFunction*>(&locateHandJoints_))) ||
+       !destroyHandTracker_ || !locateHandJoints_)return;
+    // Tracker creation fails harmlessly if tracking is unsupported or disabled.
+    for(int i=0;i<2;++i) {
+        XrHandTrackerCreateInfoEXT info{XR_TYPE_HAND_TRACKER_CREATE_INFO_EXT};
+        info.hand=i==0?XR_HAND_LEFT_EXT:XR_HAND_RIGHT_EXT;
+        info.handJointSet=XR_HAND_JOINT_SET_DEFAULT_EXT;
+        const XrResult result=createHandTracker_(session_,&info,&handTrackers_[i]);
+        if(XR_FAILED(result))handTrackers_[i]=XR_NULL_HANDLE;
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenHands",
+            "Hand %d tracker result=%d ready=%d",i,int(result),
+            handTrackers_[i]!=XR_NULL_HANDLE?1:0);
+#endif
+    }
+}
+
+void XrSession::updateHandTracking(voxen::render::XrSwapchainRenderer& renderer,XrTime time) {
+    std::array<voxen::render::XrSwapchainRenderer::HolographicHand,2> hands{};
+    if(locateHandJoints_) {
+        for(int i=0;i<2;++i) {
+            if(handTrackers_[i]==XR_NULL_HANDLE)continue;
+            std::array<XrHandJointLocationEXT,XR_HAND_JOINT_COUNT_EXT> joints{};
+            XrHandJointLocationsEXT locations{XR_TYPE_HAND_JOINT_LOCATIONS_EXT};
+            locations.jointCount=static_cast<uint32_t>(joints.size());
+            locations.jointLocations=joints.data();
+            XrHandJointsLocateInfoEXT info{XR_TYPE_HAND_JOINTS_LOCATE_INFO_EXT};
+            info.baseSpace=localSpace_;
+            info.time=time;
+            const XrResult locateResult=locateHandJoints_(handTrackers_[i],&info,&locations);
+#ifdef __ANDROID__
+            // Report transitions and periodically report inactive trackers.
+            static int previousLocate[2]={-999,-999};
+            static int previousActive[2]={-1,-1};
+            static unsigned int inactiveFrames[2]={0,0};
+            const int active=locations.isActive==XR_TRUE?1:0;
+            if(int(locateResult)!=previousLocate[i] || active!=previousActive[i] ||
+               (++inactiveFrames[i]%300)==0) {
+                __android_log_print(ANDROID_LOG_INFO,"VoxenHands",
+                    "Locate hand=%d result=%d active=%d space=%d",
+                    i,int(locateResult),active,localSpace_!=XR_NULL_HANDLE?1:0);
+                previousLocate[i]=int(locateResult);
+                previousActive[i]=active;
+            }
+#endif
+            if(XR_FAILED(locateResult) || locations.isActive!=XR_TRUE)continue;
+            // Some joints are intermittently invalid on Quest. Never reject
+            // an entire hand because one fingertip is occluded.
+            const bool palmValid=(joints[XR_HAND_JOINT_PALM_EXT].locationFlags &
+                XR_SPACE_LOCATION_POSITION_VALID_BIT)!=0;
+            if(!palmValid)continue;
+            for(std::size_t j=0;j<joints.size();++j) {
+                const bool valid=(joints[j].locationFlags &
+                    XR_SPACE_LOCATION_POSITION_VALID_BIT)!=0;
+                hands[i].joints[j]=valid ? joints[j].pose.position :
+                    joints[XR_HAND_JOINT_PALM_EXT].pose.position;
+                hands[i].radii[j]=valid ? joints[j].radius : 0.f;
+            }
+            hands[i].tracked=true;
+        }
+    }
+#ifdef __ANDROID__
+    static int previousMask=-1;
+    const int mask=(hands[0].tracked?1:0)|(hands[1].tracked?2:0);
+    static int previousVisible=-1;
+    const int visible=renderer.carouselVisible()?1:0;
+    if(mask!=previousMask || visible!=previousVisible) {
+        __android_log_print(ANDROID_LOG_INFO,"VoxenHands",
+            "Visible=%d tracking mask=%d",renderer.carouselVisible()?1:0,mask);
+        previousMask=mask;
+        previousVisible=visible;
+    }
+#endif
+    renderer.setHolographicHands(hands);
 }
 
 void XrSession::initializePassthrough() {
@@ -375,7 +452,9 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
             aimPoses[hand] = location.pose;
         }
     }
-    renderer.updateControllerInteraction(aimPoses, aimTracked, selectionPressed_, thumbstickValues_);
+    if(renderer.carouselVisible())
+        renderer.updateControllerInteraction(aimPoses, aimTracked, selectionPressed_, thumbstickValues_);
+    updateHandTracking(renderer,frameState.predictedDisplayTime);
     if(enableScene_) {
         metaScene_.refresh(localSpace_,frameState.predictedDisplayTime);
         renderer.setEnvironmentSurfaces(metaScene_.surfaces());
@@ -488,6 +567,10 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
 
 void XrSession::shutdown() noexcept {
     metaScene_.shutdown();
+    for(auto& tracker:handTrackers_) {
+        if(tracker!=XR_NULL_HANDLE && destroyHandTracker_)destroyHandTracker_(tracker);
+        tracker=XR_NULL_HANDLE;
+    }
     destroyPassthrough();
     for (auto& space : aimSpaces_) {
         if (space != XR_NULL_HANDLE) xrDestroySpace(space);

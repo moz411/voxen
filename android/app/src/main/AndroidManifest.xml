@@ -2,14 +2,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="com.oculus.permission.USE_SCENE" />
     <uses-permission android:name="com.oculus.permission.USE_ANCHOR_API" />
+    <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
     <uses-feature android:name="android.hardware.vulkan.level" android:version="1" android:required="true" />
     <uses-feature android:name="android.hardware.vr.headtracking" android:required="true" android:version="1" />
     <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="true" />
+    <uses-feature android:name="oculus.software.handtracking" android:required="false" />
 
     <application
         android:allowBackup="false"
         android:hasCode="false"
         android:label="Voxen">
+        <meta-data android:name="com.oculus.handtracking.version" android:value="V2.0" />
+        <meta-data android:name="com.oculus.handtracking.frequency" android:value="HIGH" />
         <activity
             android:name="android.app.NativeActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard"

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 #include <map>
@@ -14,6 +15,8 @@
 #include <voxen/scene/EnvironmentSurface.hpp>
 #include <voxen/scene/RuntimeSnapshot.hpp>
 #include <voxen/scene/SceneRepository.hpp>
+#include <unordered_map>
+#include <chrono>
 #include <voxen/scene/PortalManager.hpp>
 #include <memory>
 #include <filesystem>
@@ -53,9 +56,13 @@ public:
     void configureSceneStorage(const std::filesystem::path& root);
     bool saveCurrentScene();
     bool loadSavedScene(const voxen::gallery::SceneId& id);
+    bool deleteSavedScene(const voxen::gallery::SceneId& id);
     void setLocalizedGalleryRoom(std::optional<voxen::gallery::LocalizedRoom> room);
     [[nodiscard]] std::vector<voxen::gallery::VisiblePortal> visibleGalleryPortals() const;
     bool placeGalleryPortalFromRightController();
+    bool selectGalleryPortalFromRightController();
+    bool moveSelectedGalleryPortalFromRightController();
+    bool deleteSelectedGalleryPortal();
     bool enterImmersiveScene(const voxen::gallery::SceneId& id);
     bool leaveImmersiveScene();
     [[nodiscard]] std::vector<voxen::gallery::SceneId> savedSceneIds() const;
@@ -80,6 +87,46 @@ public:
     }
     [[nodiscard]] float lastGpuMs() const noexcept { return lastGpuMs_; }
     [[nodiscard]] bool gpuTimingAvailable() const noexcept { return gpuTimestampPool_ != VK_NULL_HANDLE; }
+    [[nodiscard]] bool carouselVisible() const noexcept {
+#ifdef VOXEN_WITH_IMGUI
+        return imguiCarousel_.visible;
+#else
+        return true;
+#endif
+    }
+    struct HolographicHand {
+        bool tracked=false;
+        std::array<XrVector3f,26> joints{};
+        std::array<float,26> radii{};
+        XrVector3f palmVelocity{};
+    };
+    void setHolographicHands(const std::array<HolographicHand,2>& hands) {
+        const auto now=std::chrono::steady_clock::now();
+        const float dt=std::chrono::duration<float>(now-lastHandSample_).count();
+        const bool validDt=lastHandSample_.time_since_epoch().count()!=0 &&
+                           dt>0.001f && dt<0.1f;
+        for(std::size_t i=0;i<hands.size();++i) {
+            auto next=hands[i];
+            if(next.tracked && holographicHands_[i].tracked && validDt) {
+                const auto& a=next.joints[XR_HAND_JOINT_PALM_EXT];
+                const auto& b=holographicHands_[i].joints[XR_HAND_JOINT_PALM_EXT];
+                // Low-pass filter tracker jitter, and cap gesture speed.
+                const float dx=(a.x-b.x)/dt,dy=(a.y-b.y)/dt,dz=(a.z-b.z)/dt;
+                const float speed=std::sqrt(dx*dx+dy*dy+dz*dz);
+                const float factor=speed>3.f?3.f/speed:1.f;
+                constexpr float smoothing=0.45f;
+                const auto& old=holographicHands_[i].palmVelocity;
+                next.palmVelocity={
+                    smoothing*dx*factor+(1.f-smoothing)*old.x,
+                    smoothing*dy*factor+(1.f-smoothing)*old.y,
+                    smoothing*dz*factor+(1.f-smoothing)*old.z
+                };
+            }
+            // Newly tracked hands start with zero velocity, avoiding spikes.
+            holographicHands_[i]=next;
+        }
+        lastHandSample_=now;
+    }
     void updateControllerInteraction(const std::array<XrPosef, 2>& poses,
                                      const std::array<bool, 2>& tracked,
                                      const std::array<bool, 2>& pressed,
@@ -201,7 +248,20 @@ private:
     std::unique_ptr<voxen::gallery::PortalManager> portalManager_;
     // Preview/scene mode; global Vulkan pipelines are shared, not freed here.
     bool immersiveSceneActive_ = false;
+    std::optional<voxen::gallery::InstanceId> galleryEntryCandidate_;
+    std::optional<voxen::gallery::InstanceId> immersivePortalId_;
+    std::chrono::steady_clock::time_point galleryExitSince_{};
+    std::chrono::steady_clock::time_point galleryEntrySince_{};
+    bool galleryEntryArmed_ = true;
+    void updateGalleryWalkIn(const XrVector3f& headPosition);
+    std::array<HolographicHand,2> holographicHands_{};
+    std::chrono::steady_clock::time_point lastHandSample_{};
+    std::optional<voxen::gallery::InstanceId> selectedPortalId_;
+    int pendingGalleryFloorAction_ = 0; // 1 place, 2 select, 3 move
+    bool lastGalleryTriggerPressed_ = false;
+    [[nodiscard]] std::optional<voxen::gallery::FloorHit> galleryFloorHit() const;
     std::vector<voxen::gallery::SceneId> sceneIds_;
+    std::unordered_map<voxen::gallery::SceneId, voxen::gallery::Preview> scenePreviewCache_;
     std::vector<std::string> sceneLabels_;
     void refreshSceneIndex();
     int selectedSceneIndex_ = 0;

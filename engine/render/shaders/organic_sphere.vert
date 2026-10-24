@@ -35,6 +35,8 @@ void main(){
     vec3 d=vec3(sin(phi)*cos(theta),cos(phi),sin(phi)*sin(theta));
     float t=pc.parameters.x*max(pc.parameters.y,0.01);
     float amp=clamp(pc.parameters.w,0.0,0.48);
+    // Bubble must remain spherical rather than deforming like organic presets.
+    if(int(floor(pc.parameters.z+0.0001))==4)amp=0.0;
     vec3 p=surface(d,t,amp);
     // Analytic finite-difference tangent normals, independent of mesh density.
     vec3 tangent=normalize(cross(abs(d.y)>0.95?vec3(1,0,0):vec3(0,1,0),d));

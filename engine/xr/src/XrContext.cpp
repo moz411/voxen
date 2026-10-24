@@ -114,6 +114,13 @@ void XrContext::createInstance() {
     std::printf("[Voxen] XR_FB_passthrough available: %s\n", passthroughEnabled_ ? "yes" : "no");
 #endif
     if (passthroughEnabled_) extensions.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
+    const bool handTrackingExtensionAvailable=std::any_of(available.begin(),available.end(),[](const auto& e){
+        return std::strcmp(e.extensionName,XR_EXT_HAND_TRACKING_EXTENSION_NAME)==0;
+    });
+    if(handTrackingExtensionAvailable)extensions.push_back(XR_EXT_HAND_TRACKING_EXTENSION_NAME);
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO,"VoxenHands","XR_EXT_hand_tracking extension available=%d",handTrackingExtensionAvailable?1:0);
+#endif
     // Scene Model is optional: never prevent startup when spatial data is
     // unavailable or the user has not completed Space Setup.
     const auto has=[&](const char* name) {
@@ -178,8 +185,21 @@ void XrContext::selectSystem() {
     systemInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
     checkXr(xrGetSystem(instance_, &systemInfo, &systemId_), "xrGetSystem");
 
+    // Only chain extension properties when the extension was enabled.
+    PFN_xrCreateHandTrackerEXT createHandTracker=nullptr;
+    const bool handExtensionEnabled=XR_SUCCEEDED(xrGetInstanceProcAddr(instance_,
+        "xrCreateHandTrackerEXT",reinterpret_cast<PFN_xrVoidFunction*>(&createHandTracker))) &&
+        createHandTracker!=nullptr;
+    XrSystemHandTrackingPropertiesEXT handProperties{XR_TYPE_SYSTEM_HAND_TRACKING_PROPERTIES_EXT};
     XrSystemProperties properties{XR_TYPE_SYSTEM_PROPERTIES};
+    if(handExtensionEnabled)properties.next=&handProperties;
     checkXr(xrGetSystemProperties(instance_, systemId_, &properties), "xrGetSystemProperties");
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO,"VoxenHands",
+        "System hand extension enabled=%d supportsHandTracking=%d",
+        handExtensionEnabled?1:0,
+        handExtensionEnabled && handProperties.supportsHandTracking==XR_TRUE?1:0);
+#endif
 }
 
 void XrContext::requireExtension(const char* extensionName) const {

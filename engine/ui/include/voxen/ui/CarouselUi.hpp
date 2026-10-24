@@ -12,7 +12,15 @@ struct CarouselState {
     int page = 0;
     bool sceneSave = false;
     bool sceneLoad = false;
+    bool sceneDelete = false;
+    bool sceneDeleteConfirm = false;
     bool scenePlace = false;
+    bool scenePortalSelect = false;
+    bool scenePortalCancel = false;
+    bool scenePortalMove = false;
+    bool scenePortalDelete = false;
+    bool scenePortalDeleteConfirm = false;
+    bool scenePortalSelected = false;
     bool sceneEnter = false;
     bool sceneLeave = false;
     bool sceneImmersive = false;
