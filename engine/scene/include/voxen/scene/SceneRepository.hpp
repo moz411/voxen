@@ -70,6 +70,31 @@ public:
         return std::make_pair(std::move(*r),std::move(*payload));
     }
 
+    // Remove a saved scene and its portal placements from every persisted room.
+    // Refuse deletion if a gallery cannot be updated, to avoid dangling portals.
+    bool deleteScene(const SceneId& id) const {
+        if(!safe(id) || !loadSceneMetadata(id)) return false;
+        std::error_code ec;
+        const auto rooms=root_/"rooms";
+        for(std::filesystem::directory_iterator it(rooms,ec),end;
+            !ec && it!=end;it.increment(ec)) {
+            if(!it->is_regular_file(ec) || it->path().extension()!=".vxg")continue;
+            const auto roomId=it->path().stem().string();
+            auto gallery=loadGallery(roomId);
+            if(!gallery)return false;
+            const auto previous=gallery->placements.size();
+            gallery->placements.erase(
+                std::remove_if(gallery->placements.begin(),gallery->placements.end(),
+                    [&](const Placement& p){return p.sceneId==id;}),
+                gallery->placements.end());
+            if(gallery->placements.size()!=previous && !saveGallery(*gallery))
+                return false;
+        }
+        if(ec)return false;
+        std::filesystem::remove_all(root_/"scenes"/id,ec);
+        return !ec;
+    }
+
     std::vector<SceneId> listScenes() const {
         std::vector<SceneId> ids;
         std::error_code ec;

@@ -53,6 +53,7 @@ public:
     void configureSceneStorage(const std::filesystem::path& root);
     bool saveCurrentScene();
     bool loadSavedScene(const voxen::gallery::SceneId& id);
+    bool deleteSavedScene(const voxen::gallery::SceneId& id);
     void setLocalizedGalleryRoom(std::optional<voxen::gallery::LocalizedRoom> room);
     [[nodiscard]] std::vector<voxen::gallery::VisiblePortal> visibleGalleryPortals() const;
     bool placeGalleryPortalFromRightController();

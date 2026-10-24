@@ -12,6 +12,8 @@ struct CarouselState {
     int page = 0;
     bool sceneSave = false;
     bool sceneLoad = false;
+    bool sceneDelete = false;
+    bool sceneDeleteConfirm = false;
     bool scenePlace = false;
     bool sceneEnter = false;
     bool sceneLeave = false;
