@@ -14,6 +14,8 @@
 #include <voxen/scene/EnvironmentSurface.hpp>
 #include <voxen/scene/RuntimeSnapshot.hpp>
 #include <voxen/scene/SceneRepository.hpp>
+#include <unordered_map>
+#include <chrono>
 #include <voxen/scene/PortalManager.hpp>
 #include <memory>
 #include <filesystem>
@@ -205,11 +207,16 @@ private:
     std::unique_ptr<voxen::gallery::PortalManager> portalManager_;
     // Preview/scene mode; global Vulkan pipelines are shared, not freed here.
     bool immersiveSceneActive_ = false;
+    std::optional<voxen::gallery::InstanceId> galleryEntryCandidate_;
+    std::chrono::steady_clock::time_point galleryEntrySince_{};
+    bool galleryEntryArmed_ = true;
+    void updateGalleryWalkIn(const XrVector3f& headPosition);
     std::optional<voxen::gallery::InstanceId> selectedPortalId_;
     int pendingGalleryFloorAction_ = 0; // 1 place, 2 select, 3 move
     bool lastGalleryTriggerPressed_ = false;
     [[nodiscard]] std::optional<voxen::gallery::FloorHit> galleryFloorHit() const;
     std::vector<voxen::gallery::SceneId> sceneIds_;
+    std::unordered_map<voxen::gallery::SceneId, voxen::gallery::Preview> scenePreviewCache_;
     std::vector<std::string> sceneLabels_;
     void refreshSceneIndex();
     int selectedSceneIndex_ = 0;
