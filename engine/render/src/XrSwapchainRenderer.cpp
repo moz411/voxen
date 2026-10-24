@@ -912,7 +912,7 @@ void XrSwapchainRenderer::createPipeline() {
         }
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -1353,6 +1353,21 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,sizeof(pc),&pc);
             vkCmdDraw(commandBuffer_,6,1,0,0);
+            // Floating miniature: metadata-only hologram, no per-scene mesh.
+            const auto preview=scenePreviewCache_.find(portal.sceneId);
+            if(preview!=scenePreviewCache_.end()) {
+                quad.center[1]+=0.34f+0.035f*std::sin(seconds*1.4f+float(i));
+                const float previewRadius=0.22f*std::clamp(portal.scale,0.5f,2.f);
+                quad.halfExtents={previewRadius,previewRadius};
+                const Mat4 previewMvp=multiply(projView,surfaceModel(quad));
+                const float preset=static_cast<float>(preview->second.materialPreset%8u);
+                ProceduralPushConstants proxyPc{previewMvp,
+                    {seconds,float(i)*0.17f,2.f+preset,0.82f}};
+                vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                    VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
+                    0,sizeof(proxyPc),&proxyPc);
+                vkCmdDraw(commandBuffer_,6,1,0,0);
+            }
         }
     }
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE && voxenSpheresPipeline_!=VK_NULL_HANDLE &&
