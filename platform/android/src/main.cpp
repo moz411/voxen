@@ -107,7 +107,8 @@ void android_main(android_app* app) {
             vulkan.device(),
             vulkan.graphicsQueueFamily(),
             xr.passthroughEnabled(),
-            xr.sceneEnabled());
+            xr.sceneEnabled(),
+            sceneGranted);
         __android_log_print(ANDROID_LOG_INFO, kTag, "XR session initialized; initializing renderer");
         renderer.configureMusicJavaVm(app->activity->vm);
         renderer.initialize(
@@ -157,7 +158,7 @@ void android_main(android_app* app) {
                 sceneGranted=true;
                 __android_log_print(ANDROID_LOG_INFO,"VoxenScene",
                     "Meta scene permission granted; refreshing scene discovery");
-                session.requestSceneRefresh();
+                session.setScenePermissionGranted(true);
             }
             if (session.running()) {
                 session.frame(renderer);
