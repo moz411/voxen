@@ -185,12 +185,20 @@ void XrContext::selectSystem() {
     systemInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
     checkXr(xrGetSystem(instance_, &systemInfo, &systemId_), "xrGetSystem");
 
+    // Only chain extension properties when the extension was enabled.
+    PFN_xrCreateHandTrackerEXT createHandTracker=nullptr;
+    const bool handExtensionEnabled=XR_SUCCEEDED(xrGetInstanceProcAddr(instance_,
+        "xrCreateHandTrackerEXT",reinterpret_cast<PFN_xrVoidFunction*>(&createHandTracker))) &&
+        createHandTracker!=nullptr;
     XrSystemHandTrackingPropertiesEXT handProperties{XR_TYPE_SYSTEM_HAND_TRACKING_PROPERTIES_EXT};
     XrSystemProperties properties{XR_TYPE_SYSTEM_PROPERTIES};
-    properties.next=&handProperties;
+    if(handExtensionEnabled)properties.next=&handProperties;
     checkXr(xrGetSystemProperties(instance_, systemId_, &properties), "xrGetSystemProperties");
 #ifdef __ANDROID__
-    __android_log_print(ANDROID_LOG_INFO,"VoxenHands","System supportsHandTracking=%d",handProperties.supportsHandTracking==XR_TRUE?1:0);
+    __android_log_print(ANDROID_LOG_INFO,"VoxenHands",
+        "System hand extension enabled=%d supportsHandTracking=%d",
+        handExtensionEnabled?1:0,
+        handExtensionEnabled && handProperties.supportsHandTracking==XR_TRUE?1:0);
 #endif
 }
 
