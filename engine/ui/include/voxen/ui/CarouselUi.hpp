@@ -40,7 +40,7 @@ struct CarouselState {
     bool musicRescan = false;
     std::vector<std::string> musicFiles;
     std::string musicError;
-    bool visible = true;
+    bool visible = false; // Gallery startup has no carousel.
     bool liquidRoom = false;
     float liquidOpacity = 0.42f;
     int maxLiquidWalls = 8;
