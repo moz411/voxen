@@ -1502,24 +1502,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         };
         for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
-        if(imguiCarousel_.editMode && imguiCarousel_.voxenPaintEnabled && controllerTracked_[1] && !panelAimed_ && !uiTrigger_[1]){
-            const auto& pose=controllerPoses_[1];
-            const auto& q=pose.orientation;
-            const std::array<float,3> dir{
-                -2.f*(q.x*q.z+q.w*q.y),
-                -2.f*(q.y*q.z-q.w*q.x),
-                -(1.f-2.f*(q.x*q.x+q.y*q.y))};
-            PlasmaVoxen tip;
-            tip.preset=imguiCarousel_.voxenPreset;
-            tip.position={pose.position.x+0.17f*dir[0],
-                          pose.position.y+0.17f*dir[1],
-                          pose.position.z+0.17f*dir[2]};
-            tip.scale=imguiCarousel_.voxenScale;
-            tip.hue=imguiCarousel_.voxenHue;
-            tip.density=imguiCarousel_.voxenDensity;
-            tip.speed=imguiCarousel_.voxenSpeed;
-            paintPlasma(tip);
-        }
+        // No default Voxen attached to the controller in editing mode.
+
 #endif
     }
 #ifdef VOXEN_WITH_IMGUI
