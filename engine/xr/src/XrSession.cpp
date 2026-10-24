@@ -115,6 +115,12 @@ void XrSession::initializeActions() {
     std::strncpy(yInfo.localizedActionName,"Toggle Voxen UI with Y",XR_MAX_LOCALIZED_ACTION_NAME_SIZE-1);
     checkXr(xrCreateAction(actionSet_,&yInfo,&leftYAction_),"xrCreateAction(toggle_ui_y)");
 
+    XrActionCreateInfo deleteInfo{XR_TYPE_ACTION_CREATE_INFO};
+    deleteInfo.actionType=XR_ACTION_TYPE_BOOLEAN_INPUT;
+    std::strncpy(deleteInfo.actionName,"gallery_delete",XR_MAX_ACTION_NAME_SIZE-1);
+    std::strncpy(deleteInfo.localizedActionName,"Delete selected gallery sphere",XR_MAX_LOCALIZED_ACTION_NAME_SIZE-1);
+    checkXr(xrCreateAction(actionSet_,&deleteInfo,&rightDeleteAction_),"xrCreateAction(gallery_delete)");
+
     XrActionCreateInfo aimInfo{XR_TYPE_ACTION_CREATE_INFO};
     aimInfo.actionType = XR_ACTION_TYPE_POSE_INPUT;
     std::strncpy(aimInfo.actionName, "aim_pose", XR_MAX_ACTION_NAME_SIZE - 1);
@@ -136,6 +142,7 @@ void XrSession::initializeActions() {
     XrPath leftMenu = XR_NULL_PATH;
     XrPath leftY = XR_NULL_PATH;
     XrPath rightTrigger = XR_NULL_PATH;
+    XrPath rightB = XR_NULL_PATH;
     XrPath leftAim = XR_NULL_PATH;
     XrPath rightAim = XR_NULL_PATH;
     XrPath leftStick = XR_NULL_PATH;
@@ -145,6 +152,7 @@ void XrSession::initializeActions() {
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/menu/click", &leftMenu), "xrStringToPath(left menu)");
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/y/click", &leftY), "xrStringToPath(left Y)");
     checkXr(xrStringToPath(instance_, "/user/hand/right/input/trigger/value", &rightTrigger), "xrStringToPath(right trigger)");
+    checkXr(xrStringToPath(instance_, "/user/hand/right/input/b/click", &rightB), "xrStringToPath(right B)");
 
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/aim/pose", &leftAim), "xrStringToPath(left aim)");
     checkXr(xrStringToPath(instance_, "/user/hand/right/input/aim/pose", &rightAim), "xrStringToPath(right aim)");
@@ -158,6 +166,7 @@ void XrSession::initializeActions() {
         {leftMenuAction_, leftMenu},
         {leftYAction_, leftY},
         {selectAction_, rightTrigger},
+        {rightDeleteAction_, rightB},
         {aimAction_, leftAim},
         {aimAction_, rightAim},
         {thumbstickAction_, leftStick},
@@ -207,6 +216,13 @@ void XrSession::syncActions() {
 #endif
     }
     menuPressed_=menuNow;
+    XrActionStateGetInfo deleteGet{XR_TYPE_ACTION_STATE_GET_INFO};
+    deleteGet.action=rightDeleteAction_;
+    XrActionStateBoolean deleteState{XR_TYPE_ACTION_STATE_BOOLEAN};
+    checkXr(xrGetActionStateBoolean(session_,&deleteGet,&deleteState),"xrGetActionStateBoolean(gallery_delete)");
+    const bool deleteNow=deleteState.isActive==XR_TRUE && deleteState.currentState==XR_TRUE;
+    if(deleteNow && !rightDeletePressed_)rightDeletePending_=true;
+    rightDeletePressed_=deleteNow;
     for (std::size_t hand = 0; hand < handPaths_.size(); ++hand) {
         XrActionStateGetInfo get{XR_TYPE_ACTION_STATE_GET_INFO};
         get.action = selectAction_;
@@ -454,6 +470,10 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
     }
     // Always update controller tracking: painting and DISPOSE also work with UI hidden.
     renderer.updateControllerInteraction(aimPoses, aimTracked, selectionPressed_, thumbstickValues_);
+    if(rightDeletePending_){
+        renderer.requestGalleryDelete();
+        rightDeletePending_=false;
+    }
     updateHandTracking(renderer,frameState.predictedDisplayTime);
     if(enableScene_) {
         metaScene_.refresh(localSpace_,frameState.predictedDisplayTime);
