@@ -119,11 +119,27 @@ void drawCarousel(CarouselState& state) {
                 ImGui::PushID(static_cast<int>(i));
                 const bool selected=ImGui::Selectable(label.c_str(),state.selectedScene==static_cast<int>(i));
                 ImGui::PopID();
-                if(selected)
+                if(selected) {
                     state.selectedScene=static_cast<int>(i);
+                    state.sceneDeleteConfirm=false;
+                }
             }
             if(!state.savedSceneIds.empty() && ImGui::Button("LOAD SELECTED SCENE"))
                 state.sceneLoad=true;
+            if(!state.savedSceneIds.empty() && !state.sceneImmersive) {
+                if(!state.sceneDeleteConfirm) {
+                    if(ImGui::Button("DELETE SELECTED SCENE"))
+                        state.sceneDeleteConfirm=true;
+                } else {
+                    ImGui::TextWrapped("Delete selected scene and all its gallery portals?");
+                    if(ImGui::Button("CONFIRM DELETE")) {
+                        state.sceneDelete=true;
+                        state.sceneDeleteConfirm=false;
+                    }
+                    ImGui::SameLine();
+                    if(ImGui::Button("CANCEL"))state.sceneDeleteConfirm=false;
+                }
+            }
             if(!state.sceneImmersive) {
                 if(!state.savedSceneIds.empty() && ImGui::Button("ENTER IMMERSIVE SCENE"))
                     state.sceneEnter=true;
