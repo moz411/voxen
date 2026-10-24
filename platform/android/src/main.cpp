@@ -1,7 +1,10 @@
 #include <android/log.h>
 #include <android_native_app_glue.h>
+#include <jni.h>
 
 #include <exception>
+#include <filesystem>
+#include <voxen/scene/SceneRepository.hpp>
 
 #include <voxen/core/Engine.hpp>
 #include <voxen/render/VulkanContext.hpp>
@@ -14,6 +17,50 @@ constexpr auto kTag = "Voxen";
 
 void logError(const char* message) {
     __android_log_print(ANDROID_LOG_ERROR, kTag, "%s", message);
+}
+// Android's permission prompt is asynchronous. Never assume that a
+// manifest declaration implies the user granted Meta spatial data access.
+constexpr const char* kScenePermission="com.oculus.permission.USE_SCENE";
+
+bool scenePermissionGranted(android_app* app, bool requestIfMissing) {
+    if(!app || !app->activity || !app->activity->vm || !app->activity->clazz)
+        return false;
+    JNIEnv* env=nullptr;
+    JavaVM* vm=app->activity->vm;
+    const bool attached=vm->GetEnv(reinterpret_cast<void**>(&env),JNI_VERSION_1_6)!=JNI_OK;
+    if(attached && vm->AttachCurrentThread(&env,nullptr)!=JNI_OK)return false;
+    bool granted=false;
+    jclass activityClass=env->GetObjectClass(app->activity->clazz);
+    if(activityClass) {
+        jmethodID check=env->GetMethodID(activityClass,"checkSelfPermission",
+                                        "(Ljava/lang/String;)I");
+        jstring name=env->NewStringUTF(kScenePermission);
+        if(check && name) {
+            const jint result=env->CallIntMethod(app->activity->clazz,check,name);
+            if(!env->ExceptionCheck())granted=(result==0);
+        }
+        if(!granted && requestIfMissing && !env->ExceptionCheck()) {
+            jmethodID request=env->GetMethodID(activityClass,"requestPermissions",
+                                               "([Ljava/lang/String;I)V");
+            jclass stringClass=env->FindClass("java/lang/String");
+            if(request && stringClass && name) {
+                jobjectArray permissions=env->NewObjectArray(1,stringClass,name);
+                if(permissions) {
+                    env->CallVoidMethod(app->activity->clazz,request,permissions,411);
+                    env->DeleteLocalRef(permissions);
+                }
+            }
+            if(stringClass)env->DeleteLocalRef(stringClass);
+        }
+        if(name)env->DeleteLocalRef(name);
+        env->DeleteLocalRef(activityClass);
+    }
+    if(env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+    }
+    if(attached)vm->DetachCurrentThread();
+    return granted;
 }
 } // namespace
 
@@ -28,6 +75,23 @@ void android_main(android_app* app) {
     try {
         __android_log_print(ANDROID_LOG_INFO, kTag, "Initializing engine");
         engine.initialize();
+        // Metadata is stored in Android app-private storage, not a shared Music folder.
+        // No gallery portals are rendered until a persistent Meta room anchor localizes.
+        if (app->activity->internalDataPath != nullptr) {
+            voxen::gallery::SceneRepository scenes(
+                std::filesystem::path(app->activity->internalDataPath) / "voxen-gallery");
+            renderer.configureSceneStorage(
+                std::filesystem::path(app->activity->internalDataPath) / "voxen-gallery");
+            const auto saved = renderer.savedSceneIds();
+            __android_log_print(ANDROID_LOG_INFO, kTag,
+                "Gallery repository initialized: %zu saved scenes", saved.size());
+        } else {
+            __android_log_print(ANDROID_LOG_WARN, kTag,
+                "Gallery repository unavailable: no private data path");
+        }
+        bool sceneGranted=scenePermissionGranted(app,true);
+        __android_log_print(ANDROID_LOG_INFO,"VoxenScene",
+            "Meta scene permission at startup: %s",sceneGranted?"granted":"pending or denied");
         __android_log_print(ANDROID_LOG_INFO, kTag, "Initializing OpenXR");
         xr.initialize(app->activity->vm, app->activity->clazz);
         __android_log_print(ANDROID_LOG_INFO, kTag, "OpenXR initialized; passthrough=%d", xr.passthroughEnabled() ? 1 : 0);
@@ -43,7 +107,8 @@ void android_main(android_app* app) {
             vulkan.device(),
             vulkan.graphicsQueueFamily(),
             xr.passthroughEnabled(),
-            xr.sceneEnabled());
+            xr.sceneEnabled(),
+            sceneGranted);
         __android_log_print(ANDROID_LOG_INFO, kTag, "XR session initialized; initializing renderer");
         renderer.configureMusicJavaVm(app->activity->vm);
         renderer.initialize(
@@ -65,6 +130,7 @@ void android_main(android_app* app) {
             static_cast<unsigned long long>(xr.systemId()));
 
         bool running = true;
+        unsigned permissionPollCounter=0;
         while (running && app->destroyRequested == 0) {
             int events = 0;
             android_poll_source* source = nullptr;
@@ -87,6 +153,15 @@ void android_main(android_app* app) {
             }
 
             running = session.pollEvents();
+            // Poll the permission state after Android handles the system dialog.
+            // Re-request spatial discovery once the user grants access.
+            if(!sceneGranted && (++permissionPollCounter % 120u)==0u &&
+               scenePermissionGranted(app,false)) {
+                sceneGranted=true;
+                __android_log_print(ANDROID_LOG_INFO,"VoxenScene",
+                    "Meta scene permission granted; refreshing scene discovery");
+                session.setScenePermissionGranted(true);
+            }
             if (session.running()) {
                 session.frame(renderer);
             }

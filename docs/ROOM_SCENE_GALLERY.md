@@ -27,3 +27,58 @@ Branch: `feature/room-scene-gallery`
 
 ## Important
 `engine/scene/include/voxen/scene/Scene.hpp` currently defines four demo artworks with a fixed-size array; it is **not** a complete saved-scene representation. Migration to full serialization is prerequisite to claiming multi-scene persistence.
+
+## Integration progress (2026-10-23)
+
+- Runtime snapshots of up to 256 live Voxens are versioned and stored under Android private data. Scene controls live in the four-page XR carousel. A saved snapshot is not yet a full asset graph; audio playback is intentionally not resumed on load.
+- `FloorPortalPlacement.hpp` computes controller-ray intersections only with tracked Meta Scene floor rectangles; no synthetic fallback floor is used.
+- `PortalManager.hpp` converts verified LOCAL floor hits into persistent-anchor-local poses, and hides saved placements when the anchor is unlocalized. A different anchor identity is rejected. Host smoke tests cover origin changes, loss of localization, and deletion.
+- Renderer has `setLocalizedGalleryRoom(...)`, `visibleGalleryPortals()` and `placeGalleryPortalFromRightController()`. The SCENES page exposes a guarded placement button.
+- **Not yet connected:** the Meta Scene/OpenXR runtime must supply a genuinely localized persistent room anchor to `setLocalizedGalleryRoom`. Without it the button correctly remains disabled. Do not synthesize a room ID or anchor pose from LOCAL tracking.
+- **Not yet rendered:** iridescent floor rings, low-cost scene previews, portal picking, GPU resource unload/reload, and MP3-driven shader features. Current code is not proof of headset functionality.
+- Host smoke tests are defined under `tests/CMakeLists.txt`, independently of Android/Vulkan. Run with `cmake -S tests -B /tmp/voxen-gallery-tests && cmake --build /tmp/voxen-gallery-tests && ctest --test-dir /tmp/voxen-gallery-tests --output-on-failure`.
+
+## Immersive-mode prototype
+
+The SCENES carousel now exposes ENTER IMMERSIVE SCENE and EXIT TO GALLERY.
+Entry validates and restores a serialized runtime snapshot. Exit stops ambient
+and MP3 playback and releases the CPU Voxen instance vector capacity.
+**This is not the complete lifecycle described above:** shared Vulkan pipelines,
+mesh caches and GPU allocations remain resident; no claim of VRAM reclamation is
+made. The gallery renderer still needs visible rings, scene picking, and real
+Meta persistent-anchor localization. The UI enter action is intentionally
+available for saved scenes even before room localization, to test snapshot
+roundtrips independently of the Meta Scene service.
+
+## Vulkan ring pass
+
+`gallery_portal.frag` now draws animated iridescent floor rings in the
+stereo Vulkan pass using the existing `fractal.vert` quad, one shared
+pipeline and no per-ring GPU allocations. Rendering is bounded to 64 rings
+per eye. It consumes `PortalManager::visible()` and therefore intentionally
+draws nothing until a real persistent Meta room anchor has been localized.
+Rings are hidden while an immersive scene is active. The cyan Sobel
+passthrough configuration is unchanged.
+
+The gallery index and portal validation now use `loadSceneMetadata()`
+rather than reading each saved binary payload. Remaining work includes
+Meta anchor localization, portal picking and previews, correct gallery
+resource ownership, and Quest device verification. No headset render
+or CI success has been verified for this branch.
+
+## First live Meta floor-anchor bridge
+
+`MetaSceneProvider` now carries each discovered spatial entity's 128-bit
+UUID into tracked surfaces. On each XR frame, `localizedFloorAnchor()`
+selects a stable UUID from currently tracked, upward-facing floor entities,
+uses that entity's located LOCAL pose as the gallery anchor, and sends it to
+`PortalManager`. Losing tracking hides all saved rings immediately.
+Same UUID with a newly localized pose updates ring positions without reading
+the gallery file on every frame. A new UUID is treated as a different gallery.
+
+**Important:** This is *floor-entity-scoped* persistence, not Meta Room-level
+identity. Multiple floor entities in one room and recapture/replacement of a
+floor anchor can change which gallery is selected. A proper Meta Room UUID,
+anchor lifecycle/persistence guarantees, and a migration strategy are still
+required. The implementation deliberately does not invent a room ID from
+headset LOCAL coordinates. No Quest hardware test has been run.

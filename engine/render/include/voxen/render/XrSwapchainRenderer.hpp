@@ -12,6 +12,11 @@
 #include <voxen/audio/AmbientMusic.hpp>
 #include <voxen/audio/Mp3Library.hpp>
 #include <voxen/scene/EnvironmentSurface.hpp>
+#include <voxen/scene/RuntimeSnapshot.hpp>
+#include <voxen/scene/SceneRepository.hpp>
+#include <voxen/scene/PortalManager.hpp>
+#include <memory>
+#include <filesystem>
 #ifdef VOXEN_WITH_IMGUI
 #include <voxen/ui/CarouselUi.hpp>
 #include <voxen/ui/ImGuiSurface.hpp>
@@ -45,6 +50,15 @@ public:
         VkQueue queue,
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
+    void configureSceneStorage(const std::filesystem::path& root);
+    bool saveCurrentScene();
+    bool loadSavedScene(const voxen::gallery::SceneId& id);
+    void setLocalizedGalleryRoom(std::optional<voxen::gallery::LocalizedRoom> room);
+    [[nodiscard]] std::vector<voxen::gallery::VisiblePortal> visibleGalleryPortals() const;
+    bool placeGalleryPortalFromRightController();
+    bool enterImmersiveScene(const voxen::gallery::SceneId& id);
+    bool leaveImmersiveScene();
+    [[nodiscard]] std::vector<voxen::gallery::SceneId> savedSceneIds() const;
     void toggleUiVisibility() noexcept {
 #ifdef VOXEN_WITH_IMGUI
         imguiCarousel_.visible=!imguiCarousel_.visible;
@@ -143,11 +157,14 @@ private:
     VkDeviceMemory meshWireMemory_ = VK_NULL_HANDLE;
     uint32_t meshWireVertexCount_ = 0;
     XrPosef meshWirePose_{};
+    const std::vector<XrVector3f>* lastCollisionMeshVertices_ = nullptr;
+    const std::vector<uint32_t>* lastCollisionMeshIndices_ = nullptr;
     struct CollisionTriangle { std::array<float,3> a,b,c; };
     std::vector<CollisionTriangle> roomCollisionTriangles_;
     // 0.5m uniform grid: broad-phase candidate triangles, built on mesh updates.
     std::map<std::array<int,3>,std::vector<uint32_t>> roomCollisionGrid_;
     VkPipeline carouselPipeline_ = VK_NULL_HANDLE;
+    VkPipeline galleryPortalPipeline_ = VK_NULL_HANDLE;
     int nativeMenuPage_ = 0;
     bool nativeMenuStickLatched_ = false;
 #ifdef VOXEN_WITH_IMGUI
@@ -180,6 +197,15 @@ private:
         int lodLevel=-1; // Chosen once per stereo frame using both eye positions
     };
     std::vector<PlasmaVoxen> voxens_;
+    std::unique_ptr<voxen::gallery::SceneRepository> sceneRepository_;
+    std::unique_ptr<voxen::gallery::PortalManager> portalManager_;
+    // Preview/scene mode; global Vulkan pipelines are shared, not freed here.
+    bool immersiveSceneActive_ = false;
+    std::vector<voxen::gallery::SceneId> sceneIds_;
+    std::vector<std::string> sceneLabels_;
+    void refreshSceneIndex();
+    int selectedSceneIndex_ = 0;
+    std::string sceneStatus_;
     std::chrono::steady_clock::time_point lastPhysicsFrame_{};
     float physicsAccumulator_=0.f;
     float trackedFloorY_=0.f;

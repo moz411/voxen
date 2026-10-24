@@ -1,5 +1,6 @@
 #include <voxen/xr/XrSession.hpp>
 #include <voxen/render/XrSwapchainRenderer.hpp>
+#include <voxen/scene/MetaFloorLocalization.hpp>
 
 #ifdef __ANDROID__
 #include <android/log.h>
@@ -40,7 +41,8 @@ void XrSession::initialize(
     VkDevice device,
     uint32_t queueFamilyIndex,
     bool enablePassthrough,
-    bool enableScene) {
+    bool enableScene,
+    bool scenePermissionGranted) {
     if (session_ != XR_NULL_HANDLE) {
         throw std::logic_error("OpenXR session is already initialized");
     }
@@ -48,6 +50,7 @@ void XrSession::initialize(
     instance_ = instance;
     enablePassthrough_ = enablePassthrough;
     enableScene_ = enableScene;
+    scenePermissionGranted_ = scenePermissionGranted;
 
     XrGraphicsBindingVulkan2KHR binding{XR_TYPE_GRAPHICS_BINDING_VULKAN2_KHR};
     binding.instance = vkInstance;
@@ -316,7 +319,7 @@ void XrSession::handleSessionStateChanged(const XrEventDataSessionStateChanged& 
         beginInfo.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
         checkXr(xrBeginSession(session_, &beginInfo), "xrBeginSession");
         running_ = true;
-        if(enableScene_) metaScene_.request();
+        if(enableScene_ && scenePermissionGranted_) metaScene_.request();
         if (passthrough_ != XR_NULL_HANDLE) {
             checkXr(startPassthrough_(passthrough_), "xrPassthroughStartFB");
 #ifdef __ANDROID__
@@ -335,6 +338,16 @@ void XrSession::handleSessionStateChanged(const XrEventDataSessionStateChanged& 
         checkXr(xrEndSession(session_), "xrEndSession");
         running_ = false;
     }
+}
+
+void XrSession::requestSceneRefresh() {
+    if(enableScene_ && scenePermissionGranted_ && running_) metaScene_.request();
+}
+
+void XrSession::setScenePermissionGranted(bool granted) {
+    const bool newlyGranted=granted && !scenePermissionGranted_;
+    scenePermissionGranted_=granted;
+    if(newlyGranted)requestSceneRefresh();
 }
 
 void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
@@ -366,6 +379,10 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
     if(enableScene_) {
         metaScene_.refresh(localSpace_,frameState.predictedDisplayTime);
         renderer.setEnvironmentSurfaces(metaScene_.surfaces());
+        // Use only currently located Meta persistent floor entities.
+        // Missing tracking hides portals instead of pinning them to stale LOCAL coordinates.
+        renderer.setLocalizedGalleryRoom(
+            voxen::gallery::localizedFloorAnchor(metaScene_.surfaces()));
         std::vector<voxen::render::XrSwapchainRenderer::MeshGeometry> meshes;
         for(const auto& mesh:metaScene_.meshes()) {
             if(!mesh.located || mesh.vertices.empty())continue;

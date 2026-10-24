@@ -1,5 +1,8 @@
 #pragma once
 #include <voxen/scene/RoomGallery.hpp>
+#include <voxen/scene/SceneIds.hpp>
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -18,6 +21,15 @@ class SceneRepository {
 public:
     explicit SceneRepository(std::filesystem::path root) : root_(std::move(root)) {}
 
+    // Allocates a stable ID once; the caller owns the returned record.
+    static SceneRecord newScene(std::string name) {
+        SceneRecord r;
+        r.id = newUuid();
+        r.displayName = std::move(name);
+        r.payloadAsset = "payload-" + newUuid() + ".bin";
+        return r;
+    }
+
     bool saveScene(const SceneRecord& r, const std::string& payload) const {
         if (!safe(r.id) || !safe(r.payloadAsset) || r.schemaVersion != 1 ||
             r.displayName.size() > 4096 || r.preview.proxyAsset.size() > 4096 ||
@@ -33,7 +45,7 @@ public:
         return write(dir / r.payloadAsset, payload) && write(dir / "metadata.vxs", meta.str());
     }
 
-    std::optional<std::pair<SceneRecord, std::string>> loadScene(const SceneId& id) const {
+    std::optional<SceneRecord> loadSceneMetadata(const SceneId& id) const {
         if (!safe(id)) return std::nullopt;
         auto m = read(root_ / "scenes" / id / "metadata.vxs", 16384);
         if (!m) return std::nullopt;
@@ -45,10 +57,17 @@ public:
                  >> std::quoted(r.payloadAsset) >> std::quoted(r.preview.proxyAsset)
                  >> r.preview.boundingRadiusMeters >> r.preview.materialPreset) ||
             r.id != id || !safe(r.payloadAsset) || r.displayName.size() > 4096 ||
-            r.preview.proxyAsset.size() > 4096 || !radius(r.preview.boundingRadiusMeters)) return std::nullopt;
-        auto payload = read(root_ / "scenes" / id / r.payloadAsset, 64u*1024u*1024u);
+            r.preview.proxyAsset.size() > 4096 || !radius(r.preview.boundingRadiusMeters))
+            return std::nullopt;
+        return r;
+    }
+
+    std::optional<std::pair<SceneRecord, std::string>> loadScene(const SceneId& id) const {
+        auto r=loadSceneMetadata(id);
+        if (!r) return std::nullopt;
+        auto payload=read(root_ / "scenes" / id / r->payloadAsset, 64u*1024u*1024u);
         if (!payload) return std::nullopt;
-        return std::make_pair(std::move(r), std::move(*payload));
+        return std::make_pair(std::move(*r),std::move(*payload));
     }
 
     std::vector<SceneId> listScenes() const {
@@ -58,8 +77,9 @@ public:
              !ec && it != end; it.increment(ec)) {
             if (!it->is_directory(ec)) continue;
             auto id = it->path().filename().string();
-            if (safe(id) && loadScene(id)) ids.push_back(std::move(id));
+            if (safe(id) && loadSceneMetadata(id)) ids.push_back(std::move(id));
         }
+        std::sort(ids.begin(), ids.end());
         return ids;
     }
 
@@ -71,7 +91,7 @@ public:
             << std::quoted(g.persistentAnchorId) << '\n' << g.placements.size() << '\n'
             << std::setprecision(std::numeric_limits<float>::max_digits10);
         for (const auto& p : g.placements) {
-            if (!safe(p.id) || !safe(p.sceneId) || !scale(p.scale)) return false;
+            if (!safe(p.id) || !safe(p.sceneId) || !scale(p.scale) || !loadSceneMetadata(p.sceneId)) return false;
             float norm = 0;
             for (float x : p.roomLocalPose.positionMeters) if (!std::isfinite(x)) return false;
             for (float x : p.roomLocalPose.orientationXyzw) {
@@ -140,7 +160,8 @@ private:
         std::error_code ec;
         std::filesystem::create_directories(p.parent_path(), ec);
         if (ec) return false;
-        auto tmp=p; tmp+=".tmp";
+        // Unique temporary path avoids clobbering another pending writer.
+        auto tmp=p; tmp += "." + newUuid() + ".tmp";
         {
             std::ofstream f(tmp, std::ios::binary|std::ios::trunc);
             if (!f || !f.write(s.data(), static_cast<std::streamsize>(s.size())) || !f.flush())

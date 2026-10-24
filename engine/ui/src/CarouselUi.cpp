@@ -6,17 +6,17 @@
 namespace voxen::ui {
 void drawCarousel(CarouselState& state) {
     if (!state.visible) return;
-    state.page=std::clamp(state.page,0,2);
+    state.page=std::clamp(state.page,0,3);
     ImGui::SetNextWindowPos(ImVec2(8,8),ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(500,660),ImGuiCond_Always);
     constexpr ImGuiWindowFlags flags=ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse;
     if (ImGui::Begin("VOXEN",nullptr,flags)) {
-        if (ImGui::Button("< PREV")) state.page=(state.page+2)%3;
+        if (ImGui::Button("< PREV")) state.page=(state.page+3)%4;
         ImGui::SameLine();
         ImGui::Text("%.*s",static_cast<int>(pages[state.page].size()),pages[state.page].data());
         ImGui::SameLine();
-        if (ImGui::Button("NEXT >")) state.page=(state.page+1)%3;
+        if (ImGui::Button("NEXT >")) state.page=(state.page+1)%4;
         ImGui::Separator();
         switch(state.page) {
         case 0:
@@ -108,6 +108,36 @@ void drawCarousel(CarouselState& state) {
             ImGui::SliderFloat("Music volume",&state.musicVolume,0.f,1.f);
             ImGui::TextDisabled(state.musicSource==0 ? "Procedural ambient loops" : "MP3 playlist / loop enabled");
             if(state.musicSource==0&&!state.musicReady)ImGui::TextDisabled("Audio output unavailable");
+            break;
+        }
+        case 3: {
+            ImGui::TextUnformatted("SAVED SCENES");
+            if(ImGui::Button("SAVE CURRENT SCENE")) state.sceneSave=true;
+            ImGui::Text("Saved scenes: %zu",state.savedSceneIds.size());
+            for(std::size_t i=0;i<state.savedSceneIds.size();++i) {
+                const auto& label=i<state.savedSceneLabels.size()?state.savedSceneLabels[i]:state.savedSceneIds[i];
+                ImGui::PushID(static_cast<int>(i));
+                const bool selected=ImGui::Selectable(label.c_str(),state.selectedScene==static_cast<int>(i));
+                ImGui::PopID();
+                if(selected)
+                    state.selectedScene=static_cast<int>(i);
+            }
+            if(!state.savedSceneIds.empty() && ImGui::Button("LOAD SELECTED SCENE"))
+                state.sceneLoad=true;
+            if(!state.sceneImmersive) {
+                if(!state.savedSceneIds.empty() && ImGui::Button("ENTER IMMERSIVE SCENE"))
+                    state.sceneEnter=true;
+            } else {
+                ImGui::TextUnformatted("IMMERSIVE MODE");
+                if(ImGui::Button("EXIT TO GALLERY")) state.sceneLeave=true;
+            }
+            ImGui::Text("Portals: %zu",state.visiblePortalCount);
+            if(!state.sceneAnchorReady) ImGui::BeginDisabled();
+            if(ImGui::Button("PLACE PORTAL ON TRACKED FLOOR")) state.scenePlace=true;
+            if(!state.sceneAnchorReady) ImGui::EndDisabled();
+            if(!state.sceneStatus.empty()) ImGui::TextWrapped("%s",state.sceneStatus.c_str());
+            ImGui::TextDisabled(state.sceneAnchorReady ? "Aim right controller at tracked floor" :
+                "Awaiting persistent Meta room anchor localization");
             break;
         }
         }
