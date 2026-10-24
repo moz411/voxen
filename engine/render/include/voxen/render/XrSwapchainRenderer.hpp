@@ -159,7 +159,6 @@ private:
     XrPosef meshWirePose_{};
     const std::vector<XrVector3f>* lastCollisionMeshVertices_ = nullptr;
     const std::vector<uint32_t>* lastCollisionMeshIndices_ = nullptr;
-    std::chrono::steady_clock::time_point lastCollisionMeshBuild_{};
     struct CollisionTriangle { std::array<float,3> a,b,c; };
     std::vector<CollisionTriangle> roomCollisionTriangles_;
     // 0.5m uniform grid: broad-phase candidate triangles, built on mesh updates.
