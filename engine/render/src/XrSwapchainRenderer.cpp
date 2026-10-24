@@ -1398,23 +1398,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             }
         }
     }
-    // One compact procedural flame orb per tracked palm (no fingertip particles).
-    if(!carouselVisible() && organicSpherePipeline_!=VK_NULL_HANDLE) {
-        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          organicSpherePipeline_);
-        constexpr float handFlameRadius=0.055f;
-        for(const auto& hand:holographicHands_) {
-            if(!hand.tracked)continue;
-            const auto& palm=hand.joints[XR_HAND_JOINT_PALM_EXT];
-            const Mat4 mvp=multiply(projView,
-                modelMatrix(palm.x,palm.y,handFlameRadius*2.f,palm.z,0.f));
-            ProceduralPushConstants pc{mvp,{seconds,1.f,9.f,0.06f}};
-            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
-                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
-                0,sizeof(pc),&pc);
-            vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
-        }
-    }
+    // Gallery hands are tracked for pinches and UI interaction, but no
+    // procedural fire or fingertip spheres are rendered.
+    // A skinned XR_FB_hand_tracking_mesh renderer will be added separately.
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE && voxenSpheresPipeline_!=VK_NULL_HANDLE &&
        voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE && torusKnotPipeline_!=VK_NULL_HANDLE && spikeBloomPipeline_!=VK_NULL_HANDLE && jellyfishPipeline_!=VK_NULL_HANDLE){
         auto paintPlasma=[&](const PlasmaVoxen& v){
