@@ -288,6 +288,8 @@ private:
         int mode, float swarmRadius, float swarmStrength, float swarmSeparation, bool collideRoomMesh);
     std::array<float,3> lastVoxenPos_{};
     bool lastVoxenValid_=false;
+    bool editorPresetStickLatched_=false;
+    bool editorScaleStickLatched_=false;
     std::array<XrPosef, 2> controllerPoses_{};
     std::array<bool, 2> controllerTracked_{};
     bool firstFrameLogged_ = false;
