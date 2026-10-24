@@ -173,6 +173,19 @@ public:
         return false;
     }
 
+    // Commit a grabbed sphere's final LOCAL pose, persisting relative to Meta anchor.
+    [[nodiscard]] bool moveToPose(const InstanceId& id, const Pose& localPose) {
+        if(!localized_ || !gallery_)return false;
+        auto it=std::find_if(gallery_->placements.begin(),gallery_->placements.end(),
+            [&](const Placement& p){return p.id==id;});
+        if(it==gallery_->placements.end())return false;
+        const Pose old=it->roomLocalPose;
+        it->roomLocalPose=compose(inverse(localized_->anchorInLocal),localPose);
+        if(repository_.saveGallery(*gallery_))return true;
+        it->roomLocalPose=old;
+        return false;
+    }
+
     [[nodiscard]] bool erase(const InstanceId& id) {
         if(!localized_ || !gallery_) return false;
         auto it=std::find_if(gallery_->placements.begin(),gallery_->placements.end(),
