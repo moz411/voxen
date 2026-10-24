@@ -161,8 +161,31 @@ std::vector<voxen::gallery::SceneId> XrSwapchainRenderer::savedSceneIds() const 
 }
 
 void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
-    if(immersiveSceneActive_ || !portalManager_ || !portalManager_->localized()) {
+    if(!portalManager_ || !portalManager_->localized()) {
         galleryEntryCandidate_.reset();
+        galleryExitSince_={};
+        return;
+    }
+    if(immersiveSceneActive_) {
+        if(!immersivePortalId_)return; // manually entered scenes use UI exit
+        const auto portals=portalManager_->visible();
+        const auto it=std::find_if(portals.begin(),portals.end(),
+            [&](const voxen::gallery::VisiblePortal& p){return p.id==*immersivePortalId_;});
+        if(it==portals.end())return;
+        const auto& p=it->localPose.positionMeters;
+        const float dx=headPosition.x-p[0],dz=headPosition.z-p[2];
+        const float exitRadius=0.70f*std::clamp(it->scale,0.1f,4.f);
+        if(dx*dx+dz*dz<=exitRadius*exitRadius) {
+            galleryExitSince_={};
+            return;
+        }
+        const auto now=std::chrono::steady_clock::now();
+        if(galleryExitSince_.time_since_epoch().count()==0) {
+            galleryExitSince_=now;
+            return;
+        }
+        if(now-galleryExitSince_>=std::chrono::milliseconds(550))
+            leaveImmersiveScene();
         return;
     }
     // Head projection onto the tracked floor. Avoid disk I/O and geometry
@@ -199,7 +222,10 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
     galleryEntryArmed_=false;
     const auto sceneId=inside->sceneId;
     galleryEntryCandidate_.reset();
-    if(!enterImmersiveScene(sceneId)) {
+    if(enterImmersiveScene(sceneId)) {
+        immersivePortalId_=inside->id;
+        galleryExitSince_={};
+    } else {
 #ifdef VOXEN_WITH_IMGUI
         imguiCarousel_.sceneStatus="Automatic portal entry failed";
 #endif
@@ -229,6 +255,8 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
     immersiveSceneActive_=false;
+    immersivePortalId_.reset();
+    galleryExitSince_={};
     galleryEntryArmed_=false; // do not re-enter until physically leaving the ring
     galleryEntryCandidate_.reset();
     return true;
