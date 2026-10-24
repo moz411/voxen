@@ -176,7 +176,7 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         if(it==portals.end()) { leaveImmersiveScene(); return; }
         const auto& p=it->localPose.positionMeters;
         const float dx=headPosition.x-p[0],dy=headPosition.y-p[1],dz=headPosition.z-p[2];
-        const float radius=0.50f*std::clamp(it->scale,0.1f,4.f);
+        const float radius=0.30f*std::clamp(it->scale,0.1f,4.f);
         if(dx*dx+dy*dy+dz*dz<=radius*radius) {
             galleryExitSince_={};
             return;
@@ -196,7 +196,7 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         const auto& p=portal.localPose.positionMeters;
         const float dx=headPosition.x-p[0],dy=headPosition.y-p[1],dz=headPosition.z-p[2];
         const float d2=dx*dx+dy*dy+dz*dz;
-        const float radius=0.42f*std::clamp(portal.scale,0.1f,4.f);
+        const float radius=0.25f*std::clamp(portal.scale,0.1f,4.f);
         if(d2<radius*radius && d2<bestDistance2) {
             inside=&portal;
             bestDistance2=d2;
@@ -239,6 +239,8 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
     if(!loadSavedScene(id)) return false;
 #ifdef VOXEN_WITH_IMGUI
     imguiCarousel_.editMode=false;
+    imguiCarousel_.visible=false;
+    panelAimed_=false;
 #endif
     immersiveSceneActive_=true;
     return true;
@@ -1083,7 +1085,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
 #ifdef VOXEN_WITH_IMGUI
     const bool galleryTriggerEdge=pressed[1] && !lastGalleryTriggerPressed_;
     lastGalleryTriggerPressed_=pressed[1];
-    if(pendingGalleryFloorAction_==1 && galleryTriggerEdge && tracked[1] && !panelAimed_) {
+    if(pendingGalleryFloorAction_==1 && galleryTriggerEdge && tracked[1] && !imguiCarousel_.visible) {
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         const std::array<float,3> forward{
@@ -1384,7 +1386,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         for(std::size_t i=0;i<count;++i) {
             const auto& p=portals[i];
             const auto& xyz=p.localPose.positionMeters;
-            const float radius=0.25f*std::clamp(p.scale,0.1f,4.f);
+            const float radius=0.125f*std::clamp(p.scale,0.1f,4.f);
             const Mat4 mvp=multiply(projView,
                 modelMatrix(xyz[0],xyz[1],radius*2.f,xyz[2],0.f));
             const auto preview=scenePreviewCache_.find(p.sceneId);
@@ -1405,7 +1407,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const float dz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
             const Mat4 mvp=multiply(projView,modelMatrix(
                 pose.position.x+0.38f*dx,pose.position.y+0.38f*dy,
-                0.50f,pose.position.z+0.38f*dz,0.f));
+                0.25f,pose.position.z+0.38f*dz,0.f));
             ProceduralPushConstants pc{mvp,{seconds,1.f,4.f,0.5f}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -1853,7 +1855,10 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.scenePlace=false;
             selectedSceneIndex_=imguiCarousel_.selectedScene;
             pendingGalleryFloorAction_=1;
+            lastGalleryTriggerPressed_=true; // Require release after clicking DISPOSE.
             imguiCarousel_.editMode=false;
+            imguiCarousel_.visible=false;
+            panelAimed_=false;
             if(immersiveSceneActive_)leaveImmersiveScene();
             imguiCarousel_.sceneStatus="GALLERY: move right controller, trigger to place";
         }
