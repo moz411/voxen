@@ -1115,7 +1115,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
     }
 #ifdef VOXEN_WITH_IMGUI
     if(tracked[1] && pressed[1] && pendingGalleryFloorAction_==0 &&
-       imguiCarousel_.voxenPaintEnabled && !panelAimed_ && !imguiCarousel_.visible){
+       imguiCarousel_.voxenPaintEnabled && !panelAimed_){
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         const std::array<float,3> dir{
