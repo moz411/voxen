@@ -601,6 +601,20 @@ static Mat4 meshPoseMatrix(const XrPosef& pose) {
 }
 
 void XrSwapchainRenderer::setSceneMeshes(const std::vector<MeshGeometry>& meshes) {
+    if(meshes.empty())return;
+    // Scene mesh geometry is static after Space Setup. Updating its anchor pose
+    // is cheap; rebuilding thousands of triangles and a spatial hash is not.
+    // Rebuild on mesh identity changes, otherwise at most once per second to
+    // account for occasional relocalization drift.
+    const auto& current=meshes.front();
+    meshWirePose_=current.pose;
+    const auto now=std::chrono::steady_clock::now();
+    if(lastCollisionMeshVertices_==current.vertices &&
+       lastCollisionMeshIndices_==current.indices &&
+       now-lastCollisionMeshBuild_<std::chrono::seconds(1))return;
+    lastCollisionMeshVertices_=current.vertices;
+    lastCollisionMeshIndices_=current.indices;
+    lastCollisionMeshBuild_=now;
     // Cache world-space triangles for physics; never read transient XR mesh pointers
     // during the simulation. Scene meshes may be absent until capture completes.
     roomCollisionTriangles_.clear();
