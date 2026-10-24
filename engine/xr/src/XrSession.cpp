@@ -244,8 +244,13 @@ void XrSession::initializeHandTracking() {
         XrHandTrackerCreateInfoEXT info{XR_TYPE_HAND_TRACKER_CREATE_INFO_EXT};
         info.hand=i==0?XR_HAND_LEFT_EXT:XR_HAND_RIGHT_EXT;
         info.handJointSet=XR_HAND_JOINT_SET_DEFAULT_EXT;
-        if(XR_FAILED(createHandTracker_(session_,&info,&handTrackers_[i])))
-            handTrackers_[i]=XR_NULL_HANDLE;
+        const XrResult result=createHandTracker_(session_,&info,&handTrackers_[i]);
+        if(XR_FAILED(result))handTrackers_[i]=XR_NULL_HANDLE;
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenHands",
+            "Hand %d tracker result=%d ready=%d",i,int(result),
+            handTrackers_[i]!=XR_NULL_HANDLE?1:0);
+#endif
     }
 }
 
@@ -278,6 +283,15 @@ void XrSession::updateHandTracking(voxen::render::XrSwapchainRenderer& renderer,
             hands[i].tracked=true;
         }
     }
+#ifdef __ANDROID__
+    static int previousMask=-1;
+    const int mask=(hands[0].tracked?1:0)|(hands[1].tracked?2:0);
+    if(mask!=previousMask) {
+        __android_log_print(ANDROID_LOG_INFO,"VoxenHands",
+            "Visible=%d tracking mask=%d",renderer.carouselVisible()?1:0,mask);
+        previousMask=mask;
+    }
+#endif
     renderer.setHolographicHands(hands);
 }
 
