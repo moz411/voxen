@@ -53,7 +53,6 @@ private:
     void initializeHandTracking();
     void updateHandTracking(voxen::render::XrSwapchainRenderer& renderer, XrTime time);
 
-    std::array<bool,2> handPinchLatched_{};
     std::array<XrHandTrackerEXT,2> handTrackers_{XR_NULL_HANDLE,XR_NULL_HANDLE};
     PFN_xrCreateHandTrackerEXT createHandTracker_=nullptr;
     PFN_xrDestroyHandTrackerEXT destroyHandTracker_=nullptr;
