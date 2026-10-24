@@ -35,6 +35,7 @@ public:
     // Runs the OpenXR frame lifecycle. Rendering layers are intentionally empty
     // until swapchains and the first stereo renderer are added.
     void frame(voxen::render::XrSwapchainRenderer& renderer);
+    void requestSceneRefresh();
 
     [[nodiscard]] ::XrSession handle() const noexcept { return session_; }
     [[nodiscard]] XrSpace localSpace() const noexcept { return localSpace_; }
