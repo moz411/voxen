@@ -1398,31 +1398,21 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             }
         }
     }
-    // Tracked cyan holographic hands, independent of controller poses.
-    // Lightweight shader-only fire around tracked palms and finger joints.
-    // Reuse the existing procedural sphere pipeline; no new GPU assets.
+    // One compact procedural flame orb per tracked palm (no fingertip particles).
     if(!carouselVisible() && organicSpherePipeline_!=VK_NULL_HANDLE) {
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                           organicSpherePipeline_);
+        constexpr float handFlameRadius=0.055f;
         for(const auto& hand:holographicHands_) {
             if(!hand.tracked)continue;
-            for(std::size_t j=0;j<hand.joints.size();++j) {
-                // Keep the Quest GPU cost bounded: palm plus fingertips.
-                if(j!=XR_HAND_JOINT_PALM_EXT && j!=XR_HAND_JOINT_THUMB_TIP_EXT &&
-                   j!=XR_HAND_JOINT_INDEX_TIP_EXT && j!=XR_HAND_JOINT_MIDDLE_TIP_EXT &&
-                   j!=XR_HAND_JOINT_RING_TIP_EXT && j!=XR_HAND_JOINT_LITTLE_TIP_EXT)continue;
-                if(j!=XR_HAND_JOINT_PALM_EXT && hand.radii[j]<=0.f)continue;
-                const auto& p=hand.joints[j];
-                const float radius=j==XR_HAND_JOINT_PALM_EXT ? 0.09f :
-                    std::clamp(hand.radii[j]*2.0f,0.014f,0.032f);
-                const Mat4 mvp=multiply(projView,
-                    modelMatrix(p.x,p.y,radius*2.f,p.z,0.f));
-                ProceduralPushConstants pc{mvp,{seconds,1.f,9.f,0.06f}};
-                vkCmdPushConstants(commandBuffer_,pipelineLayout_,
-                    VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
-                    0,sizeof(pc),&pc);
-                vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
-            }
+            const auto& palm=hand.joints[XR_HAND_JOINT_PALM_EXT];
+            const Mat4 mvp=multiply(projView,
+                modelMatrix(palm.x,palm.y,handFlameRadius*2.f,palm.z,0.f));
+            ProceduralPushConstants pc{mvp,{seconds,1.f,9.f,0.06f}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
         }
     }
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE && voxenSpheresPipeline_!=VK_NULL_HANDLE &&
