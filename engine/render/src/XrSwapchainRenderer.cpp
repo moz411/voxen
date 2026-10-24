@@ -1586,6 +1586,38 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
             v.position[k]+=v.velocity[k]*dt;
         }
         const float radius=std::max(0.025f,v.scale*0.5f);
+        // Lightweight hand interaction: each tracked palm is one static sphere.
+        // Only active with the carousel hidden. No fingers, controller poses,
+        // or mesh collision tests; cost is at most two checks per moving voxen.
+        if(!carouselVisible()) {
+            constexpr float palmRadius=0.105f;
+            for(const auto& hand:holographicHands_) {
+                if(!hand.tracked)continue;
+                const auto& palm=hand.joints[XR_HAND_JOINT_PALM_EXT];
+                const float dx=v.position[0]-palm.x;
+                const float dy=v.position[1]-palm.y;
+                const float dz=v.position[2]-palm.z;
+                const float minDistance=radius+palmRadius;
+                const float d2=dx*dx+dy*dy+dz*dz;
+                if(d2>=minDistance*minDistance)continue;
+                const float distance=std::sqrt(d2);
+                // If centers coincide, use a stable upward normal.
+                const float nx=distance>1e-5f?dx/distance:0.f;
+                const float ny=distance>1e-5f?dy/distance:1.f;
+                const float nz=distance>1e-5f?dz/distance:0.f;
+                v.position[0]=palm.x+nx*minDistance;
+                v.position[1]=palm.y+ny*minDistance;
+                v.position[2]=palm.z+nz*minDistance;
+                const float normalSpeed=v.velocity[0]*nx+
+                                        v.velocity[1]*ny+v.velocity[2]*nz;
+                if(normalSpeed<0.f) {
+                    const float impulse=(1.f+std::clamp(bounce,0.f,1.f))*normalSpeed;
+                    v.velocity[0]-=impulse*nx;
+                    v.velocity[1]-=impulse*ny;
+                    v.velocity[2]-=impulse*nz;
+                }
+            }
+        }
         if(hasTrackedFloor_ && v.position[1]-radius<trackedFloorY_){
             v.position[1]=trackedFloorY_+radius;
             if(v.velocity[1]<0.f) v.velocity[1]=-v.velocity[1]*bounce;
