@@ -208,6 +208,8 @@ private:
     // Preview/scene mode; global Vulkan pipelines are shared, not freed here.
     bool immersiveSceneActive_ = false;
     std::optional<voxen::gallery::InstanceId> galleryEntryCandidate_;
+    std::optional<voxen::gallery::InstanceId> immersivePortalId_;
+    std::chrono::steady_clock::time_point galleryExitSince_{};
     std::chrono::steady_clock::time_point galleryEntrySince_{};
     bool galleryEntryArmed_ = true;
     void updateGalleryWalkIn(const XrVector3f& headPosition);
