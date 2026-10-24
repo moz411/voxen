@@ -367,8 +367,9 @@ void XrSession::updateHandTracking(voxen::render::XrSwapchainRenderer& renderer,
         // Keep controller support for either hand when no hand is tracked.
         std::array<XrPosef,2> poses=handAim;
         std::array<bool,2> tracked=handAimTracked;
-        std::array<bool,2> pressed{false,pinchPressed[1]};
-        renderer.updateControllerInteraction(poses,tracked,pressed,{});
+        // Do not treat a UI pinch as an airbrush trigger.
+        renderer.updateControllerInteraction(poses,tracked,{},{});
+        renderer.setHandUiPinch(pinchPressed[1]);
     }
     renderer.setHolographicHands(hands);
 }
