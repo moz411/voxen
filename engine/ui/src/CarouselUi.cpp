@@ -119,6 +119,7 @@ void drawCarousel(CarouselState& state) {
                 if(ImGui::Selectable(label.c_str(),state.selectedScene==static_cast<int>(i))) {
                     state.selectedScene=static_cast<int>(i);
                     state.sceneDeleteConfirm=false;
+                    if(ImGui::IsMouseDoubleClicked(0))state.sceneLoad=true;
                 }
                 ImGui::PopID();
             }
@@ -144,7 +145,7 @@ void drawCarousel(CarouselState& state) {
                 if(ImGui::Button("CANCEL"))state.sceneDeleteConfirm=false;
             }
             if(!state.sceneStatus.empty())ImGui::TextWrapped("%s",state.sceneStatus.c_str());
-            ImGui::TextDisabled("DISPOSE: right trigger places a static Voxen in space");
+            ImGui::TextDisabled("Double-click scene to load; DISPOSE then right trigger");
             if(!state.sceneAnchorReady)
                 ImGui::TextDisabled("Waiting for localized Meta room anchor");
             if(state.sceneImmersive && ImGui::Button("EXIT SCENE"))state.sceneLeave=true;
