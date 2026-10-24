@@ -235,6 +235,7 @@ private:
     VkPipeline torusKnotPipeline_ = VK_NULL_HANDLE;
     VkPipeline spikeBloomPipeline_ = VK_NULL_HANDLE;
     VkPipeline jellyfishPipeline_ = VK_NULL_HANDLE;
+    VkPipeline earthwormPipeline_ = VK_NULL_HANDLE;
     VkPipeline laserPipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
     voxen::scene::EnvironmentSurfaceRegistry environmentSurfaces_{};
