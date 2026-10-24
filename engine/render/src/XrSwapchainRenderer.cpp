@@ -1697,6 +1697,11 @@ void XrSwapchainRenderer::render(
             pendingGalleryFloorAction_=1;
             imguiCarousel_.sceneStatus="Aim at tracked floor and press trigger to place";
         }
+        if(imguiCarousel_.scenePortalCancel) {
+            imguiCarousel_.scenePortalCancel=false;
+            pendingGalleryFloorAction_=0;
+            imguiCarousel_.sceneStatus="Floor action cancelled";
+        }
         if(imguiCarousel_.scenePortalSelect) {
             imguiCarousel_.scenePortalSelect=false;
             pendingGalleryFloorAction_=2;
