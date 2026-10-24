@@ -126,6 +126,24 @@ public:
         return p.id;
     }
 
+    // Free 3D placement, stored relative to the localized Meta room anchor.
+    [[nodiscard]] std::optional<InstanceId> placeAtPose(
+        const SceneId& sceneId, const Pose& localPose, float scale=1.f) {
+        if(!localized_ || !gallery_ || !repository_.loadSceneMetadata(sceneId) ||
+           !std::isfinite(scale) || scale<=0.f || scale>10.f)return std::nullopt;
+        Placement p;
+        p.id=newUuid();
+        p.sceneId=sceneId;
+        p.roomLocalPose=compose(inverse(localized_->anchorInLocal),localPose);
+        p.scale=scale;
+        gallery_->placements.push_back(p);
+        if(!repository_.saveGallery(*gallery_)) {
+            gallery_->placements.pop_back();
+            return std::nullopt;
+        }
+        return p.id;
+    }
+
     // Select the closest placed ring to a tracked floor hit (in LOCAL meters).
     [[nodiscard]] std::optional<InstanceId> nearest(
         const FloorHit& hit, float maxDistanceMeters=0.6f) const {
