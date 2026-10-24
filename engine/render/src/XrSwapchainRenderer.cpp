@@ -160,7 +160,40 @@ std::vector<voxen::gallery::SceneId> XrSwapchainRenderer::savedSceneIds() const 
                             : std::vector<voxen::gallery::SceneId>{};
 }
 
+void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
+#ifdef VOXEN_WITH_IMGUI
+    if(immersiveSceneActive_)return;
+    if(enabled==imguiCarousel_.editMode) {
+        imguiCarousel_.visible=enabled;
+        return;
+    }
+    if(enabled) {
+        imguiCarousel_=editorSettings_;
+        imguiCarousel_.editMode=true;
+        imguiCarousel_.visible=true;
+        voxens_.swap(editorVoxens_);
+        pendingGalleryFloorAction_=0;
+    } else {
+        editorSettings_=imguiCarousel_;
+        editorSettings_.editMode=true;
+        editorSettings_.visible=true;
+        voxens_.swap(editorVoxens_);
+        imguiCarousel_.editMode=false;
+        imguiCarousel_.visible=false;
+        ambientMusic_.configure(0,false,0.f);
+        mp3Library_.update(-1,false,0.f);
+    }
+    lastVoxenValid_=false;
+    panelAimed_=false;
+    galleryEntryCandidate_.reset();
+    galleryEntryArmed_=true;
+#else
+    (void)enabled;
+#endif
+}
+
 void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
+    if(editingMode() || pendingGalleryFloorAction_!=0)return;
     if(!portalManager_ || !portalManager_->localized()) {
         galleryEntryCandidate_.reset();
         galleryExitSince_={};
@@ -259,6 +292,10 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
     immersiveSceneActive_=false;
+#ifdef VOXEN_WITH_IMGUI
+    imguiCarousel_.liquidRoom=false;
+    imguiCarousel_.musicPlaying=false;
+#endif
     immersivePortalId_.reset();
     galleryExitSince_={};
     galleryEntryArmed_=false; // do not re-enter until physically leaving the ring
@@ -278,6 +315,11 @@ bool XrSwapchainRenderer::saveCurrentScene() {
         runtime.voxens.push_back(saved);
     }
 #ifdef VOXEN_WITH_IMGUI
+    runtime.liquidRoom=imguiCarousel_.liquidRoom;
+    runtime.liquidOpacity=imguiCarousel_.liquidOpacity;
+    runtime.wallShaderMode=imguiCarousel_.wallShaderMode;
+    runtime.cycleWallShaders=imguiCarousel_.cycleWallShaders;
+    runtime.wallCycleSeconds=imguiCarousel_.wallCycleSeconds;
     runtime.musicSource=imguiCarousel_.musicSource;
     runtime.musicTrack=imguiCarousel_.musicTrack;
     runtime.musicFile=imguiCarousel_.musicFile;
@@ -353,6 +395,11 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
 #ifdef VOXEN_WITH_IMGUI
+    imguiCarousel_.liquidRoom=snapshot->liquidRoom;
+    imguiCarousel_.liquidOpacity=snapshot->liquidOpacity;
+    imguiCarousel_.wallShaderMode=snapshot->wallShaderMode;
+    imguiCarousel_.cycleWallShaders=snapshot->cycleWallShaders;
+    imguiCarousel_.wallCycleSeconds=snapshot->wallCycleSeconds;
     imguiCarousel_.musicSource=snapshot->musicSource;
     imguiCarousel_.musicTrack=snapshot->musicTrack;
     imguiCarousel_.musicFile=snapshot->musicFile;
@@ -1377,7 +1424,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,meshWireVertexCount_,1,0,0);
     }
     // Saved scene instances are static 3D Voxen, not floor rings.
-    if(!immersiveSceneActive_ && portalManager_ &&
+    if(!immersiveSceneActive_ && !editingMode() && portalManager_ &&
        organicSpherePipeline_!=VK_NULL_HANDLE) {
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                           organicSpherePipeline_);
@@ -1451,8 +1498,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 vkCmdDraw(commandBuffer_,v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6)),1,0,0);
             }
         };
-        if(immersiveSceneActive_ || imguiCarousel_.editMode)
-            for(const auto& v:voxens_)paintPlasma(v);
+        for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
         if(imguiCarousel_.editMode && imguiCarousel_.voxenPaintEnabled && controllerTracked_[1] && !panelAimed_ && !uiTrigger_[1]){
             const auto& pose=controllerPoses_[1];
@@ -1824,7 +1870,7 @@ void XrSwapchainRenderer::render(
         voxen::ui::drawCarousel(imguiCarousel_);
         if(imguiCarousel_.sceneSave) {
             imguiCarousel_.sceneSave=false;
-            imguiCarousel_.sceneStatus=saveCurrentScene()?"Scene saved":"Save failed";
+            imguiCarousel_.sceneStatus=saveCurrentScene()?"Scene saved - DISPOSE available":"Save failed";
         }
         imguiCarousel_.savedSceneIds=sceneIds_;
         if(imguiCarousel_.sceneDelete) {
@@ -1856,10 +1902,8 @@ void XrSwapchainRenderer::render(
             selectedSceneIndex_=imguiCarousel_.selectedScene;
             pendingGalleryFloorAction_=1;
             lastGalleryTriggerPressed_=true; // Require release after clicking DISPOSE.
-            imguiCarousel_.editMode=false;
-            imguiCarousel_.visible=false;
-            panelAimed_=false;
             if(immersiveSceneActive_)leaveImmersiveScene();
+            setEditingMode(false);
             imguiCarousel_.sceneStatus="GALLERY: move right controller, trigger to place";
         }
         if(imguiCarousel_.scenePortalCancel) {
