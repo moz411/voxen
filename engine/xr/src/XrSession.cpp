@@ -16,6 +16,7 @@
 
 #include <stdexcept>
 #include <cstring>
+#include <cmath>
 #include <string>
 
 namespace voxen::xr {
@@ -256,7 +257,7 @@ void XrSession::initializeHandTracking() {
 
 void XrSession::updateHandTracking(voxen::render::XrSwapchainRenderer& renderer,XrTime time) {
     std::array<voxen::render::XrSwapchainRenderer::HolographicHand,2> hands{};
-    if(!renderer.carouselVisible() && locateHandJoints_) {
+    if(locateHandJoints_) {
         for(int i=0;i<2;++i) {
             if(handTrackers_[i]==XR_NULL_HANDLE)continue;
             std::array<XrHandJointLocationEXT,XR_HAND_JOINT_COUNT_EXT> joints{};
@@ -310,6 +311,65 @@ void XrSession::updateHandTracking(voxen::render::XrSwapchainRenderer& renderer,
         previousVisible=visible;
     }
 #endif
+    // Left thumb/index pinch toggles edit mode; right pinch selects UI.
+    // Hysteresis avoids repeated clicks while fingers remain together.
+    std::array<bool,2> pinchPressed{};
+    for(int i=0;i<2;++i) {
+        if(!hands[i].tracked ||
+           hands[i].radii[XR_HAND_JOINT_THUMB_TIP_EXT]<=0.f ||
+           hands[i].radii[XR_HAND_JOINT_INDEX_TIP_EXT]<=0.f) {
+            handPinchLatched_[i]=false;
+            continue;
+        }
+        const auto& thumb=hands[i].joints[XR_HAND_JOINT_THUMB_TIP_EXT];
+        const auto& index=hands[i].joints[XR_HAND_JOINT_INDEX_TIP_EXT];
+        const float dx=thumb.x-index.x,dy=thumb.y-index.y,dz=thumb.z-index.z;
+        const float distance=std::sqrt(dx*dx+dy*dy+dz*dz);
+        if(distance<0.028f)handPinchLatched_[i]=true;
+        else if(distance>0.048f)handPinchLatched_[i]=false;
+        pinchPressed[i]=handPinchLatched_[i];
+    }
+    static bool previousLeftPinch=false;
+    if(pinchPressed[0] && !previousLeftPinch) {
+        renderer.toggleUiVisibility();
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenHands",
+            "Left pinch toggled edit carousel visible=%d",renderer.carouselVisible()?1:0);
+#endif
+    }
+    previousLeftPinch=pinchPressed[0];
+    // The existing ImGui carousel accepts controller-style aim poses and
+    // select states. Bridge the tracked hands into that interface.
+    std::array<XrPosef,2> handAim{};
+    std::array<bool,2> handAimTracked{};
+    for(int i=0;i<2;++i) {
+        if(!hands[i].tracked)continue;
+        handAimTracked[i]=true;
+        handAim[i].position=hands[i].joints[XR_HAND_JOINT_PALM_EXT];
+        handAim[i].orientation={0.f,0.f,0.f,1.f};
+        if(i==1 && hands[i].radii[XR_HAND_JOINT_INDEX_TIP_EXT]>0.f &&
+           hands[i].radii[XR_HAND_JOINT_INDEX_PROXIMAL_EXT]>0.f) {
+            const auto& tip=hands[i].joints[XR_HAND_JOINT_INDEX_TIP_EXT];
+            const auto& base=hands[i].joints[XR_HAND_JOINT_INDEX_PROXIMAL_EXT];
+            float dx=tip.x-base.x,dy=tip.y-base.y,dz=tip.z-base.z;
+            const float len=std::sqrt(dx*dx+dy*dy+dz*dz);
+            if(len>0.01f) {
+                dx/=len;dy/=len;dz/=len;
+                // Shortest-arc quaternion mapping local -Z to index direction.
+                const float w=1.f-dz;
+                const float qlen=std::sqrt(dy*dy+dx*dx+w*w);
+                if(qlen>0.001f)
+                    handAim[i].orientation={dy/qlen,-dx/qlen,0.f,w/qlen};
+            }
+        }
+    }
+    if(renderer.carouselVisible() && (handAimTracked[0] || handAimTracked[1])) {
+        // Keep controller support for either hand when no hand is tracked.
+        std::array<XrPosef,2> poses=handAim;
+        std::array<bool,2> tracked=handAimTracked;
+        std::array<bool,2> pressed{false,pinchPressed[1]};
+        renderer.updateControllerInteraction(poses,tracked,pressed,{});
+    }
     renderer.setHolographicHands(hands);
 }
 
