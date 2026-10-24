@@ -160,6 +160,30 @@ std::vector<voxen::gallery::SceneId> XrSwapchainRenderer::savedSceneIds() const 
                             : std::vector<voxen::gallery::SceneId>{};
 }
 
+void XrSwapchainRenderer::requestGalleryDelete() {
+    if(editingMode() || immersiveSceneActive_ || galleryDragging_ ||
+       pendingGalleryFloorAction_!=0 || !portalManager_ || !portalManager_->localized())return;
+    // Two presses of B within three seconds confirm destructive placement removal.
+    if(!selectedPortalId_)return;
+    const auto now=std::chrono::steady_clock::now();
+    if(now>galleryDeleteArmedUntil_) {
+        galleryDeleteArmedUntil_=now+std::chrono::seconds(3);
+#ifdef VOXEN_WITH_IMGUI
+        imguiCarousel_.sceneStatus="Press B again within 3s to remove sphere";
+#endif
+        return;
+    }
+    galleryDeleteArmedUntil_={};
+    const bool ok=portalManager_->erase(*selectedPortalId_);
+    if(ok) {
+        selectedPortalId_.reset();
+        galleryHoveredId_.reset();
+#ifdef VOXEN_WITH_IMGUI
+        imguiCarousel_.sceneStatus="Gallery sphere removed; saved scene preserved";
+#endif
+    }
+}
+
 void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
 #ifdef VOXEN_WITH_IMGUI
     if(immersiveSceneActive_)return;
@@ -168,6 +192,10 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
         return;
     }
     if(enabled) {
+        galleryDragging_=false;
+        selectedPortalId_.reset();
+        galleryHoveredId_.reset();
+        galleryDeleteArmedUntil_={};
         imguiCarousel_=editorSettings_;
         imguiCarousel_.editMode=true;
         imguiCarousel_.visible=true;
@@ -193,7 +221,7 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
 }
 
 void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
-    if(editingMode() || pendingGalleryFloorAction_!=0)return;
+    if(editingMode() || pendingGalleryFloorAction_!=0 || galleryDragging_)return;
     if(!portalManager_ || !portalManager_->localized()) {
         galleryEntryCandidate_.reset();
         galleryExitSince_={};
@@ -1158,6 +1186,62 @@ void XrSwapchainRenderer::updateControllerInteraction(
         } else imguiCarousel_.sceneStatus="Placement failed: room anchor or scene unavailable";
     }
 #endif
+#ifdef VOXEN_WITH_IMGUI
+    // Gallery right-hand ray: trigger grabs a sphere, moving controller drags it,
+    // releasing trigger persists the final pose relative to the Meta room anchor.
+    if(!editingMode() && !immersiveSceneActive_ && pendingGalleryFloorAction_==0 &&
+       portalManager_ && portalManager_->localized() && tracked[1]) {
+        const auto& hand=poses[1];
+        const auto& q=hand.orientation;
+        const std::array<float,3> forward{
+            -2.f*(q.x*q.z+q.w*q.y),
+            -2.f*(q.y*q.z-q.w*q.x),
+            -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        if(galleryDragging_) {
+            galleryDraggedPose_.positionMeters={
+                hand.position.x+galleryGrabDistance_*forward[0],
+                hand.position.y+galleryGrabDistance_*forward[1],
+                hand.position.z+galleryGrabDistance_*forward[2]};
+            if(!pressed[1]) {
+                const bool saved=selectedPortalId_ &&
+                    portalManager_->moveToPose(*selectedPortalId_,galleryDraggedPose_);
+                galleryDragging_=false;
+                imguiCarousel_.sceneStatus=saved?"Sphere moved and gallery saved":
+                                                  "Move failed: gallery unchanged";
+            }
+        } else {
+            galleryHoveredId_.reset();
+            float nearest=10.f;
+            for(const auto& portal:portalManager_->visible()) {
+                const auto& p=portal.localPose.positionMeters;
+                const float dx=p[0]-hand.position.x;
+                const float dy=p[1]-hand.position.y;
+                const float dz=p[2]-hand.position.z;
+                const float t=dx*forward[0]+dy*forward[1]+dz*forward[2];
+                if(t<0.08f || t>nearest)continue;
+                const float miss2=dx*dx+dy*dy+dz*dz-t*t;
+                const float radius=0.125f*std::clamp(portal.scale,0.1f,4.f);
+                if(miss2<=radius*radius*2.25f) {
+                    nearest=t;
+                    galleryHoveredId_=portal.id;
+                }
+            }
+            if(galleryTriggerEdge && galleryHoveredId_) {
+                selectedPortalId_=galleryHoveredId_;
+                galleryGrabDistance_=nearest;
+                galleryDraggedPose_.positionMeters={
+                    hand.position.x+nearest*forward[0],
+                    hand.position.y+nearest*forward[1],
+                    hand.position.z+nearest*forward[2]};
+                galleryDragging_=true;
+                galleryDeleteArmedUntil_={};
+                imguiCarousel_.sceneStatus="Moving sphere; release trigger to save, B twice to delete";
+            }
+        }
+    } else if(galleryDragging_ && !pressed[1]) {
+        galleryDragging_=false;
+    }
+#endif
     if(tracked[0]) {
         float axis=thumbsticks[0].x;
         if(std::fabs(axis)<0.3f)nativeMenuStickLatched_=false;
@@ -1434,14 +1518,16 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         const auto count=std::min<std::size_t>(portals.size(),64);
         for(std::size_t i=0;i<count;++i) {
             const auto& p=portals[i];
-            const auto& xyz=p.localPose.positionMeters;
+            const auto& xyz=(galleryDragging_ && selectedPortalId_ && p.id==*selectedPortalId_)
+                ? galleryDraggedPose_.positionMeters : p.localPose.positionMeters;
             const float radius=0.125f*std::clamp(p.scale,0.1f,4.f);
             const Mat4 mvp=multiply(projView,
                 modelMatrix(xyz[0],xyz[1],radius*2.f,xyz[2],0.f));
             const auto preview=scenePreviewCache_.find(p.sceneId);
             const float preset=preview==scenePreviewCache_.end()?4.f:
                 float(4u+preview->second.materialPreset%4u);
-            ProceduralPushConstants pc{mvp,{seconds,1.f,preset,0.5f}};
+            const float selected=(selectedPortalId_ && p.id==*selectedPortalId_) ? 1.5f : 1.f;
+            ProceduralPushConstants pc{mvp,{seconds,selected,preset,0.5f}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,sizeof(pc),&pc);
