@@ -21,6 +21,11 @@ struct SavedRuntime {
     int musicSource = 0, musicTrack = 0, musicFile = 0;
     float musicVolume = .45f;
     bool musicPlaying = false;
+    bool liquidRoom = false;
+    float liquidOpacity = .42f;
+    int wallShaderMode = 0;
+    bool cycleWallShaders = false;
+    float wallCycleSeconds = 30.f;
     bool motionEnabled = false;
     int motionMode = 0;
     bool motionGravity = false;
@@ -31,6 +36,9 @@ inline bool valid(const SavedRuntime& r) {
         r.musicTrack<0 || r.musicTrack>2 || r.musicFile<0 ||
         !std::isfinite(r.musicVolume) || r.musicVolume<0 || r.musicVolume>1 ||
         r.motionMode<0 || r.motionMode>1 ||
+        !std::isfinite(r.liquidOpacity) || r.liquidOpacity<0 || r.liquidOpacity>1 ||
+        r.wallShaderMode<0 || r.wallShaderMode>5 ||
+        !std::isfinite(r.wallCycleSeconds) || r.wallCycleSeconds<1 || r.wallCycleSeconds>300 ||
         !std::isfinite(r.motionBounce) || r.motionBounce<0 || r.motionBounce>1) return false;
     for (const auto& v:r.voxens) {
         if (v.preset<0 || v.preset>7 || v.material<0 || v.material>3 ||
@@ -46,10 +54,12 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
     if (!valid(r)) return {};
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<float>::max_digits10);
-    out << "VOXEN_RUNTIME 1\n" << r.voxens.size() << '\n';
+    out << "VOXEN_RUNTIME 2\n" << r.voxens.size() << '\n';
     out << r.musicSource << ' ' << r.musicTrack << ' ' << r.musicFile << ' '
         << r.musicVolume << ' ' << r.musicPlaying << ' ' << r.motionEnabled << ' '
         << r.motionMode << ' ' << r.motionGravity << ' ' << r.motionBounce << '\n';
+    out << r.liquidRoom << ' ' << r.liquidOpacity << ' ' << r.wallShaderMode << ' '
+        << r.cycleWallShaders << ' ' << r.wallCycleSeconds << '\n';
     for(const auto& v:r.voxens) {
         out << v.preset << ' ' << v.material << ' ' << v.scale << ' ' << v.hue
             << ' ' << v.density << ' ' << v.speed;
@@ -63,12 +73,14 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
     if(data.size()>65536) return std::nullopt;
     std::istringstream in(data);
     std::string magic; int version=0; std::size_t count=0;
-    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || version!=1 || count>256)
+    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version!=1 && version!=2) || count>256)
         return std::nullopt;
     SavedRuntime r;
     if(!(in>>r.musicSource>>r.musicTrack>>r.musicFile>>r.musicVolume
          >>r.musicPlaying>>r.motionEnabled>>r.motionMode>>r.motionGravity>>r.motionBounce))
         return std::nullopt;
+    if(version==2 && !(in>>r.liquidRoom>>r.liquidOpacity>>r.wallShaderMode
+                       >>r.cycleWallShaders>>r.wallCycleSeconds))return std::nullopt;
     for(std::size_t i=0;i<count;++i) {
         SavedVoxen v;
         if(!(in>>v.preset>>v.material>>v.scale>>v.hue>>v.density>>v.speed))

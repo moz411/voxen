@@ -112,72 +112,45 @@ void drawCarousel(CarouselState& state) {
         }
         case 3: {
             ImGui::TextUnformatted("SAVED SCENES");
-            if(ImGui::Button("SAVE CURRENT SCENE")) state.sceneSave=true;
-            ImGui::Text("Saved scenes: %zu",state.savedSceneIds.size());
+            ImGui::BeginChild("scene-list",ImVec2(0,360),true);
             for(std::size_t i=0;i<state.savedSceneIds.size();++i) {
                 const auto& label=i<state.savedSceneLabels.size()?state.savedSceneLabels[i]:state.savedSceneIds[i];
                 ImGui::PushID(static_cast<int>(i));
-                const bool selected=ImGui::Selectable(label.c_str(),state.selectedScene==static_cast<int>(i));
-                ImGui::PopID();
-                if(selected) {
+                if(ImGui::Selectable(label.c_str(),state.selectedScene==static_cast<int>(i))) {
                     state.selectedScene=static_cast<int>(i);
                     state.sceneDeleteConfirm=false;
+                    if(ImGui::IsMouseDoubleClicked(0))state.sceneLoad=true;
                 }
+                ImGui::PopID();
             }
-            if(!state.savedSceneIds.empty() && ImGui::Button("LOAD SELECTED SCENE"))
-                state.sceneLoad=true;
-            if(!state.savedSceneIds.empty() && !state.sceneImmersive) {
-                if(!state.sceneDeleteConfirm) {
-                    if(ImGui::Button("DELETE SELECTED SCENE"))
-                        state.sceneDeleteConfirm=true;
-                } else {
-                    ImGui::TextWrapped("Delete selected scene and all its gallery portals?");
-                    if(ImGui::Button("CONFIRM DELETE")) {
-                        state.sceneDelete=true;
-                        state.sceneDeleteConfirm=false;
-                    }
-                    ImGui::SameLine();
-                    if(ImGui::Button("CANCEL"))state.sceneDeleteConfirm=false;
-                }
-            }
-            if(!state.sceneImmersive) {
-                if(!state.savedSceneIds.empty() && ImGui::Button("ENTER IMMERSIVE SCENE"))
-                    state.sceneEnter=true;
-            } else {
-                ImGui::TextUnformatted("IMMERSIVE MODE");
-                if(ImGui::Button("EXIT TO GALLERY")) state.sceneLeave=true;
-            }
-            ImGui::Text("Portals: %zu",state.visiblePortalCount);
-            if(!state.sceneAnchorReady) ImGui::BeginDisabled();
-            if(ImGui::Button("PLACE PORTAL ON TRACKED FLOOR")) state.scenePlace=true;
-            if(!state.sceneAnchorReady) ImGui::EndDisabled();
-            ImGui::Separator();
-            ImGui::TextUnformatted("EDIT FLOOR PORTALS");
-            if(ImGui::Button("CANCEL FLOOR ACTION"))state.scenePortalCancel=true;
-            if(!state.sceneAnchorReady)ImGui::BeginDisabled();
-            if(ImGui::Button("SELECT PORTAL AT AIM")) {
-                state.scenePortalSelect=true;
-                state.scenePortalDeleteConfirm=false;
-            }
-            if(!state.scenePortalSelected)ImGui::BeginDisabled();
-            if(ImGui::Button("MOVE SELECTED TO AIM"))state.scenePortalMove=true;
-            if(!state.scenePortalDeleteConfirm) {
-                if(ImGui::Button("REMOVE SELECTED PORTAL"))
-                    state.scenePortalDeleteConfirm=true;
-            } else {
-                ImGui::TextUnformatted("Remove this portal? Saved scene is kept.");
-                if(ImGui::Button("CONFIRM REMOVE")) {
-                    state.scenePortalDelete=true;
-                    state.scenePortalDeleteConfirm=false;
+            ImGui::EndChild();
+            if(!state.editMode)ImGui::BeginDisabled();
+            if(ImGui::Button("SAVE",ImVec2(140,44)))state.sceneSave=true;
+            if(!state.editMode)ImGui::EndDisabled();
+            ImGui::SameLine();
+            const bool valid=state.selectedScene>=0 &&
+                static_cast<std::size_t>(state.selectedScene)<state.savedSceneIds.size();
+            if(!valid || state.sceneImmersive)ImGui::BeginDisabled();
+            if(ImGui::Button("DELETE",ImVec2(140,44)))state.sceneDeleteConfirm=true;
+            if(!valid || state.sceneImmersive)ImGui::EndDisabled();
+            ImGui::SameLine();
+            if(!valid || state.sceneImmersive)ImGui::BeginDisabled();
+            if(ImGui::Button("DISPOSE",ImVec2(140,44)))state.scenePlace=true;
+            if(!valid || state.sceneImmersive)ImGui::EndDisabled();
+            if(state.sceneDeleteConfirm) {
+                ImGui::TextUnformatted("Delete selected saved scene?");
+                if(ImGui::Button("CONFIRM DELETE")) {
+                    state.sceneDelete=true;
+                    state.sceneDeleteConfirm=false;
                 }
                 ImGui::SameLine();
-                if(ImGui::Button("CANCEL REMOVE"))state.scenePortalDeleteConfirm=false;
+                if(ImGui::Button("CANCEL"))state.sceneDeleteConfirm=false;
             }
-            if(!state.scenePortalSelected)ImGui::EndDisabled();
-            if(!state.sceneAnchorReady)ImGui::EndDisabled();
-            if(!state.sceneStatus.empty()) ImGui::TextWrapped("%s",state.sceneStatus.c_str());
-            ImGui::TextDisabled(state.sceneAnchorReady ? "Aim right controller at tracked floor" :
-                "Awaiting persistent Meta room anchor localization");
+            if(!state.sceneStatus.empty())ImGui::TextWrapped("%s",state.sceneStatus.c_str());
+            ImGui::TextDisabled("Double-click scene to load; DISPOSE then right trigger");
+            if(!state.sceneAnchorReady)
+                ImGui::TextDisabled("Waiting for localized Meta room anchor");
+            if(state.sceneImmersive && ImGui::Button("EXIT SCENE"))state.sceneLeave=true;
             break;
         }
         }

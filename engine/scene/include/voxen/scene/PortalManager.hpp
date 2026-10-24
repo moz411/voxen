@@ -126,6 +126,24 @@ public:
         return p.id;
     }
 
+    // Free 3D placement, stored relative to the localized Meta room anchor.
+    [[nodiscard]] std::optional<InstanceId> placeAtPose(
+        const SceneId& sceneId, const Pose& localPose, float scale=1.f) {
+        if(!localized_ || !gallery_ || !repository_.loadSceneMetadata(sceneId) ||
+           !std::isfinite(scale) || scale<=0.f || scale>10.f)return std::nullopt;
+        Placement p;
+        p.id=newUuid();
+        p.sceneId=sceneId;
+        p.roomLocalPose=compose(inverse(localized_->anchorInLocal),localPose);
+        p.scale=scale;
+        gallery_->placements.push_back(p);
+        if(!repository_.saveGallery(*gallery_)) {
+            gallery_->placements.pop_back();
+            return std::nullopt;
+        }
+        return p.id;
+    }
+
     // Select the closest placed ring to a tracked floor hit (in LOCAL meters).
     [[nodiscard]] std::optional<InstanceId> nearest(
         const FloorHit& hit, float maxDistanceMeters=0.6f) const {
@@ -152,6 +170,19 @@ public:
         it->roomLocalPose=compose(inverse(localized_->anchorInLocal),hit.localPose);
         if(repository_.saveGallery(*gallery_))return true;
         it->roomLocalPose=previous;
+        return false;
+    }
+
+    // Commit a grabbed sphere's final LOCAL pose, persisting relative to Meta anchor.
+    [[nodiscard]] bool moveToPose(const InstanceId& id, const Pose& localPose) {
+        if(!localized_ || !gallery_)return false;
+        auto it=std::find_if(gallery_->placements.begin(),gallery_->placements.end(),
+            [&](const Placement& p){return p.id==id;});
+        if(it==gallery_->placements.end())return false;
+        const Pose old=it->roomLocalPose;
+        it->roomLocalPose=compose(inverse(localized_->anchorInLocal),localPose);
+        if(repository_.saveGallery(*gallery_))return true;
+        it->roomLocalPose=old;
         return false;
     }
 

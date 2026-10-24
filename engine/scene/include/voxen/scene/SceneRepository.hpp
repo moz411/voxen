@@ -76,6 +76,7 @@ public:
         if(!safe(id) || !loadSceneMetadata(id)) return false;
         std::error_code ec;
         const auto rooms=root_/"rooms";
+        if(std::filesystem::exists(rooms,ec) && !ec) {
         for(std::filesystem::directory_iterator it(rooms,ec),end;
             !ec && it!=end;it.increment(ec)) {
             if(!it->is_regular_file(ec) || it->path().extension()!=".vxg")continue;
@@ -89,6 +90,7 @@ public:
                 gallery->placements.end());
             if(gallery->placements.size()!=previous && !saveGallery(*gallery))
                 return false;
+        }
         }
         if(ec)return false;
         std::filesystem::remove_all(root_/"scenes"/id,ec);

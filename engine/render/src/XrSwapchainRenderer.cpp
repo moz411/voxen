@@ -160,22 +160,85 @@ std::vector<voxen::gallery::SceneId> XrSwapchainRenderer::savedSceneIds() const 
                             : std::vector<voxen::gallery::SceneId>{};
 }
 
+void XrSwapchainRenderer::requestGalleryDelete() {
+    if(editingMode() || immersiveSceneActive_ || galleryDragging_ ||
+       pendingGalleryFloorAction_!=0 || !portalManager_ || !portalManager_->localized())return;
+    // Two presses of B within three seconds confirm destructive placement removal.
+    if(!selectedPortalId_)return;
+    const auto now=std::chrono::steady_clock::now();
+    if(now>galleryDeleteArmedUntil_) {
+        galleryDeleteArmedUntil_=now+std::chrono::seconds(3);
+#ifdef VOXEN_WITH_IMGUI
+        imguiCarousel_.sceneStatus="Press B again within 3s to remove sphere";
+#endif
+        return;
+    }
+    galleryDeleteArmedUntil_={};
+    const bool ok=portalManager_->erase(*selectedPortalId_);
+    if(ok) {
+        selectedPortalId_.reset();
+        galleryHoveredId_.reset();
+#ifdef VOXEN_WITH_IMGUI
+        imguiCarousel_.sceneStatus="Gallery sphere removed; saved scene preserved";
+#endif
+    }
+}
+
+void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
+#ifdef VOXEN_WITH_IMGUI
+    if(immersiveSceneActive_)return;
+    if(enabled==imguiCarousel_.editMode) {
+        imguiCarousel_.visible=enabled;
+        return;
+    }
+    if(enabled) {
+        galleryDragging_=false;
+        selectedPortalId_.reset();
+        galleryHoveredId_.reset();
+        galleryDeleteArmedUntil_={};
+        imguiCarousel_=editorSettings_;
+        imguiCarousel_.editMode=true;
+        imguiCarousel_.visible=true;
+        voxens_.swap(editorVoxens_);
+        pendingGalleryFloorAction_=0;
+    } else {
+        editorSettings_=imguiCarousel_;
+        editorSettings_.editMode=true;
+        editorSettings_.visible=true;
+        voxens_.swap(editorVoxens_);
+        imguiCarousel_.editMode=false;
+        imguiCarousel_.visible=false;
+        ambientMusic_.configure(0,false,0.f);
+        mp3Library_.update(-1,false,0.f);
+    }
+    lastVoxenValid_=false;
+    panelAimed_=false;
+    galleryEntryCandidate_.reset();
+    galleryEntryArmed_=true;
+#else
+    (void)enabled;
+#endif
+}
+
 void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
+    if(editingMode() || pendingGalleryFloorAction_!=0 || galleryDragging_)return;
     if(!portalManager_ || !portalManager_->localized()) {
         galleryEntryCandidate_.reset();
         galleryExitSince_={};
         return;
     }
+    // Enter/exit using the headset's actual 3D position relative to a sphere.
+    // Hysteresis prevents repeated scene loads at the boundary.
+    const auto portals=portalManager_->visible();
     if(immersiveSceneActive_) {
-        if(!immersivePortalId_)return; // manually entered scenes use UI exit
-        const auto portals=portalManager_->visible();
+        if(!immersivePortalId_)return; // explicit editing session
         const auto it=std::find_if(portals.begin(),portals.end(),
             [&](const voxen::gallery::VisiblePortal& p){return p.id==*immersivePortalId_;});
-        if(it==portals.end())return;
+        if(it==portals.end()) { leaveImmersiveScene(); return; }
         const auto& p=it->localPose.positionMeters;
-        const float dx=headPosition.x-p[0],dz=headPosition.z-p[2];
-        const float exitRadius=0.70f*std::clamp(it->scale,0.1f,4.f);
-        if(dx*dx+dz*dz<=exitRadius*exitRadius) {
+        const float dx=headPosition.x-p[0],dy=headPosition.y-p[1],dz=headPosition.z-p[2];
+        const float radius=0.30f*std::clamp(it->scale,0.1f,4.f);
+        if(dx*dx+dy*dy+dz*dz<=radius*radius) {
             galleryExitSince_={};
             return;
         }
@@ -184,22 +247,17 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
             galleryExitSince_=now;
             return;
         }
-        if(now-galleryExitSince_>=std::chrono::milliseconds(550))
+        if(now-galleryExitSince_>=std::chrono::milliseconds(400))
             leaveImmersiveScene();
         return;
     }
-    // Head projection onto the tracked floor. Avoid disk I/O and geometry
-    // queries here: portals and their cached metadata are lightweight.
-    const auto portals=portalManager_->visible();
     const voxen::gallery::VisiblePortal* inside=nullptr;
     float bestDistance2=100000.f;
     for(const auto& portal:portals) {
         const auto& p=portal.localPose.positionMeters;
-        const float height=headPosition.y-p[1];
-        if(height<0.6f || height>2.5f)continue;
-        const float dx=headPosition.x-p[0],dz=headPosition.z-p[2];
-        const float d2=dx*dx+dz*dz;
-        const float radius=0.34f*std::clamp(portal.scale,0.1f,4.f);
+        const float dx=headPosition.x-p[0],dy=headPosition.y-p[1],dz=headPosition.z-p[2];
+        const float d2=dx*dx+dy*dy+dz*dz;
+        const float radius=0.25f*std::clamp(portal.scale,0.1f,4.f);
         if(d2<radius*radius && d2<bestDistance2) {
             inside=&portal;
             bestDistance2=d2;
@@ -236,8 +294,17 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
     if(immersiveSceneActive_ || !sceneRepository_) return false;
     // Validate and parse before touching the current live scene.
     auto saved=sceneRepository_->loadScene(id);
-    if(!saved || !voxen::gallery::decodeRuntime(saved->second)) return false;
+    auto immersiveSnapshot=saved ? voxen::gallery::decodeRuntime(saved->second) : std::nullopt;
+    if(!immersiveSnapshot)return false;
+    // Enter with only the requested scene instances resident.
+    std::vector<PlasmaVoxen>{}.swap(voxens_);
     if(!loadSavedScene(id)) return false;
+#ifdef VOXEN_WITH_IMGUI
+    imguiCarousel_.editMode=false;
+    imguiCarousel_.visible=false;
+    imguiCarousel_.musicPlaying=immersiveSnapshot->musicPlaying;
+    panelAimed_=false;
+#endif
     immersiveSceneActive_=true;
     return true;
 }
@@ -255,6 +322,10 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
     immersiveSceneActive_=false;
+#ifdef VOXEN_WITH_IMGUI
+    imguiCarousel_.liquidRoom=false;
+    imguiCarousel_.musicPlaying=false;
+#endif
     immersivePortalId_.reset();
     galleryExitSince_={};
     galleryEntryArmed_=false; // do not re-enter until physically leaving the ring
@@ -274,6 +345,11 @@ bool XrSwapchainRenderer::saveCurrentScene() {
         runtime.voxens.push_back(saved);
     }
 #ifdef VOXEN_WITH_IMGUI
+    runtime.liquidRoom=imguiCarousel_.liquidRoom;
+    runtime.liquidOpacity=imguiCarousel_.liquidOpacity;
+    runtime.wallShaderMode=imguiCarousel_.wallShaderMode;
+    runtime.cycleWallShaders=imguiCarousel_.cycleWallShaders;
+    runtime.wallCycleSeconds=imguiCarousel_.wallCycleSeconds;
     runtime.musicSource=imguiCarousel_.musicSource;
     runtime.musicTrack=imguiCarousel_.musicTrack;
     runtime.musicFile=imguiCarousel_.musicFile;
@@ -349,6 +425,11 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
 #ifdef VOXEN_WITH_IMGUI
+    imguiCarousel_.liquidRoom=snapshot->liquidRoom;
+    imguiCarousel_.liquidOpacity=snapshot->liquidOpacity;
+    imguiCarousel_.wallShaderMode=snapshot->wallShaderMode;
+    imguiCarousel_.cycleWallShaders=snapshot->cycleWallShaders;
+    imguiCarousel_.wallCycleSeconds=snapshot->wallCycleSeconds;
     imguiCarousel_.musicSource=snapshot->musicSource;
     imguiCarousel_.musicTrack=snapshot->musicTrack;
     imguiCarousel_.musicFile=snapshot->musicFile;
@@ -1081,16 +1162,84 @@ void XrSwapchainRenderer::updateControllerInteraction(
 #ifdef VOXEN_WITH_IMGUI
     const bool galleryTriggerEdge=pressed[1] && !lastGalleryTriggerPressed_;
     lastGalleryTriggerPressed_=pressed[1];
-    if(pendingGalleryFloorAction_ && galleryTriggerEdge && tracked[1] && !panelAimed_) {
-        const int action=pendingGalleryFloorAction_;
-        bool ok=false;
-        if(action==1)ok=placeGalleryPortalFromRightController();
-        if(action==2)ok=selectGalleryPortalFromRightController();
-        if(action==3)ok=moveSelectedGalleryPortalFromRightController();
-        imguiCarousel_.sceneStatus=ok?
-            (action==1?"Portal placed":action==2?"Portal selected":"Portal moved"):
-            "No valid tracked floor hit / portal near aim";
-        if(ok)pendingGalleryFloorAction_=0;
+    if(pendingGalleryFloorAction_==1 && galleryTriggerEdge && tracked[1] && !imguiCarousel_.visible) {
+        const auto& pose=poses[1];
+        const auto& q=pose.orientation;
+        const std::array<float,3> forward{
+            -2.f*(q.x*q.z+q.w*q.y),
+            -2.f*(q.y*q.z-q.w*q.x),
+            -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        voxen::gallery::Pose placed{};
+        placed.positionMeters={
+            pose.position.x+0.38f*forward[0],
+            pose.position.y+0.38f*forward[1],
+            pose.position.z+0.38f*forward[2]};
+        const bool valid=portalManager_ && portalManager_->localized() &&
+            selectedSceneIndex_>=0 &&
+            static_cast<std::size_t>(selectedSceneIndex_)<sceneIds_.size();
+        const auto id=valid?portalManager_->placeAtPose(sceneIds_[selectedSceneIndex_],placed):
+            std::optional<voxen::gallery::InstanceId>{};
+        if(id) {
+            selectedPortalId_=*id;
+            pendingGalleryFloorAction_=0;
+            imguiCarousel_.sceneStatus="Static Voxen placed";
+        } else imguiCarousel_.sceneStatus="Placement failed: room anchor or scene unavailable";
+    }
+#endif
+#ifdef VOXEN_WITH_IMGUI
+    // Gallery right-hand ray: trigger grabs a sphere, moving controller drags it,
+    // releasing trigger persists the final pose relative to the Meta room anchor.
+    if(!editingMode() && !immersiveSceneActive_ && pendingGalleryFloorAction_==0 &&
+       portalManager_ && portalManager_->localized() && tracked[1]) {
+        const auto& hand=poses[1];
+        const auto& q=hand.orientation;
+        const std::array<float,3> forward{
+            -2.f*(q.x*q.z+q.w*q.y),
+            -2.f*(q.y*q.z-q.w*q.x),
+            -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        if(galleryDragging_) {
+            galleryDraggedPose_.positionMeters={
+                hand.position.x+galleryGrabDistance_*forward[0],
+                hand.position.y+galleryGrabDistance_*forward[1],
+                hand.position.z+galleryGrabDistance_*forward[2]};
+            if(!pressed[1]) {
+                const bool saved=selectedPortalId_ &&
+                    portalManager_->moveToPose(*selectedPortalId_,galleryDraggedPose_);
+                galleryDragging_=false;
+                imguiCarousel_.sceneStatus=saved?"Sphere moved and gallery saved":
+                                                  "Move failed: gallery unchanged";
+            }
+        } else {
+            galleryHoveredId_.reset();
+            float nearest=10.f;
+            for(const auto& portal:portalManager_->visible()) {
+                const auto& p=portal.localPose.positionMeters;
+                const float dx=p[0]-hand.position.x;
+                const float dy=p[1]-hand.position.y;
+                const float dz=p[2]-hand.position.z;
+                const float t=dx*forward[0]+dy*forward[1]+dz*forward[2];
+                if(t<0.08f || t>nearest)continue;
+                const float miss2=dx*dx+dy*dy+dz*dz-t*t;
+                const float radius=0.125f*std::clamp(portal.scale,0.1f,4.f);
+                if(miss2<=radius*radius*2.25f) {
+                    nearest=t;
+                    galleryHoveredId_=portal.id;
+                }
+            }
+            if(galleryTriggerEdge && galleryHoveredId_) {
+                selectedPortalId_=galleryHoveredId_;
+                galleryGrabDistance_=nearest;
+                galleryDraggedPose_.positionMeters={
+                    hand.position.x+nearest*forward[0],
+                    hand.position.y+nearest*forward[1],
+                    hand.position.z+nearest*forward[2]};
+                galleryDragging_=true;
+                galleryDeleteArmedUntil_={};
+                imguiCarousel_.sceneStatus="Moving sphere; release trigger to save, B twice to delete";
+            }
+        }
+    } else if(galleryDragging_ && !pressed[1]) {
+        galleryDragging_=false;
     }
 #endif
     if(tracked[0]) {
@@ -1103,7 +1252,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
     }
 #ifdef VOXEN_WITH_IMGUI
     if(tracked[1] && pressed[1] && pendingGalleryFloorAction_==0 &&
-       imguiCarousel_.voxenPaintEnabled && !panelAimed_){
+       imguiCarousel_.editMode && imguiCarousel_.voxenPaintEnabled && !panelAimed_){
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         const std::array<float,3> dir{
@@ -1210,7 +1359,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     showSceneMesh=imguiCarousel_.showSceneMesh;
     sceneOcclusion=imguiCarousel_.sceneOcclusion;
     sceneDepthBias=std::clamp(imguiCarousel_.sceneDepthBias,0.f,0.01f);
-    liquidEnabled=imguiCarousel_.liquidRoom;
+    liquidEnabled=imguiCarousel_.liquidRoom && (editingMode() || immersiveSceneActive_);
     liquidOpacity=std::clamp(imguiCarousel_.liquidOpacity,0.0f,0.6f);
     maxLiquidWalls=std::clamp(imguiCarousel_.maxLiquidWalls,1,8);
     includeFloorCeiling=imguiCarousel_.includeFloorCeiling;
@@ -1360,42 +1509,45 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(constants),&constants);
         vkCmdDraw(commandBuffer_,meshWireVertexCount_,1,0,0);
     }
-    // Draw at most 64 lightweight room-local rings. No saved scene payloads
-    // or per-portal Vulkan resources are loaded in gallery mode.
-    if(!immersiveSceneActive_ && galleryPortalPipeline_!=VK_NULL_HANDLE && portalManager_) {
+    // Saved scene instances are static 3D Voxen, not floor rings.
+    if(!immersiveSceneActive_ && !editingMode() && portalManager_ &&
+       organicSpherePipeline_!=VK_NULL_HANDLE) {
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          organicSpherePipeline_);
         const auto portals=portalManager_->visible();
-        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,galleryPortalPipeline_);
-        const std::size_t budget=std::min<std::size_t>(64,portals.size());
-        for(std::size_t i=0;i<budget;++i) {
-            const auto& portal=portals[i];
-            voxen::scene::EnvironmentSurface quad;
-            quad.center=portal.localPose.positionMeters;
-            quad.center[1]+=0.012f; // avoid z-fighting with tracked floor
-            quad.orientation=portal.localPose.orientationXyzw;
-            const bool selected=selectedPortalId_ && *selectedPortalId_==portal.id;
-            const float radius=(selected?0.52f:0.45f)*std::clamp(portal.scale,0.1f,4.f);
-            quad.halfExtents={radius,radius};
-            const Mat4 mvp=multiply(projView,surfaceModel(quad));
-            ProceduralPushConstants pc{mvp,{seconds,float(i)*0.17f,selected?1.f:0.f,0.92f}};
+        const auto count=std::min<std::size_t>(portals.size(),64);
+        for(std::size_t i=0;i<count;++i) {
+            const auto& p=portals[i];
+            const auto& xyz=(galleryDragging_ && selectedPortalId_ && p.id==*selectedPortalId_)
+                ? galleryDraggedPose_.positionMeters : p.localPose.positionMeters;
+            const float radius=0.125f*std::clamp(p.scale,0.1f,4.f);
+            const Mat4 mvp=multiply(projView,
+                modelMatrix(xyz[0],xyz[1],radius*2.f,xyz[2],0.f));
+            const auto preview=scenePreviewCache_.find(p.sceneId);
+            const float preset=preview==scenePreviewCache_.end()?4.f:
+                float(4u+preview->second.materialPreset%4u);
+            const float selected=(selectedPortalId_ && p.id==*selectedPortalId_) ? 1.5f : 1.f;
+            ProceduralPushConstants pc{mvp,{seconds,selected,preset,0.5f}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,sizeof(pc),&pc);
-            vkCmdDraw(commandBuffer_,6,1,0,0);
-            // Floating miniature: metadata-only hologram, no per-scene mesh.
-            const auto preview=scenePreviewCache_.find(portal.sceneId);
-            if(preview!=scenePreviewCache_.end()) {
-                quad.center[1]+=0.34f+0.035f*std::sin(seconds*1.4f+float(i));
-                const float previewRadius=0.22f*std::clamp(portal.scale,0.5f,2.f);
-                quad.halfExtents={previewRadius,previewRadius};
-                const Mat4 previewMvp=multiply(projView,surfaceModel(quad));
-                const float preset=static_cast<float>(preview->second.materialPreset%8u);
-                ProceduralPushConstants proxyPc{previewMvp,
-                    {seconds,float(i)*0.17f,2.f+preset,0.82f}};
-                vkCmdPushConstants(commandBuffer_,pipelineLayout_,
-                    VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
-                    0,sizeof(proxyPc),&proxyPc);
-                vkCmdDraw(commandBuffer_,6,1,0,0);
-            }
+            vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
+        }
+        // DISPOSE preview follows the right controller until trigger release.
+        if(pendingGalleryFloorAction_==1 && controllerTracked_[1]) {
+            const auto& pose=controllerPoses_[1];
+            const auto& q=pose.orientation;
+            const float dx=-2.f*(q.x*q.z+q.w*q.y);
+            const float dy=-2.f*(q.y*q.z-q.w*q.x);
+            const float dz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
+            const Mat4 mvp=multiply(projView,modelMatrix(
+                pose.position.x+0.38f*dx,pose.position.y+0.38f*dy,
+                0.25f,pose.position.z+0.38f*dz,0.f));
+            ProceduralPushConstants pc{mvp,{seconds,1.f,4.f,0.5f}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
         }
     }
     // Gallery hands are tracked for pinches and UI interaction, but no
@@ -1436,24 +1588,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         };
         for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
-        if(imguiCarousel_.voxenPaintEnabled && controllerTracked_[1] && !panelAimed_){
-            const auto& pose=controllerPoses_[1];
-            const auto& q=pose.orientation;
-            const std::array<float,3> dir{
-                -2.f*(q.x*q.z+q.w*q.y),
-                -2.f*(q.y*q.z-q.w*q.x),
-                -(1.f-2.f*(q.x*q.x+q.y*q.y))};
-            PlasmaVoxen tip;
-            tip.preset=imguiCarousel_.voxenPreset;
-            tip.position={pose.position.x+0.17f*dir[0],
-                          pose.position.y+0.17f*dir[1],
-                          pose.position.z+0.17f*dir[2]};
-            tip.scale=imguiCarousel_.voxenScale;
-            tip.hue=imguiCarousel_.voxenHue;
-            tip.density=imguiCarousel_.voxenDensity;
-            tip.speed=imguiCarousel_.voxenSpeed;
-            paintPlasma(tip);
-        }
+        // No default Voxen attached to the controller in editing mode.
+
 #endif
     }
 #ifdef VOXEN_WITH_IMGUI
@@ -1806,7 +1942,7 @@ void XrSwapchainRenderer::render(
         voxen::ui::drawCarousel(imguiCarousel_);
         if(imguiCarousel_.sceneSave) {
             imguiCarousel_.sceneSave=false;
-            imguiCarousel_.sceneStatus=saveCurrentScene()?"Scene saved":"Save failed";
+            imguiCarousel_.sceneStatus=saveCurrentScene()?"Scene saved - DISPOSE available":"Save failed";
         }
         imguiCarousel_.savedSceneIds=sceneIds_;
         if(imguiCarousel_.sceneDelete) {
@@ -1837,7 +1973,10 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.scenePlace=false;
             selectedSceneIndex_=imguiCarousel_.selectedScene;
             pendingGalleryFloorAction_=1;
-            imguiCarousel_.sceneStatus="Aim at tracked floor and press trigger to place";
+            lastGalleryTriggerPressed_=true; // Require release after clicking DISPOSE.
+            if(immersiveSceneActive_)leaveImmersiveScene();
+            setEditingMode(false);
+            imguiCarousel_.sceneStatus="GALLERY: move right controller, trigger to place";
         }
         if(imguiCarousel_.scenePortalCancel) {
             imguiCarousel_.scenePortalCancel=false;
@@ -1878,10 +2017,11 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.musicFile=0;
         }
         const bool procedural=imguiCarousel_.musicSource==0;
+        const bool sceneAudio=(editingMode() || immersiveSceneActive_) && imguiCarousel_.musicPlaying;
         ambientMusic_.configure(imguiCarousel_.musicTrack,
-            procedural&&imguiCarousel_.musicPlaying,imguiCarousel_.musicVolume);
+            procedural&&sceneAudio,imguiCarousel_.musicVolume);
         mp3Library_.update(procedural?-1:imguiCarousel_.musicFile,
-            !procedural&&imguiCarousel_.musicPlaying,imguiCarousel_.musicVolume);
+            !procedural&&sceneAudio,imguiCarousel_.musicVolume);
         // Visible cursor proves that ray → panel UV mapping reaches ImGui.
         if(aiming) {
             ImGui::GetForegroundDrawList()->AddCircleFilled(
