@@ -127,6 +127,35 @@ public:
         return p.id;
     }
 
+    // Select the closest placed ring to a tracked floor hit (in LOCAL meters).
+    [[nodiscard]] std::optional<InstanceId> nearest(
+        const FloorHit& hit, float maxDistanceMeters=0.6f) const {
+        if(!localized_ || !gallery_)return std::nullopt;
+        const auto candidates=visible();
+        float best=maxDistanceMeters*maxDistanceMeters;
+        std::optional<InstanceId> found;
+        for(const auto& p:candidates) {
+            const auto& a=p.localPose.positionMeters;
+            const auto& b=hit.localPose.positionMeters;
+            const float dx=a[0]-b[0],dy=a[1]-b[1],dz=a[2]-b[2];
+            const float d2=dx*dx+dy*dy+dz*dz;
+            if(d2<best) {best=d2;found=p.id;}
+        }
+        return found;
+    }
+
+    [[nodiscard]] bool move(const InstanceId& id, const FloorHit& hit) {
+        if(!localized_ || !gallery_)return false;
+        auto it=std::find_if(gallery_->placements.begin(),gallery_->placements.end(),
+            [&](const Placement& p){return p.id==id;});
+        if(it==gallery_->placements.end())return false;
+        const Pose previous=it->roomLocalPose;
+        it->roomLocalPose=compose(inverse(localized_->anchorInLocal),hit.localPose);
+        if(repository_.saveGallery(*gallery_))return true;
+        it->roomLocalPose=previous;
+        return false;
+    }
+
     [[nodiscard]] bool erase(const InstanceId& id) {
         if(!localized_ || !gallery_) return false;
         auto it=std::find_if(gallery_->placements.begin(),gallery_->placements.end(),
