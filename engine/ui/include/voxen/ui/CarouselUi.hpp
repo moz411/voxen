@@ -9,7 +9,8 @@ namespace voxen::ui {
 // UI and XR geometry are intentionally separate: controller rays must be
 // projected into panel-local UVs before forwarding mouse events to ImGui.
 struct CarouselState {
-    int page = 0;
+    int page = 3;
+    bool editMode = false; // Gallery at startup; painting only in edit mode.
     bool sceneSave = false;
     bool sceneLoad = false;
     bool sceneDelete = false;
