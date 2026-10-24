@@ -1278,10 +1278,11 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             quad.center=portal.localPose.positionMeters;
             quad.center[1]+=0.012f; // avoid z-fighting with tracked floor
             quad.orientation=portal.localPose.orientationXyzw;
-            const float radius=0.45f*std::clamp(portal.scale,0.1f,4.f);
+            const bool selected=selectedPortalId_ && *selectedPortalId_==portal.id;
+            const float radius=(selected?0.52f:0.45f)*std::clamp(portal.scale,0.1f,4.f);
             quad.halfExtents={radius,radius};
             const Mat4 mvp=multiply(projView,surfaceModel(quad));
-            ProceduralPushConstants pc{mvp,{seconds,float(i)*0.17f,0.f,0.92f}};
+            ProceduralPushConstants pc{mvp,{seconds,float(i)*0.17f,selected?1.f:0.f,0.92f}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,sizeof(pc),&pc);
