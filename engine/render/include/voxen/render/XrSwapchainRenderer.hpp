@@ -66,14 +66,14 @@ public:
     bool enterImmersiveScene(const voxen::gallery::SceneId& id);
     bool leaveImmersiveScene();
     [[nodiscard]] std::vector<voxen::gallery::SceneId> savedSceneIds() const;
-    // Left controller MENU toggles editing; gallery never shows the carousel.
-    void toggleUiVisibility() noexcept {
+    // Left controller MENU switches between gallery and the private editor.
+    void toggleUiVisibility() noexcept { setEditingMode(!editingMode()); }
+    void setEditingMode(bool enabled) noexcept;
+    [[nodiscard]] bool editingMode() const noexcept {
 #ifdef VOXEN_WITH_IMGUI
-        if(immersiveSceneActive_)return;
-        imguiCarousel_.editMode=!imguiCarousel_.editMode;
-        imguiCarousel_.visible=imguiCarousel_.editMode;
-        panelAimed_=false;
-        if(imguiCarousel_.editMode)pendingGalleryFloorAction_=0;
+        return imguiCarousel_.editMode;
+#else
+        return false;
 #endif
     }
 #ifdef __ANDROID__
@@ -248,6 +248,10 @@ private:
         int lodLevel=-1; // Chosen once per stereo frame using both eye positions
     };
     std::vector<PlasmaVoxen> voxens_;
+    std::vector<PlasmaVoxen> editorVoxens_; // Suspended while gallery/immersion runs.
+#ifdef VOXEN_WITH_IMGUI
+    voxen::ui::CarouselState editorSettings_{};
+#endif
     std::unique_ptr<voxen::gallery::SceneRepository> sceneRepository_;
     std::unique_ptr<voxen::gallery::PortalManager> portalManager_;
     // Preview/scene mode; global Vulkan pipelines are shared, not freed here.
