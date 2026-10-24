@@ -57,6 +57,9 @@ public:
     void setLocalizedGalleryRoom(std::optional<voxen::gallery::LocalizedRoom> room);
     [[nodiscard]] std::vector<voxen::gallery::VisiblePortal> visibleGalleryPortals() const;
     bool placeGalleryPortalFromRightController();
+    bool selectGalleryPortalFromRightController();
+    bool moveSelectedGalleryPortalFromRightController();
+    bool deleteSelectedGalleryPortal();
     bool enterImmersiveScene(const voxen::gallery::SceneId& id);
     bool leaveImmersiveScene();
     [[nodiscard]] std::vector<voxen::gallery::SceneId> savedSceneIds() const;
@@ -202,6 +205,7 @@ private:
     std::unique_ptr<voxen::gallery::PortalManager> portalManager_;
     // Preview/scene mode; global Vulkan pipelines are shared, not freed here.
     bool immersiveSceneActive_ = false;
+    std::optional<voxen::gallery::InstanceId> selectedPortalId_;
     std::vector<voxen::gallery::SceneId> sceneIds_;
     std::vector<std::string> sceneLabels_;
     void refreshSceneIndex();
