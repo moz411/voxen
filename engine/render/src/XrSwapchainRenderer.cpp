@@ -1251,8 +1251,31 @@ void XrSwapchainRenderer::updateControllerInteraction(
         }
     }
 #ifdef VOXEN_WITH_IMGUI
-    if(tracked[1] && pressed[1] && pendingGalleryFloorAction_==0 &&
-       imguiCarousel_.editMode && imguiCarousel_.voxenPaintEnabled && !panelAimed_){
+    // In editing mode the right controller holds a live preview.
+    // Thumbstick Y selects among 8 presets; X changes size, both debounced.
+    if(editingMode() && !immersiveSceneActive_) {
+        const float x=thumbsticks[1].x;
+        const float y=thumbsticks[1].y;
+        if(std::fabs(y)<0.30f)editorPresetStickLatched_=false;
+        if(!editorPresetStickLatched_ && std::fabs(y)>0.72f) {
+            imguiCarousel_.voxenPreset=(imguiCarousel_.voxenPreset+(y>0.f?1:7))%8;
+            editorPresetStickLatched_=true;
+        }
+        if(std::fabs(x)<0.30f)editorScaleStickLatched_=false;
+        if(!editorScaleStickLatched_ && std::fabs(x)>0.72f) {
+            imguiCarousel_.voxenScale=std::clamp(
+                imguiCarousel_.voxenScale*(x>0.f?1.20f:1.f/1.20f),0.06f,0.60f);
+            editorScaleStickLatched_=true;
+        }
+    } else {
+        editorPresetStickLatched_=false;
+        editorScaleStickLatched_=false;
+    }
+    // A single trigger click places exactly one instance. Never place when
+    // aiming at the carousel, or during gallery/immersive interactions.
+    if(tracked[1] && galleryTriggerEdge && pendingGalleryFloorAction_==0 &&
+       editingMode() && !immersiveSceneActive_ &&
+       imguiCarousel_.voxenPaintEnabled && !panelAimed_) {
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         const std::array<float,3> dir{
@@ -1261,31 +1284,27 @@ void XrSwapchainRenderer::updateControllerInteraction(
             -(1.f-2.f*(q.x*q.x+q.y*q.y))};
         PlasmaVoxen v;
         v.preset=imguiCarousel_.voxenPreset;
-        v.position={pose.position.x+0.17f*dir[0],
-                    pose.position.y+0.17f*dir[1],
-                    pose.position.z+0.17f*dir[2]};
-        v.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.6f);
+        v.position={pose.position.x+0.25f*dir[0],
+                    pose.position.y+0.25f*dir[1],
+                    pose.position.z+0.25f*dir[2]};
+        v.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.60f);
         v.hue=imguiCarousel_.voxenHue;
         v.density=imguiCarousel_.voxenDensity;
-        v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,3) :
+        v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,8) :
             std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
         v.speed=imguiCarousel_.voxenSpeed;
-        const float dx=v.position[0]-lastVoxenPos_[0];
-        const float dy=v.position[1]-lastVoxenPos_[1];
-        const float dz=v.position[2]-lastVoxenPos_[2];
-        if(!lastVoxenValid_ || dx*dx+dy*dy+dz*dz >= v.scale*v.scale*0.45f){
-            if(voxens_.size()<256){
-                v.velocity={dir[0]*imguiCarousel_.motionSpeed,dir[1]*imguiCarousel_.motionSpeed,dir[2]*imguiCarousel_.motionSpeed};
-                voxens_.push_back(v);
+        v.velocity={dir[0]*imguiCarousel_.motionSpeed,
+                    dir[1]*imguiCarousel_.motionSpeed,
+                    dir[2]*imguiCarousel_.motionSpeed};
+        if(voxens_.size()<256) {
+            voxens_.push_back(v);
 #ifdef __ANDROID__
-                if(v.preset==2) __android_log_print(ANDROID_LOG_INFO,"Voxen","Mandelbulb instance created: total=%zu, scale=%.2f, pos=(%.2f,%.2f,%.2f)",
-                    voxens_.size(),v.scale,v.position[0],v.position[1],v.position[2]);
+            __android_log_print(ANDROID_LOG_INFO,"Voxen",
+                "Editor placed preset=%d scale=%.2f total=%zu",
+                v.preset,v.scale,voxens_.size());
 #endif
-            }
-            lastVoxenPos_=v.position;
-            lastVoxenValid_=true;
         }
-    }else if(!pressed[1])lastVoxenValid_=false;
+    }
 #endif
 }
 
@@ -1588,7 +1607,29 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         };
         for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
-        // No default Voxen attached to the controller in editing mode.
+        // Live selected Voxen preview, not part of the saved scene.
+        if(editingMode() && imguiCarousel_.voxenPaintEnabled &&
+           controllerTracked_[1] && !panelAimed_) {
+            const auto& pose=controllerPoses_[1];
+            const auto& q=pose.orientation;
+            const float dx=-2.f*(q.x*q.z+q.w*q.y);
+            const float dy=-2.f*(q.y*q.z-q.w*q.x);
+            const float dz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
+            PlasmaVoxen preview;
+            preview.preset=imguiCarousel_.voxenPreset;
+            preview.position={pose.position.x+0.25f*dx,
+                              pose.position.y+0.25f*dy,
+                              pose.position.z+0.25f*dz};
+            preview.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.60f);
+            preview.hue=imguiCarousel_.voxenHue;
+            preview.density=imguiCarousel_.voxenDensity;
+            preview.speed=imguiCarousel_.voxenSpeed;
+            preview.material=preview.preset>=4 ?
+                std::clamp(imguiCarousel_.voxenMaterial,0,8) :
+                std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
+            preview.lodLevel=1; // Stable medium LOD for Mandelbulb preview.
+            paintPlasma(preview);
+        }
 
 #endif
     }
