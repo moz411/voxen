@@ -452,8 +452,8 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
             aimPoses[hand] = location.pose;
         }
     }
-    if(renderer.carouselVisible())
-        renderer.updateControllerInteraction(aimPoses, aimTracked, selectionPressed_, thumbstickValues_);
+    // Always update controller tracking: painting and DISPOSE also work with UI hidden.
+    renderer.updateControllerInteraction(aimPoses, aimTracked, selectionPressed_, thumbstickValues_);
     updateHandTracking(renderer,frameState.predictedDisplayTime);
     if(enableScene_) {
         metaScene_.refresh(localSpace_,frameState.predictedDisplayTime);
