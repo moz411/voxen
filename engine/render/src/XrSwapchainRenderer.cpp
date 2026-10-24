@@ -602,19 +602,16 @@ static Mat4 meshPoseMatrix(const XrPosef& pose) {
 
 void XrSwapchainRenderer::setSceneMeshes(const std::vector<MeshGeometry>& meshes) {
     if(meshes.empty())return;
-    // Scene mesh geometry is static after Space Setup. Updating its anchor pose
-    // is cheap; rebuilding thousands of triangles and a spatial hash is not.
-    // Rebuild on mesh identity changes, otherwise at most once per second to
-    // account for occasional relocalization drift.
+    // The captured mesh is immutable after Meta Scene discovery. Never rebuild
+    // its world-space collision grid on a timer: that causes a visible periodic
+    // frame-time spike even when no Voxen is being rendered.
+    // The renderer's mesh pose is still refreshed every XR frame.
     const auto& current=meshes.front();
     meshWirePose_=current.pose;
-    const auto now=std::chrono::steady_clock::now();
     if(lastCollisionMeshVertices_==current.vertices &&
-       lastCollisionMeshIndices_==current.indices &&
-       now-lastCollisionMeshBuild_<std::chrono::seconds(1))return;
+       lastCollisionMeshIndices_==current.indices)return;
     lastCollisionMeshVertices_=current.vertices;
     lastCollisionMeshIndices_=current.indices;
-    lastCollisionMeshBuild_=now;
     // Cache world-space triangles for physics; never read transient XR mesh pointers
     // during the simulation. Scene meshes may be absent until capture completes.
     roomCollisionTriangles_.clear();
