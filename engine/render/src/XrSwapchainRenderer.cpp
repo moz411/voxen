@@ -1608,13 +1608,25 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
                 v.position[0]=palm.x+nx*minDistance;
                 v.position[1]=palm.y+ny*minDistance;
                 v.position[2]=palm.z+nz*minDistance;
-                const float normalSpeed=v.velocity[0]*nx+
-                                        v.velocity[1]*ny+v.velocity[2]*nz;
-                if(normalSpeed<0.f) {
-                    const float impulse=(1.f+std::clamp(bounce,0.f,1.f))*normalSpeed;
+                // Reflect relative to the moving palm, not a static obstacle.
+                // A fast palm can now impart momentum to an otherwise still voxen.
+                const float relativeNormalSpeed=
+                    (v.velocity[0]-hand.palmVelocity.x)*nx+
+                    (v.velocity[1]-hand.palmVelocity.y)*ny+
+                    (v.velocity[2]-hand.palmVelocity.z)*nz;
+                if(relativeNormalSpeed<0.f) {
+                    const float impulse=(1.f+std::clamp(bounce,0.f,1.f))*
+                                        relativeNormalSpeed;
                     v.velocity[0]-=impulse*nx;
                     v.velocity[1]-=impulse*ny;
                     v.velocity[2]-=impulse*nz;
+                    const float speed=std::sqrt(v.velocity[0]*v.velocity[0]+
+                                                v.velocity[1]*v.velocity[1]+
+                                                v.velocity[2]*v.velocity[2]);
+                    if(speed>4.f) {
+                        const float limit=4.f/speed;
+                        for(float& component:v.velocity)component*=limit;
+                    }
                 }
             }
         }
