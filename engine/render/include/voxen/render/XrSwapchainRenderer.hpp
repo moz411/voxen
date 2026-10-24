@@ -204,6 +204,7 @@ private:
     VkPipeline soundDemoPipeline_ = VK_NULL_HANDLE;
     VkPipeline midnightRidePipeline_ = VK_NULL_HANDLE;
     VkPipeline seascapePipeline_ = VK_NULL_HANDLE;
+    VkPipeline octgramsPipeline_ = VK_NULL_HANDLE;
     VkPipeline mandelbrotZoomPipeline_ = VK_NULL_HANDLE;
     VkBuffer meshWireBuffer_ = VK_NULL_HANDLE;
     VkBuffer meshDepthBuffer_ = VK_NULL_HANDLE;
