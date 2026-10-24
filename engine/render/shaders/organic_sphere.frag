@@ -79,9 +79,10 @@ void main(){
         vec3 q=p*7.0;
         vec3 cell=floor(q);
         float nearest=10.0;
-        for(int x=-1;x<=1;++x)
-        for(int y=-1;y<=1;++y)
-        for(int z=-1;z<=1;++z){
+        // Eight neighboring cells only: mobile GPU budget.
+        for(int x=0;x<=1;++x)
+        for(int y=0;y<=1;++y)
+        for(int z=0;z<=1;++z){
             vec3 c=cell+vec3(x,y,z);
             vec3 seed=0.5+0.35*sin(vec3(
                 dot(c,vec3(13.1,17.7,29.3)),
