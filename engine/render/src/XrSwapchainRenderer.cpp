@@ -1000,6 +1000,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
     uiTrigger_[0]=pressed[0];
     uiTrigger_[1]=pressed[1];
 #endif
+#ifdef VOXEN_WITH_IMGUI
     const bool galleryTriggerEdge=pressed[1] && !lastGalleryTriggerPressed_;
     lastGalleryTriggerPressed_=pressed[1];
     if(pendingGalleryFloorAction_ && galleryTriggerEdge && tracked[1] && !panelAimed_) {
@@ -1013,6 +1014,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
             "No valid tracked floor hit / portal near aim";
         if(ok)pendingGalleryFloorAction_=0;
     }
+#endif
     if(tracked[0]) {
         float axis=thumbsticks[0].x;
         if(std::fabs(axis)<0.3f)nativeMenuStickLatched_=false;
