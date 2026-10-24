@@ -101,7 +101,6 @@ public:
         std::vector<VisiblePortal> out;
         if (!localized_ || !gallery_) return out;
         for(const auto& p:gallery_->placements) {
-            if(!repository_.loadSceneMetadata(p.sceneId)) continue;
             out.push_back({p.id,p.sceneId,
                            compose(localized_->anchorInLocal,p.roomLocalPose),p.scale});
         }
