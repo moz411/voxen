@@ -18,6 +18,11 @@ void drawCarousel(CarouselState& state) {
         ImGui::SameLine();
         if (ImGui::Button("NEXT >")) state.page=(state.page+1)%4;
         ImGui::Separator();
+        if(ImGui::Button(state.editMode ? "MODE: EDITION" : "MODE: GALLERY",
+                         ImVec2(220,42)))state.editMode=!state.editMode;
+        ImGui::SameLine();
+        ImGui::TextDisabled(state.editMode ? "Trigger: paint Voxens" : "Trigger: dispose scenes");
+        ImGui::Separator();
         switch(state.page) {
         case 0:
             ImGui::TextUnformatted("VOXENS / PROCEDURAL PRESETS");
@@ -124,7 +129,9 @@ void drawCarousel(CarouselState& state) {
                 ImGui::PopID();
             }
             ImGui::EndChild();
+            if(!state.editMode)ImGui::BeginDisabled();
             if(ImGui::Button("SAVE",ImVec2(140,44)))state.sceneSave=true;
+            if(!state.editMode)ImGui::EndDisabled();
             ImGui::SameLine();
             const bool valid=state.selectedScene>=0 &&
                 static_cast<std::size_t>(state.selectedScene)<state.savedSceneIds.size();
@@ -132,9 +139,9 @@ void drawCarousel(CarouselState& state) {
             if(ImGui::Button("DELETE",ImVec2(140,44)))state.sceneDeleteConfirm=true;
             if(!valid || state.sceneImmersive)ImGui::EndDisabled();
             ImGui::SameLine();
-            if(!valid || state.sceneImmersive)ImGui::BeginDisabled();
+            if(!valid || state.sceneImmersive || state.editMode)ImGui::BeginDisabled();
             if(ImGui::Button("DISPOSE",ImVec2(140,44)))state.scenePlace=true;
-            if(!valid || state.sceneImmersive)ImGui::EndDisabled();
+            if(!valid || state.sceneImmersive || state.editMode)ImGui::EndDisabled();
             if(state.sceneDeleteConfirm) {
                 ImGui::TextUnformatted("Delete selected saved scene?");
                 if(ImGui::Button("CONFIRM DELETE")) {
