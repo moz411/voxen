@@ -29,7 +29,7 @@ vec3 surface(vec2 uv,float time){
     vec3 right=normalize(cross(helper,tangent));
     vec3 up=normalize(cross(tangent,right));
     float a=uv.x*2.0*PI;
-    float taper=smoothstep(0.0,0.12,t)*smoothstep(1.0,0.88,t);
+    float taper=smoothstep(0.0,0.12,t)*(1.0-smoothstep(0.88,1.0,t));
     float r=radius(t,time)*max(0.07,taper);
     float ripple=1.0+0.10*sin(t*75.0-time*4.0);
     return c+r*ripple*(right*cos(a)+up*sin(a));
