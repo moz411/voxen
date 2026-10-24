@@ -127,6 +127,13 @@ public:
         }
         lastHandSample_=now;
     }
+    void setHandUiPinch(bool pressed) noexcept {
+#ifdef VOXEN_WITH_IMGUI
+        uiTrigger_[1]=pressed;
+#else
+        (void)pressed;
+#endif
+    }
     void updateControllerInteraction(const std::array<XrPosef, 2>& poses,
                                      const std::array<bool, 2>& tracked,
                                      const std::array<bool, 2>& pressed,
