@@ -212,6 +212,19 @@ bool XrSwapchainRenderer::saveCurrentScene() {
     return true;
 }
 
+bool XrSwapchainRenderer::deleteSavedScene(const voxen::gallery::SceneId& id) {
+    if(!sceneRepository_ || immersiveSceneActive_ ||
+       !sceneRepository_->deleteScene(id))return false;
+    refreshSceneIndex();
+    if(portalManager_)portalManager_->reloadGallery();
+    selectedSceneIndex_=sceneIds_.empty()?0:
+        std::min(selectedSceneIndex_,static_cast<int>(sceneIds_.size()-1));
+#ifdef VOXEN_WITH_IMGUI
+    imguiCarousel_.selectedScene=selectedSceneIndex_;
+#endif
+    return true;
+}
+
 bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     if(!sceneRepository_) return false;
     auto stored=sceneRepository_->loadScene(id);
@@ -1611,6 +1624,17 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.sceneStatus=saveCurrentScene()?"Scene saved":"Save failed";
         }
         imguiCarousel_.savedSceneIds=sceneIds_;
+        if(imguiCarousel_.sceneDelete) {
+            imguiCarousel_.sceneDelete=false;
+            const int index=imguiCarousel_.selectedScene;
+            const bool valid=index>=0 &&
+                static_cast<std::size_t>(index)<sceneIds_.size();
+            const auto id=valid?sceneIds_[index]:voxen::gallery::SceneId{};
+            imguiCarousel_.sceneStatus=valid && deleteSavedScene(id)?
+                "Scene and its portals deleted":"Scene deletion failed";
+            imguiCarousel_.savedSceneIds=sceneIds_;
+            imguiCarousel_.savedSceneLabels=sceneLabels_;
+        }
         if(imguiCarousel_.sceneEnter) {
             imguiCarousel_.sceneEnter=false;
             const int index=imguiCarousel_.selectedScene;
