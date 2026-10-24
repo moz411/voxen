@@ -1454,7 +1454,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         if(immersiveSceneActive_ || imguiCarousel_.editMode)
             for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
-        if(imguiCarousel_.editMode && imguiCarousel_.voxenPaintEnabled && controllerTracked_[1] && !panelAimed_ && !imguiCarousel_.visible){
+        if(imguiCarousel_.editMode && imguiCarousel_.voxenPaintEnabled && controllerTracked_[1] && !panelAimed_ && !uiTrigger_[1]){
             const auto& pose=controllerPoses_[1];
             const auto& q=pose.orientation;
             const std::array<float,3> dir{
