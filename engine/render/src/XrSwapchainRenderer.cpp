@@ -166,16 +166,18 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         galleryExitSince_={};
         return;
     }
+    // Enter/exit using the headset's actual 3D position relative to a sphere.
+    // Hysteresis prevents repeated scene loads at the boundary.
+    const auto portals=portalManager_->visible();
     if(immersiveSceneActive_) {
-        if(!immersivePortalId_)return; // manually entered scenes use UI exit
-        const auto portals=portalManager_->visible();
+        if(!immersivePortalId_)return; // explicit editing session
         const auto it=std::find_if(portals.begin(),portals.end(),
             [&](const voxen::gallery::VisiblePortal& p){return p.id==*immersivePortalId_;});
-        if(it==portals.end())return;
+        if(it==portals.end()) { leaveImmersiveScene(); return; }
         const auto& p=it->localPose.positionMeters;
-        const float dx=headPosition.x-p[0],dz=headPosition.z-p[2];
-        const float exitRadius=0.70f*std::clamp(it->scale,0.1f,4.f);
-        if(dx*dx+dz*dz<=exitRadius*exitRadius) {
+        const float dx=headPosition.x-p[0],dy=headPosition.y-p[1],dz=headPosition.z-p[2];
+        const float radius=0.50f*std::clamp(it->scale,0.1f,4.f);
+        if(dx*dx+dy*dy+dz*dz<=radius*radius) {
             galleryExitSince_={};
             return;
         }
@@ -184,22 +186,17 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
             galleryExitSince_=now;
             return;
         }
-        if(now-galleryExitSince_>=std::chrono::milliseconds(550))
+        if(now-galleryExitSince_>=std::chrono::milliseconds(400))
             leaveImmersiveScene();
         return;
     }
-    // Head projection onto the tracked floor. Avoid disk I/O and geometry
-    // queries here: portals and their cached metadata are lightweight.
-    const auto portals=portalManager_->visible();
     const voxen::gallery::VisiblePortal* inside=nullptr;
     float bestDistance2=100000.f;
     for(const auto& portal:portals) {
         const auto& p=portal.localPose.positionMeters;
-        const float height=headPosition.y-p[1];
-        if(height<0.6f || height>2.5f)continue;
-        const float dx=headPosition.x-p[0],dz=headPosition.z-p[2];
-        const float d2=dx*dx+dz*dz;
-        const float radius=0.34f*std::clamp(portal.scale,0.1f,4.f);
+        const float dx=headPosition.x-p[0],dy=headPosition.y-p[1],dz=headPosition.z-p[2];
+        const float d2=dx*dx+dy*dy+dz*dz;
+        const float radius=0.42f*std::clamp(portal.scale,0.1f,4.f);
         if(d2<radius*radius && d2<bestDistance2) {
             inside=&portal;
             bestDistance2=d2;
@@ -237,6 +234,8 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
     // Validate and parse before touching the current live scene.
     auto saved=sceneRepository_->loadScene(id);
     if(!saved || !voxen::gallery::decodeRuntime(saved->second)) return false;
+    // Enter with only the requested scene instances resident.
+    std::vector<PlasmaVoxen>{}.swap(voxens_);
     if(!loadSavedScene(id)) return false;
     immersiveSceneActive_=true;
     return true;
@@ -1382,7 +1381,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         for(std::size_t i=0;i<count;++i) {
             const auto& p=portals[i];
             const auto& xyz=p.localPose.positionMeters;
-            const float radius=0.42f*std::clamp(p.scale,0.1f,4.f);
+            const float radius=0.25f*std::clamp(p.scale,0.1f,4.f);
             const Mat4 mvp=multiply(projView,
                 modelMatrix(xyz[0],xyz[1],radius*2.f,xyz[2],0.f));
             const auto preview=scenePreviewCache_.find(p.sceneId);
@@ -1403,7 +1402,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const float dz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
             const Mat4 mvp=multiply(projView,modelMatrix(
                 pose.position.x+0.38f*dx,pose.position.y+0.38f*dy,
-                0.84f,pose.position.z+0.38f*dz,0.f));
+                0.50f,pose.position.z+0.38f*dz,0.f));
             ProceduralPushConstants pc{mvp,{seconds,1.f,4.f,0.5f}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -1850,7 +1849,8 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.scenePlace=false;
             selectedSceneIndex_=imguiCarousel_.selectedScene;
             pendingGalleryFloorAction_=1;
-            imguiCarousel_.sceneStatus="Move right controller; trigger to place static Voxen";
+            if(immersiveSceneActive_)leaveImmersiveScene();
+            imguiCarousel_.sceneStatus="GALLERY: move right controller, trigger to place";
         }
         if(imguiCarousel_.scenePortalCancel) {
             imguiCarousel_.scenePortalCancel=false;
