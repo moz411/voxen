@@ -1407,6 +1407,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         for(const auto& hand:holographicHands_) {
             if(!hand.tracked)continue;
             for(std::size_t j=0;j<hand.joints.size();++j) {
+                // Keep the Quest GPU cost bounded: palm plus fingertips.
+                if(j!=XR_HAND_JOINT_PALM_EXT && j!=XR_HAND_JOINT_THUMB_TIP_EXT &&
+                   j!=XR_HAND_JOINT_INDEX_TIP_EXT && j!=XR_HAND_JOINT_MIDDLE_TIP_EXT &&
+                   j!=XR_HAND_JOINT_RING_TIP_EXT && j!=XR_HAND_JOINT_LITTLE_TIP_EXT)continue;
                 if(j!=XR_HAND_JOINT_PALM_EXT && hand.radii[j]<=0.f)continue;
                 const auto& p=hand.joints[j];
                 const float radius=j==XR_HAND_JOINT_PALM_EXT ? 0.09f :
