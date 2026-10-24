@@ -132,9 +132,9 @@ void drawCarousel(CarouselState& state) {
             if(ImGui::Button("DELETE",ImVec2(140,44)))state.sceneDeleteConfirm=true;
             if(!valid || state.sceneImmersive)ImGui::EndDisabled();
             ImGui::SameLine();
-            if(!valid || !state.sceneAnchorReady || state.sceneImmersive)ImGui::BeginDisabled();
+            if(!valid || state.sceneImmersive)ImGui::BeginDisabled();
             if(ImGui::Button("DISPOSE",ImVec2(140,44)))state.scenePlace=true;
-            if(!valid || !state.sceneAnchorReady || state.sceneImmersive)ImGui::EndDisabled();
+            if(!valid || state.sceneImmersive)ImGui::EndDisabled();
             if(state.sceneDeleteConfirm) {
                 ImGui::TextUnformatted("Delete selected saved scene?");
                 if(ImGui::Button("CONFIRM DELETE")) {
