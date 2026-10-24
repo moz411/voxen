@@ -108,23 +108,49 @@ std::vector<voxen::gallery::VisiblePortal> XrSwapchainRenderer::visibleGalleryPo
                           : std::vector<voxen::gallery::VisiblePortal>{};
 }
 
-bool XrSwapchainRenderer::placeGalleryPortalFromRightController() {
-    if(!portalManager_ || !portalManager_->localized() ||
-       !controllerTracked_[1] || sceneIds_.empty() ||
-       selectedSceneIndex_<0 ||
-       static_cast<std::size_t>(selectedSceneIndex_)>=sceneIds_.size())
-        return false;
+std::optional<voxen::gallery::FloorHit> XrSwapchainRenderer::galleryFloorHit() const {
+    if(!controllerTracked_[1])return std::nullopt;
     const auto& pose=controllerPoses_[1];
     const auto& q=pose.orientation;
     const std::array<float,3> direction{
         -2.f*(q.x*q.z+q.w*q.y),
         -2.f*(q.y*q.z-q.w*q.x),
         -(1.f-2.f*(q.x*q.x+q.y*q.y))};
-    const auto hit=voxen::gallery::intersectTrackedFloor(
+    return voxen::gallery::intersectTrackedFloor(
         environmentSurfaces_.surfaces(),
         {pose.position.x,pose.position.y,pose.position.z},direction);
-    if(!hit) return false;
-    return portalManager_->place(sceneIds_[selectedSceneIndex_],*hit).has_value();
+}
+
+bool XrSwapchainRenderer::placeGalleryPortalFromRightController() {
+    if(!portalManager_ || !portalManager_->localized() ||
+       selectedSceneIndex_<0 ||
+       static_cast<std::size_t>(selectedSceneIndex_)>=sceneIds_.size())return false;
+    const auto hit=galleryFloorHit();
+    if(!hit)return false;
+    const auto id=portalManager_->place(sceneIds_[selectedSceneIndex_],*hit);
+    if(id)selectedPortalId_=*id;
+    return id.has_value();
+}
+
+bool XrSwapchainRenderer::selectGalleryPortalFromRightController() {
+    if(!portalManager_ || !portalManager_->localized())return false;
+    const auto hit=galleryFloorHit();
+    if(!hit)return false;
+    selectedPortalId_=portalManager_->nearest(*hit);
+    return selectedPortalId_.has_value();
+}
+
+bool XrSwapchainRenderer::moveSelectedGalleryPortalFromRightController() {
+    if(!portalManager_ || !selectedPortalId_)return false;
+    const auto hit=galleryFloorHit();
+    return hit && portalManager_->move(*selectedPortalId_,*hit);
+}
+
+bool XrSwapchainRenderer::deleteSelectedGalleryPortal() {
+    if(!portalManager_ || !selectedPortalId_)return false;
+    if(!portalManager_->erase(*selectedPortalId_))return false;
+    selectedPortalId_.reset();
+    return true;
 }
 
 std::vector<voxen::gallery::SceneId> XrSwapchainRenderer::savedSceneIds() const {
