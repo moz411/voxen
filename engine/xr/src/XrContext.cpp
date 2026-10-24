@@ -114,6 +114,9 @@ void XrContext::createInstance() {
     std::printf("[Voxen] XR_FB_passthrough available: %s\n", passthroughEnabled_ ? "yes" : "no");
 #endif
     if (passthroughEnabled_) extensions.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
+    if(std::any_of(available.begin(),available.end(),[](const auto& e){
+        return std::strcmp(e.extensionName,XR_EXT_HAND_TRACKING_EXTENSION_NAME)==0;
+    }))extensions.push_back(XR_EXT_HAND_TRACKING_EXTENSION_NAME);
     // Scene Model is optional: never prevent startup when spatial data is
     // unavailable or the user has not completed Space Setup.
     const auto has=[&](const char* name) {
