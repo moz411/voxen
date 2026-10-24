@@ -266,13 +266,15 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
     if(immersiveSceneActive_ || !sceneRepository_) return false;
     // Validate and parse before touching the current live scene.
     auto saved=sceneRepository_->loadScene(id);
-    if(!saved || !voxen::gallery::decodeRuntime(saved->second)) return false;
+    auto immersiveSnapshot=saved ? voxen::gallery::decodeRuntime(saved->second) : std::nullopt;
+    if(!immersiveSnapshot)return false;
     // Enter with only the requested scene instances resident.
     std::vector<PlasmaVoxen>{}.swap(voxens_);
     if(!loadSavedScene(id)) return false;
 #ifdef VOXEN_WITH_IMGUI
     imguiCarousel_.editMode=false;
     imguiCarousel_.visible=false;
+    imguiCarousel_.musicPlaying=immersiveSnapshot->musicPlaying;
     panelAimed_=false;
 #endif
     immersiveSceneActive_=true;
@@ -1273,7 +1275,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     showSceneMesh=imguiCarousel_.showSceneMesh;
     sceneOcclusion=imguiCarousel_.sceneOcclusion;
     sceneDepthBias=std::clamp(imguiCarousel_.sceneDepthBias,0.f,0.01f);
-    liquidEnabled=imguiCarousel_.liquidRoom;
+    liquidEnabled=imguiCarousel_.liquidRoom && (editingMode() || immersiveSceneActive_);
     liquidOpacity=std::clamp(imguiCarousel_.liquidOpacity,0.0f,0.6f);
     maxLiquidWalls=std::clamp(imguiCarousel_.maxLiquidWalls,1,8);
     includeFloorCeiling=imguiCarousel_.includeFloorCeiling;
@@ -1945,10 +1947,11 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.musicFile=0;
         }
         const bool procedural=imguiCarousel_.musicSource==0;
+        const bool sceneAudio=(editingMode() || immersiveSceneActive_) && imguiCarousel_.musicPlaying;
         ambientMusic_.configure(imguiCarousel_.musicTrack,
-            procedural&&imguiCarousel_.musicPlaying,imguiCarousel_.musicVolume);
+            procedural&&sceneAudio,imguiCarousel_.musicVolume);
         mp3Library_.update(procedural?-1:imguiCarousel_.musicFile,
-            !procedural&&imguiCarousel_.musicPlaying,imguiCarousel_.musicVolume);
+            !procedural&&sceneAudio,imguiCarousel_.musicVolume);
         // Visible cursor proves that ray → panel UV mapping reaches ImGui.
         if(aiming) {
             ImGui::GetForegroundDrawList()->AddCircleFilled(
