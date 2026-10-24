@@ -86,6 +86,21 @@ public:
     }
     [[nodiscard]] float lastGpuMs() const noexcept { return lastGpuMs_; }
     [[nodiscard]] bool gpuTimingAvailable() const noexcept { return gpuTimestampPool_ != VK_NULL_HANDLE; }
+    [[nodiscard]] bool carouselVisible() const noexcept {
+#ifdef VOXEN_WITH_IMGUI
+        return imguiCarousel_.visible;
+#else
+        return true;
+#endif
+    }
+    struct HolographicHand {
+        bool tracked=false;
+        std::array<XrVector3f,26> joints{};
+        std::array<float,26> radii{};
+    };
+    void setHolographicHands(const std::array<HolographicHand,2>& hands) {
+        holographicHands_=hands;
+    }
     void updateControllerInteraction(const std::array<XrPosef, 2>& poses,
                                      const std::array<bool, 2>& tracked,
                                      const std::array<bool, 2>& pressed,
@@ -213,6 +228,7 @@ private:
     std::chrono::steady_clock::time_point galleryEntrySince_{};
     bool galleryEntryArmed_ = true;
     void updateGalleryWalkIn(const XrVector3f& headPosition);
+    std::array<HolographicHand,2> holographicHands_{};
     std::optional<voxen::gallery::InstanceId> selectedPortalId_;
     int pendingGalleryFloorAction_ = 0; // 1 place, 2 select, 3 move
     bool lastGalleryTriggerPressed_ = false;
