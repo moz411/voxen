@@ -237,6 +237,9 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
     // Enter with only the requested scene instances resident.
     std::vector<PlasmaVoxen>{}.swap(voxens_);
     if(!loadSavedScene(id)) return false;
+#ifdef VOXEN_WITH_IMGUI
+    imguiCarousel_.editMode=false;
+#endif
     immersiveSceneActive_=true;
     return true;
 }
@@ -1114,7 +1117,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
     }
 #ifdef VOXEN_WITH_IMGUI
     if(tracked[1] && pressed[1] && pendingGalleryFloorAction_==0 &&
-       imguiCarousel_.voxenPaintEnabled && !panelAimed_){
+       imguiCarousel_.editMode && imguiCarousel_.voxenPaintEnabled && !panelAimed_){
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         const std::array<float,3> dir{
@@ -1446,9 +1449,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 vkCmdDraw(commandBuffer_,v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6)),1,0,0);
             }
         };
-        for(const auto& v:voxens_)paintPlasma(v);
+        if(immersiveSceneActive_ || imguiCarousel_.editMode)
+            for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
-        if(imguiCarousel_.voxenPaintEnabled && controllerTracked_[1] && !panelAimed_ && !imguiCarousel_.visible){
+        if(imguiCarousel_.editMode && imguiCarousel_.voxenPaintEnabled && controllerTracked_[1] && !panelAimed_ && !imguiCarousel_.visible){
             const auto& pose=controllerPoses_[1];
             const auto& q=pose.orientation;
             const std::array<float,3> dir{
@@ -1849,6 +1853,7 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.scenePlace=false;
             selectedSceneIndex_=imguiCarousel_.selectedScene;
             pendingGalleryFloorAction_=1;
+            imguiCarousel_.editMode=false;
             if(immersiveSceneActive_)leaveImmersiveScene();
             imguiCarousel_.sceneStatus="GALLERY: move right controller, trigger to place";
         }
