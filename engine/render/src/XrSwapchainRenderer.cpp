@@ -86,10 +86,12 @@ void XrSwapchainRenderer::refreshSceneIndex() {
     sceneIds_=sceneRepository_?sceneRepository_->listScenes():
         std::vector<voxen::gallery::SceneId>{};
     sceneLabels_.clear();
+    scenePreviewCache_.clear();
     sceneLabels_.reserve(sceneIds_.size());
     for(const auto& id:sceneIds_) {
         const auto metadata=sceneRepository_->loadSceneMetadata(id);
         if(metadata) {
+            scenePreviewCache_[id]=metadata->preview;
             sceneLabels_.push_back(metadata->displayName+
                 "  [proxy " + std::to_string(metadata->preview.boundingRadiusMeters).substr(0,4) + "m]");
         } else {
@@ -158,6 +160,52 @@ std::vector<voxen::gallery::SceneId> XrSwapchainRenderer::savedSceneIds() const 
                             : std::vector<voxen::gallery::SceneId>{};
 }
 
+void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
+    if(immersiveSceneActive_ || !portalManager_ || !portalManager_->localized()) {
+        galleryEntryCandidate_.reset();
+        return;
+    }
+    // Head projection onto the tracked floor. Avoid disk I/O and geometry
+    // queries here: portals and their cached metadata are lightweight.
+    const auto portals=portalManager_->visible();
+    const voxen::gallery::VisiblePortal* inside=nullptr;
+    float bestDistance2=100000.f;
+    for(const auto& portal:portals) {
+        const auto& p=portal.localPose.positionMeters;
+        const float height=headPosition.y-p[1];
+        if(height<0.6f || height>2.5f)continue;
+        const float dx=headPosition.x-p[0],dz=headPosition.z-p[2];
+        const float d2=dx*dx+dz*dz;
+        const float radius=0.34f*std::clamp(portal.scale,0.1f,4.f);
+        if(d2<radius*radius && d2<bestDistance2) {
+            inside=&portal;
+            bestDistance2=d2;
+        }
+    }
+    if(!inside) {
+        galleryEntryCandidate_.reset();
+        galleryEntryArmed_=true;
+        return;
+    }
+    if(!galleryEntryArmed_)return;
+    const auto now=std::chrono::steady_clock::now();
+    if(!galleryEntryCandidate_ || *galleryEntryCandidate_!=inside->id) {
+        galleryEntryCandidate_=inside->id;
+        galleryEntrySince_=now;
+        return;
+    }
+    if(now-galleryEntrySince_<std::chrono::milliseconds(850))return;
+    // Loading happens once after a stable dwell, never every frame.
+    galleryEntryArmed_=false;
+    const auto sceneId=inside->sceneId;
+    galleryEntryCandidate_.reset();
+    if(!enterImmersiveScene(sceneId)) {
+#ifdef VOXEN_WITH_IMGUI
+        imguiCarousel_.sceneStatus="Automatic portal entry failed";
+#endif
+    }
+}
+
 bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id) {
     if(immersiveSceneActive_ || !sceneRepository_) return false;
     // Validate and parse before touching the current live scene.
@@ -181,6 +229,8 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
     immersiveSceneActive_=false;
+    galleryEntryArmed_=false; // do not re-enter until physically leaving the ring
+    galleryEntryCandidate_.reset();
     return true;
 }
 
@@ -1786,6 +1836,7 @@ void XrSwapchainRenderer::render(
         0.5f*(views[0].pose.position.y+views[1].pose.position.y),
         0.5f*(views[0].pose.position.z+views[1].pose.position.z)
     };
+    updateGalleryWalkIn(center);
     for(auto& v:voxens_){
         if(v.preset!=2)continue;
         const float dx=v.position[0]-center.x;
