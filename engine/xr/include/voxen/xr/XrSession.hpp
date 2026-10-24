@@ -50,7 +50,13 @@ private:
     void initializeActions();
     void syncActions();
     void destroyPassthrough() noexcept;
+    void initializeHandTracking();
+    void updateHandTracking(voxen::render::XrSwapchainRenderer& renderer, XrTime time);
 
+    std::array<XrHandTrackerEXT,2> handTrackers_{XR_NULL_HANDLE,XR_NULL_HANDLE};
+    PFN_xrCreateHandTrackerEXT createHandTracker_=nullptr;
+    PFN_xrDestroyHandTrackerEXT destroyHandTracker_=nullptr;
+    PFN_xrLocateHandJointsEXT locateHandJoints_=nullptr;
     XrInstance instance_ = XR_NULL_HANDLE;
     ::XrSession session_ = XR_NULL_HANDLE;
     XrSpace stageSpace_ = XR_NULL_HANDLE;
