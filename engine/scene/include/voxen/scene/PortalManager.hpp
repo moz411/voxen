@@ -87,6 +87,14 @@ public:
                                             localized_->persistentAnchorId,{}});
     }
 
+    void reloadGallery() {
+        if(!localized_)return;
+        auto current=*localized_;
+        localized_.reset();
+        gallery_.reset();
+        setLocalization(std::move(current));
+    }
+
     [[nodiscard]] bool localized() const noexcept { return localized_.has_value(); }
 
     [[nodiscard]] std::vector<VisiblePortal> visible() const {
