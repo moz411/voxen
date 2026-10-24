@@ -263,17 +263,19 @@ void XrSession::updateHandTracking(voxen::render::XrSwapchainRenderer& renderer,
             info.time=time;
             if(XR_FAILED(locateHandJoints_(handTrackers_[i],&info,&locations)) ||
                locations.isActive!=XR_TRUE)continue;
-            bool valid=true;
+            // Some joints are intermittently invalid on Quest. Never reject
+            // an entire hand because one fingertip is occluded.
+            const bool palmValid=(joints[XR_HAND_JOINT_PALM_EXT].locationFlags &
+                XR_SPACE_LOCATION_POSITION_VALID_BIT)!=0;
+            if(!palmValid)continue;
             for(std::size_t j=0;j<joints.size();++j) {
-                constexpr XrSpaceLocationFlags required=
-                    XR_SPACE_LOCATION_POSITION_VALID_BIT;
-                if((joints[j].locationFlags&required)!=required) {
-                    valid=false;break;
-                }
-                hands[i].joints[j]=joints[j].pose.position;
-                hands[i].radii[j]=joints[j].radius;
+                const bool valid=(joints[j].locationFlags &
+                    XR_SPACE_LOCATION_POSITION_VALID_BIT)!=0;
+                hands[i].joints[j]=valid ? joints[j].pose.position :
+                    joints[XR_HAND_JOINT_PALM_EXT].pose.position;
+                hands[i].radii[j]=valid ? joints[j].radius : 0.f;
             }
-            hands[i].tracked=valid;
+            hands[i].tracked=true;
         }
     }
     renderer.setHolographicHands(hands);
