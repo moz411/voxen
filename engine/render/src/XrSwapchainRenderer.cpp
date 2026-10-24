@@ -46,6 +46,7 @@
 #include "heppGlowFrag.spv.hpp"
 #include "phiFieldFrag.spv.hpp"
 #include "soundDemoFrag.spv.hpp"
+#include "midnightRideFrag.spv.hpp"
 #include "mandelbrotZoomFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "galleryPortalFrag.spv.hpp"
@@ -1023,7 +1024,7 @@ void XrSwapchainRenderer::createPipeline() {
         }
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -1077,6 +1078,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, heppGlowFrag, heppGlowFragSize, heppGlowPipeline_);
     buildPipeline(fractalVert, fractalVertSize, phiFieldFrag, phiFieldFragSize, phiFieldPipeline_);
     buildPipeline(fractalVert, fractalVertSize, soundDemoFrag, soundDemoFragSize, soundDemoPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, midnightRideFrag, midnightRideFragSize, midnightRidePipeline_);
     buildPipeline(fractalVert, fractalVertSize, mandelbrotZoomFrag, mandelbrotZoomFragSize, mandelbrotZoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
     buildPipeline(fractalVert, fractalVertSize, galleryPortalFrag, galleryPortalFragSize, galleryPortalPipeline_);
@@ -1409,7 +1411,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
     if (liquidEnabled && (wallShaderMode!=0 || liquidOpacity>0.001f) &&
-        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE) {
+        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && midnightRidePipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE) {
         // Stable slots are based on scene anchor IDs, not eye-specific
         // distance ordering. Both eyes therefore show the same effect per wall.
         std::vector<uint64_t> shaderIds;
@@ -1420,7 +1422,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         std::sort(shaderIds.begin(),shaderIds.end());
         shaderIds.erase(std::unique(shaderIds.begin(),shaderIds.end()),shaderIds.end());
         const int cycleStep=static_cast<int>(std::floor(seconds / wallCycleSeconds));
-        constexpr int demoModes[]={0,2,3,4,5,6}; // omit solid diagnostic
+        constexpr int demoModes[]={0,2,3,4,5,6,7}; // omit solid diagnostic
         auto choosePipeline=[&](int mode)->VkPipeline {
             switch(mode){
                 case 1:return solidWallPipeline_;
@@ -1429,6 +1431,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 case 4:return phiFieldPipeline_;
                 case 5:return mandelbrotZoomPipeline_;
                 case 6:return soundDemoPipeline_;
+                case 7:return midnightRidePipeline_;
                 default:return liquidRoomPipeline_;
             }
         };
@@ -1483,7 +1486,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             if(cycleWallShaders){
                 auto it=std::lower_bound(shaderIds.begin(),shaderIds.end(),surface->id);
                 const auto rank=static_cast<int>(it-shaderIds.begin());
-                activeMode=demoModes[(rank+cycleStep)%6];
+                activeMode=demoModes[(rank+cycleStep)%7];
             }
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,choosePipeline(activeMode));
             const Mat4 wallMvp=multiply(projView,surfaceModel(*surface));
@@ -2255,6 +2258,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(heppGlowPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,heppGlowPipeline_,nullptr);heppGlowPipeline_=VK_NULL_HANDLE;}
     if(phiFieldPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,phiFieldPipeline_,nullptr);phiFieldPipeline_=VK_NULL_HANDLE;}
     if(soundDemoPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,soundDemoPipeline_,nullptr);soundDemoPipeline_=VK_NULL_HANDLE;}
+    if(midnightRidePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,midnightRidePipeline_,nullptr);midnightRidePipeline_=VK_NULL_HANDLE;}
     if(mandelbrotZoomPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,mandelbrotZoomPipeline_,nullptr);mandelbrotZoomPipeline_=VK_NULL_HANDLE;}
     if(meshDepthBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,meshDepthBuffer_,nullptr);meshDepthBuffer_=VK_NULL_HANDLE;}
     if(meshDepthMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,meshDepthMemory_,nullptr);meshDepthMemory_=VK_NULL_HANDLE;}
