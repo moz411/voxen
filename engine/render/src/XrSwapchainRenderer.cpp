@@ -1398,6 +1398,27 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             }
         }
     }
+    // Tracked cyan holographic hands, independent of controller poses.
+    // Joint spheres are rendered in 3D using the existing procedural volume.
+    // No controller rays or interaction are required in this mode.
+    if(!carouselVisible() && voxenSpheresPipeline_!=VK_NULL_HANDLE) {
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          voxenSpheresPipeline_);
+        for(const auto& hand:holographicHands_) {
+            if(!hand.tracked)continue;
+            for(std::size_t j=0;j<hand.joints.size();++j) {
+                const auto& p=hand.joints[j];
+                const float radius=std::clamp(hand.radii[j]*1.4f,0.009f,0.045f);
+                const Mat4 mvp=multiply(projView,
+                    modelMatrix(p.x,p.y,radius*2.0f,p.z,0.f));
+                ProceduralPushConstants pc{mvp,{seconds,0.2f,0.52f,0.65f}};
+                vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                    VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
+                    0,sizeof(pc),&pc);
+                vkCmdDraw(commandBuffer_,36,1,0,0);
+            }
+        }
+    }
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE && voxenSpheresPipeline_!=VK_NULL_HANDLE &&
        voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE && torusKnotPipeline_!=VK_NULL_HANDLE && spikeBloomPipeline_!=VK_NULL_HANDLE && jellyfishPipeline_!=VK_NULL_HANDLE){
         auto paintPlasma=[&](const PlasmaVoxen& v){
