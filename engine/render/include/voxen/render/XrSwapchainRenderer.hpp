@@ -2,6 +2,7 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 #include <map>
@@ -97,9 +98,34 @@ public:
         bool tracked=false;
         std::array<XrVector3f,26> joints{};
         std::array<float,26> radii{};
+        XrVector3f palmVelocity{};
     };
     void setHolographicHands(const std::array<HolographicHand,2>& hands) {
-        holographicHands_=hands;
+        const auto now=std::chrono::steady_clock::now();
+        const float dt=std::chrono::duration<float>(now-lastHandSample_).count();
+        const bool validDt=lastHandSample_.time_since_epoch().count()!=0 &&
+                           dt>0.001f && dt<0.1f;
+        for(std::size_t i=0;i<hands.size();++i) {
+            auto next=hands[i];
+            if(next.tracked && holographicHands_[i].tracked && validDt) {
+                const auto& a=next.joints[XR_HAND_JOINT_PALM_EXT];
+                const auto& b=holographicHands_[i].joints[XR_HAND_JOINT_PALM_EXT];
+                // Low-pass filter tracker jitter, and cap gesture speed.
+                const float dx=(a.x-b.x)/dt,dy=(a.y-b.y)/dt,dz=(a.z-b.z)/dt;
+                const float speed=std::sqrt(dx*dx+dy*dy+dz*dz);
+                const float factor=speed>3.f?3.f/speed:1.f;
+                constexpr float smoothing=0.45f;
+                const auto& old=holographicHands_[i].palmVelocity;
+                next.palmVelocity={
+                    smoothing*dx*factor+(1.f-smoothing)*old.x,
+                    smoothing*dy*factor+(1.f-smoothing)*old.y,
+                    smoothing*dz*factor+(1.f-smoothing)*old.z
+                };
+            }
+            // Newly tracked hands start with zero velocity, avoiding spikes.
+            holographicHands_[i]=next;
+        }
+        lastHandSample_=now;
     }
     void updateControllerInteraction(const std::array<XrPosef, 2>& poses,
                                      const std::array<bool, 2>& tracked,
@@ -229,6 +255,7 @@ private:
     bool galleryEntryArmed_ = true;
     void updateGalleryWalkIn(const XrVector3f& headPosition);
     std::array<HolographicHand,2> holographicHands_{};
+    std::chrono::steady_clock::time_point lastHandSample_{};
     std::optional<voxen::gallery::InstanceId> selectedPortalId_;
     int pendingGalleryFloorAction_ = 0; // 1 place, 2 select, 3 move
     bool lastGalleryTriggerPressed_ = false;
