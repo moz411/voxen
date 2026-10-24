@@ -1081,16 +1081,28 @@ void XrSwapchainRenderer::updateControllerInteraction(
 #ifdef VOXEN_WITH_IMGUI
     const bool galleryTriggerEdge=pressed[1] && !lastGalleryTriggerPressed_;
     lastGalleryTriggerPressed_=pressed[1];
-    if(pendingGalleryFloorAction_ && galleryTriggerEdge && tracked[1] && !panelAimed_) {
-        const int action=pendingGalleryFloorAction_;
-        bool ok=false;
-        if(action==1)ok=placeGalleryPortalFromRightController();
-        if(action==2)ok=selectGalleryPortalFromRightController();
-        if(action==3)ok=moveSelectedGalleryPortalFromRightController();
-        imguiCarousel_.sceneStatus=ok?
-            (action==1?"Portal placed":action==2?"Portal selected":"Portal moved"):
-            "No valid tracked floor hit / portal near aim";
-        if(ok)pendingGalleryFloorAction_=0;
+    if(pendingGalleryFloorAction_==1 && galleryTriggerEdge && tracked[1] && !panelAimed_) {
+        const auto& pose=poses[1];
+        const auto& q=pose.orientation;
+        const std::array<float,3> forward{
+            -2.f*(q.x*q.z+q.w*q.y),
+            -2.f*(q.y*q.z-q.w*q.x),
+            -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        voxen::gallery::Pose placed{};
+        placed.positionMeters={
+            pose.position.x+0.38f*forward[0],
+            pose.position.y+0.38f*forward[1],
+            pose.position.z+0.38f*forward[2]};
+        const bool valid=portalManager_ && portalManager_->localized() &&
+            selectedSceneIndex_>=0 &&
+            static_cast<std::size_t>(selectedSceneIndex_)<sceneIds_.size();
+        const auto id=valid?portalManager_->placeAtPose(sceneIds_[selectedSceneIndex_],placed):
+            std::optional<voxen::gallery::InstanceId>{};
+        if(id) {
+            selectedPortalId_=*id;
+            pendingGalleryFloorAction_=0;
+            imguiCarousel_.sceneStatus="Static Voxen placed";
+        } else imguiCarousel_.sceneStatus="Placement failed: room anchor or scene unavailable";
     }
 #endif
     if(tracked[0]) {
@@ -1103,7 +1115,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
     }
 #ifdef VOXEN_WITH_IMGUI
     if(tracked[1] && pressed[1] && pendingGalleryFloorAction_==0 &&
-       imguiCarousel_.voxenPaintEnabled && !panelAimed_){
+       imguiCarousel_.voxenPaintEnabled && !panelAimed_ && !imguiCarousel_.visible){
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         const std::array<float,3> dir{
@@ -1360,42 +1372,43 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(constants),&constants);
         vkCmdDraw(commandBuffer_,meshWireVertexCount_,1,0,0);
     }
-    // Draw at most 64 lightweight room-local rings. No saved scene payloads
-    // or per-portal Vulkan resources are loaded in gallery mode.
-    if(!immersiveSceneActive_ && galleryPortalPipeline_!=VK_NULL_HANDLE && portalManager_) {
+    // Saved scene instances are static 3D Voxen, not floor rings.
+    if(!immersiveSceneActive_ && portalManager_ &&
+       organicSpherePipeline_!=VK_NULL_HANDLE) {
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          organicSpherePipeline_);
         const auto portals=portalManager_->visible();
-        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,galleryPortalPipeline_);
-        const std::size_t budget=std::min<std::size_t>(64,portals.size());
-        for(std::size_t i=0;i<budget;++i) {
-            const auto& portal=portals[i];
-            voxen::scene::EnvironmentSurface quad;
-            quad.center=portal.localPose.positionMeters;
-            quad.center[1]+=0.012f; // avoid z-fighting with tracked floor
-            quad.orientation=portal.localPose.orientationXyzw;
-            const bool selected=selectedPortalId_ && *selectedPortalId_==portal.id;
-            const float radius=(selected?0.52f:0.45f)*std::clamp(portal.scale,0.1f,4.f);
-            quad.halfExtents={radius,radius};
-            const Mat4 mvp=multiply(projView,surfaceModel(quad));
-            ProceduralPushConstants pc{mvp,{seconds,float(i)*0.17f,selected?1.f:0.f,0.92f}};
+        const auto count=std::min<std::size_t>(portals.size(),64);
+        for(std::size_t i=0;i<count;++i) {
+            const auto& p=portals[i];
+            const auto& xyz=p.localPose.positionMeters;
+            const float radius=0.42f*std::clamp(p.scale,0.1f,4.f);
+            const Mat4 mvp=multiply(projView,
+                modelMatrix(xyz[0],xyz[1],radius*2.f,xyz[2],0.f));
+            const auto preview=scenePreviewCache_.find(p.sceneId);
+            const float preset=preview==scenePreviewCache_.end()?4.f:
+                float(4u+preview->second.materialPreset%4u);
+            ProceduralPushConstants pc{mvp,{seconds,1.f,preset,0.5f}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,sizeof(pc),&pc);
-            vkCmdDraw(commandBuffer_,6,1,0,0);
-            // Floating miniature: metadata-only hologram, no per-scene mesh.
-            const auto preview=scenePreviewCache_.find(portal.sceneId);
-            if(preview!=scenePreviewCache_.end()) {
-                quad.center[1]+=0.34f+0.035f*std::sin(seconds*1.4f+float(i));
-                const float previewRadius=0.22f*std::clamp(portal.scale,0.5f,2.f);
-                quad.halfExtents={previewRadius,previewRadius};
-                const Mat4 previewMvp=multiply(projView,surfaceModel(quad));
-                const float preset=static_cast<float>(preview->second.materialPreset%8u);
-                ProceduralPushConstants proxyPc{previewMvp,
-                    {seconds,float(i)*0.17f,2.f+preset,0.82f}};
-                vkCmdPushConstants(commandBuffer_,pipelineLayout_,
-                    VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
-                    0,sizeof(proxyPc),&proxyPc);
-                vkCmdDraw(commandBuffer_,6,1,0,0);
-            }
+            vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
+        }
+        // DISPOSE preview follows the right controller until trigger release.
+        if(pendingGalleryFloorAction_==1 && controllerTracked_[1]) {
+            const auto& pose=controllerPoses_[1];
+            const auto& q=pose.orientation;
+            const float dx=-2.f*(q.x*q.z+q.w*q.y);
+            const float dy=-2.f*(q.y*q.z-q.w*q.x);
+            const float dz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
+            const Mat4 mvp=multiply(projView,modelMatrix(
+                pose.position.x+0.38f*dx,pose.position.y+0.38f*dy,
+                0.84f,pose.position.z+0.38f*dz,0.f));
+            ProceduralPushConstants pc{mvp,{seconds,1.f,4.f,0.5f}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
         }
     }
     // Gallery hands are tracked for pinches and UI interaction, but no
@@ -1436,7 +1449,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         };
         for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
-        if(imguiCarousel_.voxenPaintEnabled && controllerTracked_[1] && !panelAimed_){
+        if(imguiCarousel_.voxenPaintEnabled && controllerTracked_[1] && !panelAimed_ && !imguiCarousel_.visible){
             const auto& pose=controllerPoses_[1];
             const auto& q=pose.orientation;
             const std::array<float,3> dir{
@@ -1837,7 +1850,7 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.scenePlace=false;
             selectedSceneIndex_=imguiCarousel_.selectedScene;
             pendingGalleryFloorAction_=1;
-            imguiCarousel_.sceneStatus="Aim at tracked floor and press trigger to place";
+            imguiCarousel_.sceneStatus="Move right controller; trigger to place static Voxen";
         }
         if(imguiCarousel_.scenePortalCancel) {
             imguiCarousel_.scenePortalCancel=false;
