@@ -66,10 +66,14 @@ public:
     bool enterImmersiveScene(const voxen::gallery::SceneId& id);
     bool leaveImmersiveScene();
     [[nodiscard]] std::vector<voxen::gallery::SceneId> savedSceneIds() const;
+    // Left controller MENU toggles editing; gallery never shows the carousel.
     void toggleUiVisibility() noexcept {
 #ifdef VOXEN_WITH_IMGUI
-        imguiCarousel_.visible=!imguiCarousel_.visible;
-        if(!imguiCarousel_.visible)panelAimed_=false;
+        if(immersiveSceneActive_)return;
+        imguiCarousel_.editMode=!imguiCarousel_.editMode;
+        imguiCarousel_.visible=imguiCarousel_.editMode;
+        panelAimed_=false;
+        if(imguiCarousel_.editMode)pendingGalleryFloorAction_=0;
 #endif
     }
 #ifdef __ANDROID__
