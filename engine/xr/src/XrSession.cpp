@@ -266,8 +266,23 @@ void XrSession::updateHandTracking(voxen::render::XrSwapchainRenderer& renderer,
             XrHandJointsLocateInfoEXT info{XR_TYPE_HAND_JOINTS_LOCATE_INFO_EXT};
             info.baseSpace=localSpace_;
             info.time=time;
-            if(XR_FAILED(locateHandJoints_(handTrackers_[i],&info,&locations)) ||
-               locations.isActive!=XR_TRUE)continue;
+            const XrResult locateResult=locateHandJoints_(handTrackers_[i],&info,&locations);
+#ifdef __ANDROID__
+            // Report transitions and periodically report inactive trackers.
+            static int previousLocate[2]={-999,-999};
+            static int previousActive[2]={-1,-1};
+            static unsigned int inactiveFrames[2]={0,0};
+            const int active=locations.isActive==XR_TRUE?1:0;
+            if(int(locateResult)!=previousLocate[i] || active!=previousActive[i] ||
+               (++inactiveFrames[i]%300)==0) {
+                __android_log_print(ANDROID_LOG_INFO,"VoxenHands",
+                    "Locate hand=%d result=%d active=%d space=%d",
+                    i,int(locateResult),active,localSpace_!=XR_NULL_HANDLE?1:0);
+                previousLocate[i]=int(locateResult);
+                previousActive[i]=active;
+            }
+#endif
+            if(XR_FAILED(locateResult) || locations.isActive!=XR_TRUE)continue;
             // Some joints are intermittently invalid on Quest. Never reject
             // an entire hand because one fingertip is occluded.
             const bool palmValid=(joints[XR_HAND_JOINT_PALM_EXT].locationFlags &
@@ -286,10 +301,13 @@ void XrSession::updateHandTracking(voxen::render::XrSwapchainRenderer& renderer,
 #ifdef __ANDROID__
     static int previousMask=-1;
     const int mask=(hands[0].tracked?1:0)|(hands[1].tracked?2:0);
-    if(mask!=previousMask) {
+    static int previousVisible=-1;
+    const int visible=renderer.carouselVisible()?1:0;
+    if(mask!=previousMask || visible!=previousVisible) {
         __android_log_print(ANDROID_LOG_INFO,"VoxenHands",
             "Visible=%d tracking mask=%d",renderer.carouselVisible()?1:0,mask);
         previousMask=mask;
+        previousVisible=visible;
     }
 #endif
     renderer.setHolographicHands(hands);
