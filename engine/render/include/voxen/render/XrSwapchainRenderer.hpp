@@ -206,6 +206,8 @@ private:
     // Preview/scene mode; global Vulkan pipelines are shared, not freed here.
     bool immersiveSceneActive_ = false;
     std::optional<voxen::gallery::InstanceId> selectedPortalId_;
+    int pendingGalleryFloorAction_ = 0; // 1 place, 2 select, 3 move
+    bool lastGalleryTriggerPressed_ = false;
     [[nodiscard]] std::optional<voxen::gallery::FloorHit> galleryFloorHit() const;
     std::vector<voxen::gallery::SceneId> sceneIds_;
     std::vector<std::string> sceneLabels_;
