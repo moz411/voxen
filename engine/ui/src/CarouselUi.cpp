@@ -33,8 +33,8 @@ void drawCarousel(CarouselState& state) {
                 }
             }
             if(state.voxenPreset>=4){
-                static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS","MATRIX"};
-                ImGui::Combo("Surface material",&state.voxenMaterial,materials,4);
+                static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS","MATRIX","BUBBLE 3D","ANIME CEL","MANGA INK","FLOWING MARBLE","CELLULAR GLOW"};
+                ImGui::Combo("Surface material",&state.voxenMaterial,materials,9);
             }
             ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.06f,0.60f,"%.2f");
