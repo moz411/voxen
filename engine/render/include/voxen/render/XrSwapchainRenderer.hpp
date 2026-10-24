@@ -69,6 +69,7 @@ public:
     // Left controller MENU switches between gallery and the private editor.
     void toggleUiVisibility() noexcept { setEditingMode(!editingMode()); }
     void setEditingMode(bool enabled) noexcept;
+    void requestGalleryDelete();
     [[nodiscard]] bool editingMode() const noexcept {
 #ifdef VOXEN_WITH_IMGUI
         return imguiCarousel_.editMode;
@@ -267,6 +268,11 @@ private:
     std::optional<voxen::gallery::InstanceId> selectedPortalId_;
     int pendingGalleryFloorAction_ = 0; // 1 place, 2 select, 3 move
     bool lastGalleryTriggerPressed_ = false;
+    bool galleryDragging_ = false;
+    float galleryGrabDistance_ = 0.5f;
+    voxen::gallery::Pose galleryDraggedPose_{};
+    std::optional<voxen::gallery::InstanceId> galleryHoveredId_;
+    std::chrono::steady_clock::time_point galleryDeleteArmedUntil_{};
     [[nodiscard]] std::optional<voxen::gallery::FloorHit> galleryFloorHit() const;
     std::vector<voxen::gallery::SceneId> sceneIds_;
     std::unordered_map<voxen::gallery::SceneId, voxen::gallery::Preview> scenePreviewCache_;
