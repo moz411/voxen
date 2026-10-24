@@ -1000,6 +1000,19 @@ void XrSwapchainRenderer::updateControllerInteraction(
     uiTrigger_[0]=pressed[0];
     uiTrigger_[1]=pressed[1];
 #endif
+    const bool galleryTriggerEdge=pressed[1] && !lastGalleryTriggerPressed_;
+    lastGalleryTriggerPressed_=pressed[1];
+    if(pendingGalleryFloorAction_ && galleryTriggerEdge && tracked[1] && !panelAimed_) {
+        const int action=pendingGalleryFloorAction_;
+        bool ok=false;
+        if(action==1)ok=placeGalleryPortalFromRightController();
+        if(action==2)ok=selectGalleryPortalFromRightController();
+        if(action==3)ok=moveSelectedGalleryPortalFromRightController();
+        imguiCarousel_.sceneStatus=ok?
+            (action==1?"Portal placed":action==2?"Portal selected":"Portal moved"):
+            "No valid tracked floor hit / portal near aim";
+        if(ok)pendingGalleryFloorAction_=0;
+    }
     if(tracked[0]) {
         float axis=thumbsticks[0].x;
         if(std::fabs(axis)<0.3f)nativeMenuStickLatched_=false;
@@ -1009,7 +1022,8 @@ void XrSwapchainRenderer::updateControllerInteraction(
         }
     }
 #ifdef VOXEN_WITH_IMGUI
-    if(tracked[1] && pressed[1] && imguiCarousel_.voxenPaintEnabled && !panelAimed_){
+    if(tracked[1] && pressed[1] && pendingGalleryFloorAction_==0 &&
+       imguiCarousel_.voxenPaintEnabled && !panelAimed_){
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         const std::array<float,3> dir{
@@ -1680,18 +1694,18 @@ void XrSwapchainRenderer::render(
         if(imguiCarousel_.scenePlace) {
             imguiCarousel_.scenePlace=false;
             selectedSceneIndex_=imguiCarousel_.selectedScene;
-            imguiCarousel_.sceneStatus=placeGalleryPortalFromRightController()?
-                "Portal placed":"Requires localized room and tracked floor hit";
+            pendingGalleryFloorAction_=1;
+            imguiCarousel_.sceneStatus="Aim at tracked floor and press trigger to place";
         }
         if(imguiCarousel_.scenePortalSelect) {
             imguiCarousel_.scenePortalSelect=false;
-            imguiCarousel_.sceneStatus=selectGalleryPortalFromRightController()?
-                "Portal selected":"No portal near tracked floor aim";
+            pendingGalleryFloorAction_=2;
+            imguiCarousel_.sceneStatus="Aim at a floor portal and press trigger";
         }
         if(imguiCarousel_.scenePortalMove) {
             imguiCarousel_.scenePortalMove=false;
-            imguiCarousel_.sceneStatus=moveSelectedGalleryPortalFromRightController()?
-                "Portal moved":"Move failed: aim at tracked floor";
+            pendingGalleryFloorAction_=3;
+            imguiCarousel_.sceneStatus="Aim at new tracked floor position and press trigger";
         }
         if(imguiCarousel_.scenePortalDelete) {
             imguiCarousel_.scenePortalDelete=false;
