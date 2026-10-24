@@ -16,7 +16,7 @@ void main(){
     float diffuse=max(dot(n,light),0.0);
     float rim=pow(1.0-abs(n.z),3.0);
     float phase=pc.parameters.z+0.11*vPulse+0.045*pc.parameters.x*pc.parameters.y;
-    int material=clamp(int(floor(pc.parameters.z+0.0001)),0,3);
+    int material=clamp(int(floor(pc.parameters.z+0.0001)),0,8);
     vec3 base=palette(fract(phase));
     float bands=0.5+0.5*sin(22.0*vPulse+6.0*vPosition.y-pc.parameters.x*pc.parameters.y*2.0);
     vec3 color=base*(0.22+0.68*diffuse)+vec3(0.05,0.30,0.44)*bands*0.32;
@@ -35,6 +35,63 @@ void main(){
                   floor(vPosition.x*23.0)*2.1),8.0);
         color=vec3(0.005,0.035,0.009)+vec3(0.08,0.95,0.19)*
               (columns*drops+0.18*rim);
+    }
+    // New procedural materials: no sampled images or texture allocations.
+    // Inspired by MIT-licensed procedural noise and CC0 toon techniques;
+    // implementations below are original GLSL for the Voxen vertex format.
+    float time=pc.parameters.x*pc.parameters.y;
+    vec3 p=vPosition;
+    float facing=clamp(abs(n.z),0.0,1.0);
+    if(material==4){ // BUBBLE: thin-film interference, translucent shell
+        float edge=pow(1.0-facing,2.4);
+        float film=dot(n,vec3(0.32,0.71,0.62))*6.0+
+                   4.0*sin(p.y*3.5+time*0.45);
+        vec3 rainbow=0.52+0.48*cos(film+vec3(0.0,2.09,4.18));
+        float highlight=pow(max(dot(reflect(-light,n),vec3(0,0,1)),0.0),32.0);
+        color=mix(vec3(0.07,0.18,0.26),rainbow,0.72)+
+              vec3(0.8,0.95,1.0)*highlight;
+        outColor=vec4(clamp(color,0.0,1.0),clamp(0.16+0.72*edge+0.25*highlight,0.0,0.95));
+        return;
+    }else if(material==5){ // ANIME: hard cel-shading and bright rim
+        float shade=floor(diffuse*3.0+0.25)/3.0;
+        vec3 ink=vec3(0.055,0.045,0.11);
+        vec3 cel=mix(vec3(0.22,0.48,0.85),vec3(1.0,0.48,0.76),
+                     0.5+0.5*sin(pc.parameters.z*6.283));
+        color=mix(ink,cel,0.36+0.64*shade);
+        color+=vec3(0.8,0.95,1.0)*step(0.79,1.0-facing)*0.32;
+    }else if(material==6){ // MANGA: ink outlines, halftone and crosshatch
+        vec2 uv=p.xy*45.0;
+        vec2 cell=fract(uv)-0.5;
+        float dotPattern=1.0-smoothstep(0.10,0.32,length(cell));
+        float hatch=1.0-smoothstep(0.035,0.10,abs(sin((p.x+p.y)*110.0)));
+        float shadow=1.0-step(0.43,diffuse);
+        float ink=max(step(0.76,1.0-facing),shadow*mix(dotPattern,hatch,0.42));
+        color=mix(vec3(0.95,0.92,0.83),vec3(0.025,0.035,0.07),ink);
+    }else if(material==7){ // MARBLE: flowing domain-warped veins
+        vec3 q=p*5.0+vec3(0.15*time,-0.1*time,0.07*time);
+        float warp=sin(q.y*2.3+sin(q.z*2.8+time))*0.75+
+                   cos(q.x*2.1-q.z*1.4)*0.35;
+        float vein=pow(0.5+0.5*cos(q.x*4.5+warp*5.0),9.0);
+        vec3 stone=mix(vec3(0.045,0.07,0.15),vec3(0.2,0.7,0.78),
+                       0.5+0.5*sin(warp+q.z));
+        color=stone*(0.25+0.75*diffuse)+vec3(0.95,0.78,0.5)*vein;
+    }else if(material==8){ // CELLULAR: animated glowing Voronoi-like cells
+        vec3 q=p*7.0;
+        vec3 cell=floor(q);
+        float nearest=10.0;
+        for(int x=-1;x<=1;++x)
+        for(int y=-1;y<=1;++y)
+        for(int z=-1;z<=1;++z){
+            vec3 c=cell+vec3(x,y,z);
+            vec3 seed=0.5+0.35*sin(vec3(
+                dot(c,vec3(13.1,17.7,29.3)),
+                dot(c,vec3(23.7,11.9,31.1)),
+                dot(c,vec3(19.3,37.1,7.7)))+time*0.32);
+            nearest=min(nearest,length(q-c-seed));
+        }
+        float boundary=smoothstep(0.48,0.72,nearest);
+        color=mix(vec3(0.015,0.08,0.14),vec3(0.13,0.92,0.85),boundary);
+        color*=0.32+0.68*diffuse+0.4*rim;
     }
     outColor=vec4(clamp(color,0.0,1.0),1.0);
 }
