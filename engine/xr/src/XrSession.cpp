@@ -205,19 +205,6 @@ void XrSession::syncActions() {
 #endif
     }
     menuPressed_=menuNow;
-    menuGet.action=leftYAction_;
-    XrActionStateBoolean yState{XR_TYPE_ACTION_STATE_BOOLEAN};
-    checkXr(xrGetActionStateBoolean(session_,&menuGet,&yState),"xrGetActionStateBoolean(Y)");
-    const bool yNow=yState.isActive==XR_TRUE && yState.currentState==XR_TRUE;
-    if(yNow && !yPressed_){
-        menuTogglePending_=true;
-#ifdef __ANDROID__
-        __android_log_print(ANDROID_LOG_INFO,"Voxen","Left Y action pressed");
-#endif
-    }
-    yPressed_=yNow;
-
-
     for (std::size_t hand = 0; hand < handPaths_.size(); ++hand) {
         XrActionStateGetInfo get{XR_TYPE_ACTION_STATE_GET_INFO};
         get.action = selectAction_;
