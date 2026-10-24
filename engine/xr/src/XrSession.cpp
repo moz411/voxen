@@ -171,6 +171,28 @@ void XrSession::initializeActions() {
     attach.countActionSets = 1;
     attach.actionSets = &actionSet_;
     checkXr(xrAttachSessionActionSets(session_, &attach), "xrAttachSessionActionSets");
+    for (std::size_t hand = 0; hand < handPaths_.size(); ++hand) {
+        XrActionSpaceCreateInfo space{XR_TYPE_ACTION_SPACE_CREATE_INFO};
+        space.action = aimAction_;
+        space.subactionPath = handPaths_[hand];
+        space.poseInActionSpace.orientation.w = 1.0F;
+        checkXr(xrCreateActionSpace(session_, &space, &aimSpaces_[hand]), "xrCreateActionSpace(aim)");
+    }
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO, "Voxen", "Touch controller actions attached");
+#else
+    std::printf("[Voxen] Touch controller actions attached\n");
+#endif
+}
+
+void XrSession::syncActions() {
+    XrActiveActionSet active{actionSet_, XR_NULL_PATH};
+    XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO};
+    sync.countActiveActionSets = 1;
+    sync.activeActionSets = &active;
+    checkXr(xrSyncActions(session_, &sync), "xrSyncActions");
+
+    // Poll menu buttons every XR frame, not only once during initialization.
     XrActionStateGetInfo menuGet{XR_TYPE_ACTION_STATE_GET_INFO};
     menuGet.action=leftMenuAction_;
     XrActionStateBoolean menuState{XR_TYPE_ACTION_STATE_BOOLEAN};
@@ -194,26 +216,7 @@ void XrSession::initializeActions() {
 #endif
     }
     yPressed_=yNow;
-    for (std::size_t hand = 0; hand < handPaths_.size(); ++hand) {
-        XrActionSpaceCreateInfo space{XR_TYPE_ACTION_SPACE_CREATE_INFO};
-        space.action = aimAction_;
-        space.subactionPath = handPaths_[hand];
-        space.poseInActionSpace.orientation.w = 1.0F;
-        checkXr(xrCreateActionSpace(session_, &space, &aimSpaces_[hand]), "xrCreateActionSpace(aim)");
-    }
-#ifdef __ANDROID__
-    __android_log_print(ANDROID_LOG_INFO, "Voxen", "Touch controller actions attached");
-#else
-    std::printf("[Voxen] Touch controller actions attached\n");
-#endif
-}
 
-void XrSession::syncActions() {
-    XrActiveActionSet active{actionSet_, XR_NULL_PATH};
-    XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO};
-    sync.countActiveActionSets = 1;
-    sync.activeActionSets = &active;
-    checkXr(xrSyncActions(session_, &sync), "xrSyncActions");
 
     for (std::size_t hand = 0; hand < handPaths_.size(); ++hand) {
         XrActionStateGetInfo get{XR_TYPE_ACTION_STATE_GET_INFO};
