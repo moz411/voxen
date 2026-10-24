@@ -37,7 +37,7 @@ inline bool valid(const SavedRuntime& r) {
         !std::isfinite(r.musicVolume) || r.musicVolume<0 || r.musicVolume>1 ||
         r.motionMode<0 || r.motionMode>1 ||
         !std::isfinite(r.liquidOpacity) || r.liquidOpacity<0 || r.liquidOpacity>1 ||
-        r.wallShaderMode<0 || r.wallShaderMode>7 ||
+        r.wallShaderMode<0 || r.wallShaderMode>8 ||
         !std::isfinite(r.wallCycleSeconds) || r.wallCycleSeconds<1 || r.wallCycleSeconds>300 ||
         !std::isfinite(r.motionBounce) || r.motionBounce<0 || r.motionBounce>1) return false;
     for (const auto& v:r.voxens) {
