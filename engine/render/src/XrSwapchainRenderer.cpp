@@ -2245,7 +2245,6 @@ void XrSwapchainRenderer::render(
 #ifdef VOXEN_WITH_GLB_IMPORT
         imguiCarousel_.glbFiles=glbAssetNames_;
         if(imguiCarousel_.glbPreviewRequest && !glbAssetPaths_.empty() && imguiCarousel_.glbSelected>=0 &&
-           static_cast<size_t>(imguiCarousel_.glbSelected)<glbAssetPaths_.size() &&
            static_cast<size_t>(imguiCarousel_.glbSelected)<glbAssetPaths_.size()) {
             imguiCarousel_.glbPreviewRequest=false;
             if(loadDemoGlb(glbAssetPaths_[imguiCarousel_.glbSelected])) {
