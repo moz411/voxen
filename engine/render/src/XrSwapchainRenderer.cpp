@@ -1099,8 +1099,10 @@ void XrSwapchainRenderer::createPipeline() {
         VkVertexInputAttributeDescription texAttrs[3]{
             {0,0,VK_FORMAT_R32G32B32_SFLOAT,0},{1,0,VK_FORMAT_R32G32B32_SFLOAT,12},
             {2,0,VK_FORMAT_R32G32_SFLOAT,24}};
+        if(&out==&glbPipeline_ || &out==&glbOriginalPipeline_ ||
+           &out==&glbTexturedPipeline_)binding.stride=32;
         if(&out==&glbTexturedPipeline_) {
-            binding.stride=32;vi.vertexAttributeDescriptionCount=3;
+            vi.vertexAttributeDescriptionCount=3;
             vi.pVertexAttributeDescriptions=texAttrs;
         }
 #endif
