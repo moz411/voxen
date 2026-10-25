@@ -87,6 +87,31 @@ void checkVk(VkResult result, const char* operation) {
 
 } // namespace
 
+
+#ifdef VOXEN_WITH_GLB_IMPORT
+void XrSwapchainRenderer::rescanGlbAssets() {
+    glbAssetPaths_.clear();
+    glbAssetNames_.clear();
+    try {
+        std::filesystem::create_directories(glbAssetRoot_);
+        for(const auto& item:std::filesystem::directory_iterator(glbAssetRoot_)) {
+            if(!item.is_regular_file() || item.is_symlink())continue;
+            auto extension=item.path().extension().string();
+            std::transform(extension.begin(),extension.end(),extension.begin(),
+                           [](unsigned char v){return static_cast<char>(std::tolower(v));});
+            if(extension!=".glb")continue;
+            glbAssetPaths_.push_back(item.path());
+        }
+        std::sort(glbAssetPaths_.begin(),glbAssetPaths_.end());
+        for(const auto& path:glbAssetPaths_)
+            glbAssetNames_.push_back(path.filename().string());
+    } catch(const std::exception&) {
+        glbAssetPaths_.clear();
+        glbAssetNames_.clear();
+    }
+}
+#endif
+
 void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& root) {
     sceneRepository_ = std::make_unique<voxen::gallery::SceneRepository>(root);
     portalManager_ = std::make_unique<voxen::gallery::PortalManager>(*sceneRepository_);
@@ -105,8 +130,12 @@ void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& roo
     selectedSceneIndex_ = 0;
 #ifdef VOXEN_WITH_GLB_IMPORT
     // Debug-only static asset; requires explicit file in app-private storage.
-    const auto demo=root / "assets" / "demo.glb";
-    if(std::filesystem::is_regular_file(demo))pendingDemoGlb_=demo;
+#ifdef __ANDROID__
+    glbAssetRoot_="/sdcard/Android/data/org.voxen.xr/files/assets";
+#else
+    glbAssetRoot_=root / "assets";
+#endif
+    rescanGlbAssets();
 #endif
 }
 
@@ -1477,13 +1506,13 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 #ifdef VOXEN_WITH_GLB_IMPORT
     // glTF node world matrices are column-major, matching Vulkan push constants.
     // The prototype intentionally uses the existing lighting shader (not PBR).
-    if(glbPipeline_!=VK_NULL_HANDLE && (editingMode() || immersiveSceneActive_)) {
+    if(glbPlaced_ && glbPipeline_!=VK_NULL_HANDLE && (glbInGallery_ ? (!editingMode() && !immersiveSceneActive_) : (editingMode() || immersiveSceneActive_))) {
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,glbPipeline_);
         for(const auto& part:glbPrimitives_) {
             if(part.indexCount==0)continue;
             Mat4 node{};
             std::copy(part.worldMatrix.begin(),part.worldMatrix.end(),node.m);
-            const auto root=modelMatrix(0.f,0.f,1.f,-1.5f);
+            const auto root=modelMatrix(glbPlacement_[0],glbPlacement_[1],1.f,glbPlacement_[2]);
             ProceduralPushConstants pc{multiply(projView,multiply(root,node)),{0.f,0.f,0.52f,1.f}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             const VkDeviceSize off=0;
@@ -2122,6 +2151,9 @@ void XrSwapchainRenderer::render(
         ImGui::NewFrame();
         imguiCarousel_.voxenCount=static_cast<int>(voxens_.size());
         imguiCarousel_.musicReady=ambientMusic_.ready();
+#ifdef VOXEN_WITH_GLB_IMPORT
+        imguiCarousel_.glbFiles=glbAssetNames_;
+#endif
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         imguiCarousel_.savedSceneIds=sceneIds_;
@@ -2204,6 +2236,42 @@ void XrSwapchainRenderer::render(
             lastVoxenValid_=false;
             imguiCarousel_.voxenClear=false;
         }
+#ifdef VOXEN_WITH_GLB_IMPORT
+        if(imguiCarousel_.glbRescan) {
+            imguiCarousel_.glbRescan=false;
+            rescanGlbAssets();
+            imguiCarousel_.glbSelected=0;
+            imguiCarousel_.glbStatus="Asset list refreshed";
+        }
+        if(imguiCarousel_.glbPlaceScene || imguiCarousel_.glbPlaceGallery) {
+            const bool gallery=imguiCarousel_.glbPlaceGallery;
+            imguiCarousel_.glbPlaceScene=false;
+            imguiCarousel_.glbPlaceGallery=false;
+            const auto i=imguiCarousel_.glbSelected;
+            if(i<0 || static_cast<size_t>(i)>=glbAssetPaths_.size()) {
+                imguiCarousel_.glbStatus="Select a GLB first";
+            } else if(gallery && (!portalManager_ || !portalManager_->localized())) {
+                imguiCarousel_.glbStatus="Gallery placement needs a localized Meta room";
+            } else {
+                const auto hit=gallery?galleryFloorHit():std::optional<voxen::gallery::FloorHit>{};
+                if(gallery && !hit) {
+                    imguiCarousel_.glbStatus="Aim controller at a tracked floor first";
+                } else if(!gallery && !controllerTracked_[1]) {
+                    imguiCarousel_.glbStatus="Right controller is not tracked";
+                } else {
+                    const auto& pos=controllerPoses_[1].position;
+                    // Scene: initial position at right controller; gallery: floor hit.
+                    if(!gallery) glbPlacement_={pos.x,pos.y,pos.z-0.3f};
+                    else glbPlacement_=hit->localPositionMeters;
+                    if(loadDemoGlb(glbAssetPaths_[i])) {
+                        glbInGallery_=gallery;
+                        glbPlaced_=true;
+                        imguiCarousel_.glbStatus=gallery?"GLB placed on tracked gallery floor":"GLB placed in scene";
+                    } else imguiCarousel_.glbStatus="GLB decode / Vulkan upload failed";
+                }
+            }
+        }
+#endif
         if(imguiCarousel_.musicRescan){
             imguiCarousel_.musicRescan=false;
             mp3Library_.shutdown();
