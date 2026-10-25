@@ -2331,6 +2331,16 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.sceneStatus=deleteSelectedGalleryPortal()?
                 "Portal removed (saved scene kept)":"Portal removal failed";
         }
+        if(imguiCarousel_.sceneLoadEdit) {
+            imguiCarousel_.sceneLoadEdit=false;
+            const int index=imguiCarousel_.selectedScene;
+            const bool valid=index>=0 && static_cast<size_t>(index)<sceneIds_.size();
+            // CHARGER is an editor action only. In particular, do not
+            // treat the built-in mechanical cannon as a walk-in portal.
+            const bool ok=imguiCarousel_.editMode && !immersiveSceneActive_ &&
+                          valid && loadSavedScene(sceneIds_[index]);
+            imguiCarousel_.sceneStatus=ok?"Scene loaded in editor":"Cannot load selected scene in editor";
+        }
         if(imguiCarousel_.sceneLoad) {
             imguiCarousel_.sceneLoad=false;
             if(imguiCarousel_.selectedScene>=0 &&
