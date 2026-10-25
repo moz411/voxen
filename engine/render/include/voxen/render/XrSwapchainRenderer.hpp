@@ -192,6 +192,13 @@ private:
 #ifdef VOXEN_WITH_GLB_IMPORT
     VkPipeline glbPipeline_ = VK_NULL_HANDLE;
     std::filesystem::path pendingDemoGlb_;
+    std::filesystem::path glbAssetRoot_;
+    std::vector<std::filesystem::path> glbAssetPaths_;
+    std::vector<std::string> glbAssetNames_;
+    void rescanGlbAssets();
+    std::array<float,3> glbPlacement_{0.f,0.f,-1.5f};
+    bool glbInGallery_=false;
+    bool glbPlaced_=false;
     struct GlbGpuPrimitive {
         VkBuffer vertexBuffer=VK_NULL_HANDLE;
         VkDeviceMemory vertexMemory=VK_NULL_HANDLE;
