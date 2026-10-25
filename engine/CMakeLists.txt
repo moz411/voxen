@@ -127,6 +127,7 @@ endif()
 add_library(voxen_engine STATIC
     core/src/Engine.cpp
     $<$<BOOL:${VOXEN_WITH_GLB_IMPORT}>:${CMAKE_CURRENT_SOURCE_DIR}/scene/src/GlbMeshDecoder.cpp>
+    $<$<BOOL:${VOXEN_WITH_GLB_IMPORT}>:${CMAKE_CURRENT_SOURCE_DIR}/render/src/GlbGpuPreview.cpp>
     audio/src/AmbientMusic.cpp
     audio/src/Mp3Library.cpp
     xr/src/XrContext.cpp
