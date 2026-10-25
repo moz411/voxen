@@ -55,6 +55,10 @@ public:
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
     void configureSceneStorage(const std::filesystem::path& root);
+#ifdef VOXEN_WITH_GLB_IMPORT
+    // Explicit prototype import: app-private assets/demo.glb.
+    bool loadDemoGlb(const std::filesystem::path& file);
+#endif
     bool saveCurrentScene();
     bool loadSavedScene(const voxen::gallery::SceneId& id);
     bool deleteSavedScene(const voxen::gallery::SceneId& id);
@@ -185,6 +189,19 @@ private:
     VkPipeline voxenSpheresPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenMandelbulbPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenMandelbulbLitPipeline_ = VK_NULL_HANDLE;
+#ifdef VOXEN_WITH_GLB_IMPORT
+    VkPipeline glbPipeline_ = VK_NULL_HANDLE;
+    struct GlbGpuPrimitive {
+        VkBuffer vertexBuffer=VK_NULL_HANDLE;
+        VkDeviceMemory vertexMemory=VK_NULL_HANDLE;
+        VkBuffer indexBuffer=VK_NULL_HANDLE;
+        VkDeviceMemory indexMemory=VK_NULL_HANDLE;
+        uint32_t indexCount=0;
+        std::array<float,16> worldMatrix{};
+    };
+    std::vector<GlbGpuPrimitive> glbPrimitives_;
+    void releaseGlbGpu() noexcept;
+#endif
     struct MandelbulbLod {
         VkBuffer vertexBuffer=VK_NULL_HANDLE;
         VkDeviceMemory vertexMemory=VK_NULL_HANDLE;
