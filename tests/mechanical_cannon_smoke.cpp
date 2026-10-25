@@ -1,9 +1,15 @@
-#include <voxen/scene/MechanicalCannon.hpp>
+#include <voxen/scene/MechanicalCannonMesh.hpp>
 #include <cassert>
 #include <cmath>
 int main() {
     using namespace voxen::scene::cannon;
     assert(geometry().size()==13);
+    for (const auto& part:geometry()) {
+        const auto mesh=partMesh(part);
+        assert(!mesh.vertices.empty() && !mesh.indices.empty());
+        assert(mesh.indices.size()%3==0);
+        for(auto index:mesh.indices)assert(index<mesh.vertices.size());
+    }
     assert(evaluate(0).projectiles.empty());
     assert(evaluate(9.9f).projectiles.empty());
     const auto a=evaluate(10.25f), b=evaluate(10.25f);
