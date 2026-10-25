@@ -87,6 +87,17 @@ void checkVk(VkResult result, const char* operation) {
 void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& root) {
     sceneRepository_ = std::make_unique<voxen::gallery::SceneRepository>(root);
     portalManager_ = std::make_unique<voxen::gallery::PortalManager>(*sceneRepository_);
+    // Seed a real repository scene so gallery placement and walk-in work unchanged.
+    if(!sceneRepository_->loadSceneMetadata(mechanicalCannonSceneId_)) {
+        voxen::gallery::SavedRuntime cannon;
+        cannon.sceneKind=1;
+        cannon.liquidRoom=false;
+        auto record=voxen::gallery::SceneRepository::newScene("Canon mecanique");
+        record.id=mechanicalCannonSceneId_;
+        record.preview.materialPreset=4;
+        record.preview.boundingRadiusMeters=2.5f;
+        sceneRepository_->saveScene(record,voxen::gallery::encodeRuntime(cannon));
+    }
     refreshSceneIndex();
     selectedSceneIndex_ = 0;
 }
@@ -308,6 +319,8 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
     // Enter with only the requested scene instances resident.
     std::vector<PlasmaVoxen>{}.swap(voxens_);
     if(!loadSavedScene(id)) return false;
+    mechanicalCannonPreview_=immersiveSnapshot->sceneKind==1;
+    mechanicalCannonStart_=std::chrono::steady_clock::now();
 #ifdef VOXEN_WITH_IMGUI
     imguiCarousel_.editMode=false;
     imguiCarousel_.visible=false;
@@ -331,6 +344,7 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
     immersiveSceneActive_=false;
+    mechanicalCannonPreview_=false;
 #ifdef VOXEN_WITH_IMGUI
     imguiCarousel_.liquidRoom=false;
     imguiCarousel_.musicPlaying=false;
@@ -1570,7 +1584,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     // Opt-in mechanical-cannon stereo preview. Uses the existing procedural cube
     // vertex shader: no per-frame buffer allocations or unverified XR anchors.
     if(mechanicalCannonPreview_ && mechanicalCannonPipeline_!=VK_NULL_HANDLE) {
-        const auto state=voxen::scene::cannon::evaluate(seconds);
+        const float sceneSeconds=std::chrono::duration<float>(
+            std::chrono::steady_clock::now()-mechanicalCannonStart_).count();
+        const auto state=voxen::scene::cannon::evaluate(sceneSeconds);
         const auto parts=voxen::scene::cannon::geometry();
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,mechanicalCannonPipeline_);
         for(const auto& part:parts) {
@@ -2063,7 +2079,6 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.visiblePortalCount=visibleGalleryPortals().size();
         imguiCarousel_.scenePortalSelected=selectedPortalId_.has_value();
         voxen::ui::drawCarousel(imguiCarousel_);
-        mechanicalCannonPreview_=imguiCarousel_.mechanicalCannonPreview;
         if(imguiCarousel_.sceneSave) {
             imguiCarousel_.sceneSave=false;
             imguiCarousel_.sceneStatus=saveCurrentScene()?"Scene saved - DISPOSE available":"Save failed";
