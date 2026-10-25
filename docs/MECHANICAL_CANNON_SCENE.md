@@ -35,3 +35,13 @@ Branch: `feature/scene-mechanical-cannon`
 c++ -std=c++17 -Iengine/scene/include tests/mechanical_cannon_smoke.cpp -o /tmp/mechanical_cannon_smoke
 /tmp/mechanical_cannon_smoke
 ```
+
+
+## Gallery integration
+- The cannon is now seeded as a persistent scene record named **Canon mecanique** in the app-private SceneRepository (stable ID `voxen-mechanical-cannon-v1`).
+- Its serialized runtime is version 3, with `sceneKind=1`; version 1 and 2 snapshots remain readable.
+- The SCENES list uses the normal SELECT / ENTER / DISPOSE flow; DISPOSE places a standard anchored iridescent portal, and entering the portal activates the cannon while exiting releases it.
+- The old DEV checkbox is removed. The renderer draws the cannon only while its scene is immersive; a scene-relative clock restarts its timeline on each entry.
+- Gallery preview is the existing lightweight proxy sphere (not a rendered cannon thumbnail).
+- The first installation seeds the scene if missing; deleting it removes placements but it is reseeded on a subsequent app startup. This built-in-demo lifecycle still needs a permanent removal policy.
+- The black opaque projection pass and cube-based mechanical parts still need headset verification.
