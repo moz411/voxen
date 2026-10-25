@@ -1333,7 +1333,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
                 const float t=dx*forward[0]+dy*forward[1]+dz*forward[2];
                 if(t<0.08f || t>nearest)continue;
                 const float miss2=dx*dx+dy*dy+dz*dz-t*t;
-                const float radius=0.125f*std::clamp(portal.scale,0.1f,4.f);
+                const float radius=0.25f*std::clamp(portal.scale,0.1f,4.f);
                 if(miss2<=radius*radius*2.25f) {
                     nearest=t;
                     galleryHoveredId_=portal.id;
@@ -2195,7 +2195,8 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.glbFiles=glbAssetNames_;
         if(!glbAssetPaths_.empty() && imguiCarousel_.glbSelected>=0 &&
            static_cast<size_t>(imguiCarousel_.glbSelected)<glbAssetPaths_.size() &&
-           glbLoadedSelection_!=imguiCarousel_.glbSelected) {
+           (glbLoadedSelection_!=imguiCarousel_.glbSelected || imguiCarousel_.glbPreviewRequest)) {
+            imguiCarousel_.glbPreviewRequest=false;
             if(loadDemoGlb(glbAssetPaths_[imguiCarousel_.glbSelected])) {
                 glbLoadedSelection_=imguiCarousel_.glbSelected;
                 glbScale_=0.1f;
