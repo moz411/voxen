@@ -32,6 +32,7 @@ struct CarouselState {
     std::vector<std::string> savedSceneLabels;
     std::string sceneStatus;
     int glbSelected=0;
+    int glbMaterialMode=0; // 0 ORIGINAL, 1 VOXEN
     bool glbRescan=false;
     bool glbPreviewRequest=false;
     bool glbPlaceScene=false;
