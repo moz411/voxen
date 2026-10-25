@@ -33,6 +33,8 @@ struct Node {
 struct EmbeddedImage {
     std::vector<std::uint8_t> encoded;
     std::string mimeType;
+    std::vector<std::uint8_t> rgba;
+    int width=0, height=0;
 };
 struct MeshAsset {
     std::vector<Primitive> primitives;
