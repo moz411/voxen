@@ -16,6 +16,15 @@ int main() {
     assert(loaded->voxens[0].velocity==v.velocity);
     assert(loaded->voxens[0].material==2);
     assert(loaded->musicSource==1 && loaded->motionEnabled);
+    SavedRuntime cannon;
+    cannon.sceneKind=1;
+    auto cannonBytes=encodeRuntime(cannon);
+    auto cannonLoaded=decodeRuntime(cannonBytes);
+    assert(cannonLoaded && cannonLoaded->sceneKind==1 && cannonLoaded->voxens.empty());
+    // Old saved scenes remain compatible after introducing runtime v3.
+    assert(decodeRuntime("VOXEN_RUNTIME 2\n0\n0 0 0 0.45 0 0 0 0 0.82\n0 0.42 0 0 30\n"));
+    cannon.sceneKind=2;
+    assert(encodeRuntime(cannon).empty());
     assert(!decodeRuntime("VOXEN_RUNTIME 1\n999999\n"));
     assert(!decodeRuntime(bytes+"junk"));
     r.voxens[0].scale=-1.f;
