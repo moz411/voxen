@@ -223,10 +223,7 @@ void XrSwapchainRenderer::requestGalleryDelete() {
        pendingGalleryFloorAction_!=0 || !portalManager_ || !portalManager_->localized())return;
     // Two presses of B within three seconds confirm destructive placement removal.
     // B deletes the sphere currently pointed at, without requiring a trigger grab.
-    if(galleryHoveredId_) {
-        if(selectedPortalId_ != galleryHoveredId_)galleryDeleteArmedUntil_={};
-        selectedPortalId_=galleryHoveredId_;
-    }
+    if(galleryHoveredId_) selectedPortalId_=galleryHoveredId_;
     if(!selectedPortalId_) {
 #ifdef VOXEN_WITH_IMGUI
         imguiCarousel_.sceneStatus="Aim at a gallery sphere, then press B twice";
@@ -234,7 +231,9 @@ void XrSwapchainRenderer::requestGalleryDelete() {
         return;
     }
     const auto now=std::chrono::steady_clock::now();
-    if(now>galleryDeleteArmedUntil_) {
+    if(!galleryDeleteTarget_ || *galleryDeleteTarget_!=*selectedPortalId_ ||
+       now>galleryDeleteArmedUntil_) {
+        galleryDeleteTarget_=selectedPortalId_;
         galleryDeleteArmedUntil_=now+std::chrono::seconds(3);
 #ifdef VOXEN_WITH_IMGUI
         imguiCarousel_.sceneStatus="Press B again within 3s to remove sphere";
@@ -242,6 +241,7 @@ void XrSwapchainRenderer::requestGalleryDelete() {
         return;
     }
     galleryDeleteArmedUntil_={};
+    galleryDeleteTarget_.reset();
     const bool ok=portalManager_->erase(*selectedPortalId_);
     if(ok) {
         selectedPortalId_.reset();
@@ -1366,6 +1366,33 @@ void XrSwapchainRenderer::updateControllerInteraction(
         }
     }
 #ifdef VOXEN_WITH_IMGUI
+#ifdef VOXEN_WITH_GLB_IMPORT
+    if(glbPreview_ && tracked[1]) {
+        const auto& pose=poses[1];
+        const auto& q=pose.orientation;
+        const std::array<float,3> forward{
+            -2.f*(q.x*q.z+q.w*q.y),
+            -2.f*(q.y*q.z-q.w*q.x),
+            -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        glbPlacement_={pose.position.x+0.38f*forward[0],
+                       pose.position.y+0.38f*forward[1],
+                       pose.position.z+0.38f*forward[2]};
+        const float x=thumbsticks[1].x;
+        if(std::fabs(x)<0.3f)glbStickLatched_=false;
+        if(!glbStickLatched_ && std::fabs(x)>0.72f) {
+            glbScale_=std::clamp(glbScale_*(x>0.f?1.2f:1.f/1.2f),0.01f,2.f);
+            glbStickLatched_=true;
+        }
+        if(galleryTriggerEdge && !panelAimed_) {
+            glbPreview_=false;
+            glbPlaced_=true;
+            glbInGallery_=!editingMode() && !immersiveSceneActive_;
+#ifdef VOXEN_WITH_IMGUI
+            imguiCarousel_.glbStatus="GLB placed; select a file to preview again";
+#endif
+        }
+    } else glbStickLatched_=false;
+#endif
     // In editing mode the right controller holds a live preview.
     // Thumbstick Y selects among 9 presets; X changes size, both debounced.
     if(editingMode() && !immersiveSceneActive_) {
@@ -1517,13 +1544,13 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 #ifdef VOXEN_WITH_GLB_IMPORT
     // glTF node world matrices are column-major, matching Vulkan push constants.
     // The prototype intentionally uses the existing lighting shader (not PBR).
-    if(glbPlaced_ && glbPipeline_!=VK_NULL_HANDLE && (glbInGallery_ ? (!editingMode() && !immersiveSceneActive_) : (editingMode() || immersiveSceneActive_))) {
+    if((glbPlaced_ || glbPreview_) && glbPipeline_!=VK_NULL_HANDLE && (glbPreview_ || (glbInGallery_ ? (!editingMode() && !immersiveSceneActive_) : (editingMode() || immersiveSceneActive_)))) {
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,glbPipeline_);
         for(const auto& part:glbPrimitives_) {
             if(part.indexCount==0)continue;
             Mat4 node{};
             std::copy(part.worldMatrix.begin(),part.worldMatrix.end(),node.m);
-            const auto root=modelMatrix(glbPlacement_[0],glbPlacement_[1],1.f,glbPlacement_[2]);
+            const auto root=modelMatrix(glbPlacement_[0],glbPlacement_[1],glbScale_,glbPlacement_[2]);
             ProceduralPushConstants pc{multiply(projView,multiply(root,node)),{0.f,0.f,0.52f,1.f}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             const VkDeviceSize off=0;
@@ -2164,6 +2191,21 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.musicReady=ambientMusic_.ready();
 #ifdef VOXEN_WITH_GLB_IMPORT
         imguiCarousel_.glbFiles=glbAssetNames_;
+        if(!glbAssetPaths_.empty() && imguiCarousel_.glbSelected>=0 &&
+           static_cast<size_t>(imguiCarousel_.glbSelected)<glbAssetPaths_.size() &&
+           glbLoadedSelection_!=imguiCarousel_.glbSelected) {
+            if(loadDemoGlb(glbAssetPaths_[imguiCarousel_.glbSelected])) {
+                glbLoadedSelection_=imguiCarousel_.glbSelected;
+                glbScale_=0.1f;
+                glbPreview_=true;
+                glbPlaced_=false;
+                imguiCarousel_.glbStatus="Preview active: aim then trigger; right stick left/right changes size";
+            } else {
+                glbLoadedSelection_=-1;
+                glbPreview_=false;
+                imguiCarousel_.glbStatus="GLB load failed";
+            }
+        }
 #endif
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
@@ -2252,6 +2294,7 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.glbRescan=false;
             rescanGlbAssets();
             imguiCarousel_.glbSelected=0;
+            glbLoadedSelection_=-1;
             imguiCarousel_.glbStatus="Asset list refreshed";
         }
         if(imguiCarousel_.glbPlaceScene || imguiCarousel_.glbPlaceGallery) {
@@ -2277,6 +2320,8 @@ void XrSwapchainRenderer::render(
                     if(loadDemoGlb(glbAssetPaths_[i])) {
                         glbInGallery_=gallery;
                         glbPlaced_=true;
+                        glbPreview_=false;
+                        glbLoadedSelection_=i;
                         imguiCarousel_.glbStatus=gallery?"GLB placed on tracked gallery floor":"GLB placed in scene";
                     } else imguiCarousel_.glbStatus="GLB decode / Vulkan upload failed";
                 }
