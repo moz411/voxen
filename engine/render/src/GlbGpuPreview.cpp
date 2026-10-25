@@ -8,7 +8,7 @@
 
 namespace voxen::render {
 namespace {
-struct LitVertex { float position[3]; float normal[3]; };
+struct LitVertex { float position[3]; float normal[3]; float uv[2]; };
 void checked(VkResult result,const char* what) {
     if(result!=VK_SUCCESS)throw std::runtime_error(what);
 }
@@ -63,10 +63,12 @@ bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
                 vertices.reserve(primitive.vertices.size());
                 for(const auto& v:primitive.vertices)
                     vertices.push_back({{v.position[0],v.position[1],v.position[2]},
-                                        {v.normal[0],v.normal[1],v.normal[2]}});
+                                        {v.normal[0],v.normal[1],v.normal[2]},
+                                        {v.uv[0],v.uv[1]}});
                 GlbGpuPrimitive gpu{};
                 gpu.worldMatrix=node.worldMatrix;
                 gpu.baseColor=primitive.baseColor;
+                gpu.textureIndex=primitive.baseColorTexture;
                 incoming.push_back(gpu); // record immediately for exception-safe cleanup
                 auto& target=incoming.back();
                 upload(device_,physicalDevice_,vertices.data(),
