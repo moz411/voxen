@@ -13,6 +13,7 @@ struct CarouselState {
     bool editMode = false; // Gallery at startup; painting only in edit mode.
     bool sceneSave = false;
     bool sceneLoad = false;
+    bool sceneLoadEdit = false;
     bool sceneDelete = false;
     bool sceneDeleteConfirm = false;
     bool scenePlace = false;
