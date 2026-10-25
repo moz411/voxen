@@ -1,5 +1,8 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
 #include <voxen/render/MandelbulbMesh.hpp>
+#ifdef VOXEN_WITH_GLB_IMPORT
+#include <voxen/scene/GlbMeshDecoder.hpp>
+#endif
 #ifdef VOXEN_WITH_IMGUI
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
@@ -63,6 +66,7 @@
 #include <array>
 #include <cstring>
 #include <cfloat>
+#include <cctype>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -84,6 +88,31 @@ void checkVk(VkResult result, const char* operation) {
 
 } // namespace
 
+
+#ifdef VOXEN_WITH_GLB_IMPORT
+void XrSwapchainRenderer::rescanGlbAssets() {
+    glbAssetPaths_.clear();
+    glbAssetNames_.clear();
+    try {
+        std::filesystem::create_directories(glbAssetRoot_);
+        for(const auto& item:std::filesystem::directory_iterator(glbAssetRoot_)) {
+            if(!item.is_regular_file() || item.is_symlink())continue;
+            auto extension=item.path().extension().string();
+            std::transform(extension.begin(),extension.end(),extension.begin(),
+                           [](unsigned char v){return static_cast<char>(std::tolower(v));});
+            if(extension!=".glb")continue;
+            glbAssetPaths_.push_back(item.path());
+        }
+        std::sort(glbAssetPaths_.begin(),glbAssetPaths_.end());
+        for(const auto& path:glbAssetPaths_)
+            glbAssetNames_.push_back(path.filename().string());
+    } catch(const std::exception&) {
+        glbAssetPaths_.clear();
+        glbAssetNames_.clear();
+    }
+}
+#endif
+
 void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& root) {
     sceneRepository_ = std::make_unique<voxen::gallery::SceneRepository>(root);
     portalManager_ = std::make_unique<voxen::gallery::PortalManager>(*sceneRepository_);
@@ -100,6 +129,15 @@ void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& roo
     }
     refreshSceneIndex();
     selectedSceneIndex_ = 0;
+#ifdef VOXEN_WITH_GLB_IMPORT
+    // Debug-only static asset; requires explicit file in app-private storage.
+#ifdef __ANDROID__
+    glbAssetRoot_="/sdcard/Android/data/org.voxen.xr/files/assets";
+#else
+    glbAssetRoot_=root / "assets";
+#endif
+    rescanGlbAssets();
+#endif
 }
 
 void XrSwapchainRenderer::refreshSceneIndex() {
@@ -181,25 +219,29 @@ std::vector<voxen::gallery::SceneId> XrSwapchainRenderer::savedSceneIds() const 
 }
 
 void XrSwapchainRenderer::requestGalleryDelete() {
+    // Delete only the current ray-hovered gallery sphere; never delete a
+    // previous selection or an immersive-scene object by accident.
     if(editingMode() || immersiveSceneActive_ || galleryDragging_ ||
-       pendingGalleryFloorAction_!=0 || !portalManager_ || !portalManager_->localized())return;
-    // Two presses of B within three seconds confirm destructive placement removal.
-    if(!selectedPortalId_)return;
-    const auto now=std::chrono::steady_clock::now();
-    if(now>galleryDeleteArmedUntil_) {
-        galleryDeleteArmedUntil_=now+std::chrono::seconds(3);
-#ifdef VOXEN_WITH_IMGUI
-        imguiCarousel_.sceneStatus="Press B again within 3s to remove sphere";
+       pendingGalleryFloorAction_!=0 || !portalManager_ || !portalManager_->localized())
+        return;
+    if(!galleryHoveredId_) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenGallery","B delete: no hovered sphere");
 #endif
         return;
     }
-    galleryDeleteArmedUntil_={};
-    const bool ok=portalManager_->erase(*selectedPortalId_);
+    const auto id=*galleryHoveredId_;
+    const bool ok=portalManager_->erase(id);
+#ifdef __ANDROID__
+    __android_log_print(ok?ANDROID_LOG_INFO:ANDROID_LOG_WARN,"VoxenGallery",
+                        "B delete hovered sphere: %s",ok?"success":"failed");
+#endif
     if(ok) {
         selectedPortalId_.reset();
         galleryHoveredId_.reset();
+        galleryDeleteArmedUntil_={};
 #ifdef VOXEN_WITH_IMGUI
-        imguiCarousel_.sceneStatus="Gallery sphere removed; saved scene preserved";
+        imguiCarousel_.sceneStatus="Sphere deleted; saved scene retained";
 #endif
     }
 }
@@ -583,6 +625,12 @@ void XrSwapchainRenderer::initialize(
         }
     }
     createFramebuffers();
+#ifdef VOXEN_WITH_GLB_IMPORT
+    if(!pendingDemoGlb_.empty()) {
+        loadDemoGlb(pendingDemoGlb_);
+        pendingDemoGlb_.clear();
+    }
+#endif
 }
 
 void XrSwapchainRenderer::createCommandResources() {
@@ -1011,12 +1059,24 @@ void XrSwapchainRenderer::createPipeline() {
             {0,0,VK_FORMAT_R32G32B32_SFLOAT,0},
             {1,0,VK_FORMAT_R32G32B32_SFLOAT,sizeof(XrVector3f)}
         };
-        if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_ || &out==&voxenMandelbulbPipeline_ || &out==&voxenMandelbulbLitPipeline_) {
+        if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_ || &out==&voxenMandelbulbPipeline_ || &out==&voxenMandelbulbLitPipeline_
+#ifdef VOXEN_WITH_GLB_IMPORT
+           || &out==&glbPipeline_
+#endif
+        ) {
             binding.stride=sizeof(MandelbulbLitVertex);
             vi.vertexBindingDescriptionCount=1;
             vi.pVertexBindingDescriptions=&binding;
-            vi.vertexAttributeDescriptionCount=(&out==&voxenMandelbulbLitPipeline_) ? 2 : 1;
-            vi.pVertexAttributeDescriptions=(&out==&voxenMandelbulbLitPipeline_) ? litAttributes : &attribute;
+            vi.vertexAttributeDescriptionCount=(&out==&voxenMandelbulbLitPipeline_
+#ifdef VOXEN_WITH_GLB_IMPORT
+            || &out==&glbPipeline_
+#endif
+            ) ? 2 : 1;
+            vi.pVertexAttributeDescriptions=(&out==&voxenMandelbulbLitPipeline_
+#ifdef VOXEN_WITH_GLB_IMPORT
+            || &out==&glbPipeline_
+#endif
+            ) ? litAttributes : &attribute;
             if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_)binding.stride=sizeof(XrVector3f);
         }
         VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
@@ -1050,7 +1110,11 @@ void XrSwapchainRenderer::createPipeline() {
             &out==&spikeBloomPipeline_ || &out==&jellyfishPipeline_ ||
             &out==&earthwormPipeline_ || &out==&cloudPipeline_ ||
             &out==&metaballsPipeline_ || &out==&voxenMandelbulbLitPipeline_ ||
-            &out==&mechanicalCannonPipeline_;
+            &out==&mechanicalCannonPipeline_
+#ifdef VOXEN_WITH_GLB_IMPORT
+            || &out==&glbPipeline_
+#endif
+            ;
         if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
@@ -1101,6 +1165,9 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
     buildPipeline(meshWireVert, meshWireVertSize, laserFrag, laserFragSize, voxenMandelbulbPipeline_);
     buildPipeline(mandelbulbLitVert, mandelbulbLitVertSize, mandelbulbLitFrag, mandelbulbLitFragSize, voxenMandelbulbLitPipeline_);
+#ifdef VOXEN_WITH_GLB_IMPORT
+    buildPipeline(mandelbulbLitVert,mandelbulbLitVertSize,mandelbulbLitFrag,mandelbulbLitFragSize,glbPipeline_);
+#endif
     buildPipeline(voxenAttractorVert, voxenAttractorVertSize, voxenAttractorFrag, voxenAttractorFragSize, voxenAttractorPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
@@ -1232,7 +1299,11 @@ void XrSwapchainRenderer::updateControllerInteraction(
     // Gallery right-hand ray: trigger grabs a sphere, moving controller drags it,
     // releasing trigger persists the final pose relative to the Meta room anchor.
     if(!editingMode() && !immersiveSceneActive_ && pendingGalleryFloorAction_==0 &&
-       portalManager_ && portalManager_->localized() && tracked[1]) {
+       portalManager_ && portalManager_->localized() && tracked[1]
+#ifdef VOXEN_WITH_GLB_IMPORT
+       && !glbPreview_
+#endif
+       ) {
         const auto& hand=poses[1];
         const auto& q=hand.orientation;
         const std::array<float,3> forward{
@@ -1262,7 +1333,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
                 const float t=dx*forward[0]+dy*forward[1]+dz*forward[2];
                 if(t<0.08f || t>nearest)continue;
                 const float miss2=dx*dx+dy*dy+dz*dz-t*t;
-                const float radius=0.125f*std::clamp(portal.scale,0.1f,4.f);
+                const float radius=0.25f*std::clamp(portal.scale,0.1f,4.f);
                 if(miss2<=radius*radius*2.25f) {
                     nearest=t;
                     galleryHoveredId_=portal.id;
@@ -1288,11 +1359,38 @@ void XrSwapchainRenderer::updateControllerInteraction(
         float axis=thumbsticks[0].x;
         if(std::fabs(axis)<0.3f)nativeMenuStickLatched_=false;
         if(!nativeMenuStickLatched_ && std::fabs(axis)>0.70f){
-            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:3))%4;
+            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:4))%5;
             nativeMenuStickLatched_=true;
         }
     }
 #ifdef VOXEN_WITH_IMGUI
+#ifdef VOXEN_WITH_GLB_IMPORT
+    if(glbPreview_ && tracked[1]) {
+        const auto& pose=poses[1];
+        const auto& q=pose.orientation;
+        const std::array<float,3> forward{
+            -2.f*(q.x*q.z+q.w*q.y),
+            -2.f*(q.y*q.z-q.w*q.x),
+            -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        glbPlacement_={pose.position.x+0.38f*forward[0],
+                       pose.position.y+0.38f*forward[1],
+                       pose.position.z+0.38f*forward[2]};
+        const float x=thumbsticks[1].x;
+        if(std::fabs(x)<0.3f)glbStickLatched_=false;
+        if(!glbStickLatched_ && std::fabs(x)>0.72f) {
+            glbScale_=std::clamp(glbScale_*(x>0.f?1.2f:1.f/1.2f),0.01f,2.f);
+            glbStickLatched_=true;
+        }
+        if(galleryTriggerEdge && !panelAimed_) {
+            glbPreview_=false;
+            glbPlaced_=true;
+            glbInGallery_=!editingMode() && !immersiveSceneActive_;
+#ifdef VOXEN_WITH_IMGUI
+            imguiCarousel_.glbStatus="GLB placed; select a file to preview again";
+#endif
+        }
+    } else glbStickLatched_=false;
+#endif
     // In editing mode the right controller holds a live preview.
     // Thumbstick Y selects among 9 presets; X changes size, both debounced.
     if(editingMode() && !immersiveSceneActive_) {
@@ -1317,7 +1415,11 @@ void XrSwapchainRenderer::updateControllerInteraction(
     // aiming at the carousel, or during gallery/immersive interactions.
     if(tracked[1] && galleryTriggerEdge && pendingGalleryFloorAction_==0 &&
        editingMode() && !immersiveSceneActive_ &&
-       imguiCarousel_.voxenPaintEnabled && !panelAimed_) {
+       imguiCarousel_.voxenPaintEnabled && !panelAimed_
+#ifdef VOXEN_WITH_GLB_IMPORT
+       && !glbPreview_
+#endif
+       ) {
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         const std::array<float,3> dir{
@@ -1440,6 +1542,25 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     artworksAnimated=imguiCarousel_.animateArtworks;
     motionMode=imguiCarousel_.artworkMotion;
     motionAmplitude=std::clamp(imguiCarousel_.motionAmplitude,0.0f,0.5f);
+#endif
+#ifdef VOXEN_WITH_GLB_IMPORT
+    // glTF node world matrices are column-major, matching Vulkan push constants.
+    // The prototype intentionally uses the existing lighting shader (not PBR).
+    if((glbPlaced_ || glbPreview_) && glbPipeline_!=VK_NULL_HANDLE && (glbPreview_ || (glbInGallery_ ? (!editingMode() && !immersiveSceneActive_) : (editingMode() || immersiveSceneActive_)))) {
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,glbPipeline_);
+        for(const auto& part:glbPrimitives_) {
+            if(part.indexCount==0)continue;
+            Mat4 node{};
+            std::copy(part.worldMatrix.begin(),part.worldMatrix.end(),node.m);
+            const auto root=modelMatrix(glbPlacement_[0],glbPlacement_[1],glbScale_,glbPlacement_[2]);
+            ProceduralPushConstants pc{multiply(projView,multiply(root,node)),{0.f,0.f,0.52f,1.f}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            const VkDeviceSize off=0;
+            vkCmdBindVertexBuffers(commandBuffer_,0,1,&part.vertexBuffer,&off);
+            vkCmdBindIndexBuffer(commandBuffer_,part.indexBuffer,0,VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(commandBuffer_,part.indexCount,1,0,0,0);
+        }
+    }
 #endif
     // Depth-only static real-world mesh: occludes wall fragments behind
     // furniture, but never writes opaque pixels over the passthrough layer.
@@ -2070,6 +2191,25 @@ void XrSwapchainRenderer::render(
         ImGui::NewFrame();
         imguiCarousel_.voxenCount=static_cast<int>(voxens_.size());
         imguiCarousel_.musicReady=ambientMusic_.ready();
+#ifdef VOXEN_WITH_GLB_IMPORT
+        imguiCarousel_.glbFiles=glbAssetNames_;
+        if(!glbAssetPaths_.empty() && imguiCarousel_.glbSelected>=0 &&
+           static_cast<size_t>(imguiCarousel_.glbSelected)<glbAssetPaths_.size() &&
+           (glbLoadedSelection_!=imguiCarousel_.glbSelected || imguiCarousel_.glbPreviewRequest)) {
+            imguiCarousel_.glbPreviewRequest=false;
+            if(loadDemoGlb(glbAssetPaths_[imguiCarousel_.glbSelected])) {
+                glbLoadedSelection_=imguiCarousel_.glbSelected;
+                glbScale_=0.1f;
+                glbPreview_=true;
+                glbPlaced_=false;
+                imguiCarousel_.glbStatus="Preview active: aim then trigger; right stick left/right changes size";
+            } else {
+                glbLoadedSelection_=-1;
+                glbPreview_=false;
+                imguiCarousel_.glbStatus="GLB load failed";
+            }
+        }
+#endif
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         imguiCarousel_.savedSceneIds=sceneIds_;
@@ -2152,6 +2292,45 @@ void XrSwapchainRenderer::render(
             lastVoxenValid_=false;
             imguiCarousel_.voxenClear=false;
         }
+#ifdef VOXEN_WITH_GLB_IMPORT
+        if(imguiCarousel_.glbRescan) {
+            imguiCarousel_.glbRescan=false;
+            rescanGlbAssets();
+            imguiCarousel_.glbSelected=0;
+            glbLoadedSelection_=-1;
+            imguiCarousel_.glbStatus="Asset list refreshed";
+        }
+        if(imguiCarousel_.glbPlaceScene || imguiCarousel_.glbPlaceGallery) {
+            const bool gallery=imguiCarousel_.glbPlaceGallery;
+            imguiCarousel_.glbPlaceScene=false;
+            imguiCarousel_.glbPlaceGallery=false;
+            const auto i=imguiCarousel_.glbSelected;
+            if(i<0 || static_cast<size_t>(i)>=glbAssetPaths_.size()) {
+                imguiCarousel_.glbStatus="Select a GLB first";
+            } else if(gallery && (!portalManager_ || !portalManager_->localized())) {
+                imguiCarousel_.glbStatus="Gallery placement needs a localized Meta room";
+            } else {
+                const auto hit=gallery?galleryFloorHit():std::optional<voxen::gallery::FloorHit>{};
+                if(gallery && !hit) {
+                    imguiCarousel_.glbStatus="Aim controller at a tracked floor first";
+                } else if(!gallery && !controllerTracked_[1]) {
+                    imguiCarousel_.glbStatus="Right controller is not tracked";
+                } else {
+                    const auto& pos=controllerPoses_[1].position;
+                    // Scene: initial position at right controller; gallery: floor hit.
+                    if(!gallery) glbPlacement_={pos.x,pos.y,pos.z-0.3f};
+                    else glbPlacement_=hit->localPose.positionMeters;
+                    if(loadDemoGlb(glbAssetPaths_[i])) {
+                        glbInGallery_=gallery;
+                        glbPlaced_=true;
+                        glbPreview_=false;
+                        glbLoadedSelection_=i;
+                        imguiCarousel_.glbStatus=gallery?"GLB placed on tracked gallery floor":"GLB placed in scene";
+                    } else imguiCarousel_.glbStatus="GLB decode / Vulkan upload failed";
+                }
+            }
+        }
+#endif
         if(imguiCarousel_.musicRescan){
             imguiCarousel_.musicRescan=false;
             mp3Library_.shutdown();
@@ -2335,6 +2514,10 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbLitPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbLitPipeline_,nullptr);voxenMandelbulbLitPipeline_=VK_NULL_HANDLE;}
+#ifdef VOXEN_WITH_GLB_IMPORT
+    releaseGlbGpu();
+    if(glbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,glbPipeline_,nullptr);glbPipeline_=VK_NULL_HANDLE;}
+#endif
     for(auto& lod:mandelbulbLods_){
         if(lod.vertexBuffer!=VK_NULL_HANDLE)vkDestroyBuffer(device_,lod.vertexBuffer,nullptr);
         if(lod.indexBuffer!=VK_NULL_HANDLE)vkDestroyBuffer(device_,lod.indexBuffer,nullptr);

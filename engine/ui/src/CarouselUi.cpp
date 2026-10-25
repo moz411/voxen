@@ -6,17 +6,17 @@
 namespace voxen::ui {
 void drawCarousel(CarouselState& state) {
     if (!state.visible) return;
-    state.page=std::clamp(state.page,0,3);
+    state.page=std::clamp(state.page,0,4);
     ImGui::SetNextWindowPos(ImVec2(8,8),ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(500,660),ImGuiCond_Always);
     constexpr ImGuiWindowFlags flags=ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse;
     if (ImGui::Begin("VOXEN",nullptr,flags)) {
-        if (ImGui::Button("< PREV")) state.page=(state.page+3)%4;
+        if (ImGui::Button("< PREV")) state.page=(state.page+4)%5;
         ImGui::SameLine();
         ImGui::Text("%.*s",static_cast<int>(pages[state.page].size()),pages[state.page].data());
         ImGui::SameLine();
-        if (ImGui::Button("NEXT >")) state.page=(state.page+1)%4;
+        if (ImGui::Button("NEXT >")) state.page=(state.page+1)%5;
         ImGui::Separator();
         switch(state.page) {
         case 0:
@@ -110,6 +110,29 @@ void drawCarousel(CarouselState& state) {
             ImGui::SliderFloat("Music volume",&state.musicVolume,0.f,1.f);
             ImGui::TextDisabled(state.musicSource==0 ? "Procedural ambient loops" : "MP3 playlist / loop enabled");
             if(state.musicSource==0&&!state.musicReady)ImGui::TextDisabled("Audio output unavailable");
+            break;
+        }
+        case 4: {
+            ImGui::TextUnformatted("GLB / LOCAL ASSETS");
+            ImGui::TextDisabled("Android/data/org.voxen.xr/files/assets");
+            if(ImGui::Button("RESCAN ASSETS"))state.glbRescan=true;
+            ImGui::BeginChild("glb-list",ImVec2(0,280),true);
+            for(int i=0;i<static_cast<int>(state.glbFiles.size());++i)
+                if(ImGui::Selectable(state.glbFiles[i].c_str(),state.glbSelected==i))
+                    state.glbSelected=i;
+            ImGui::EndChild();
+            if(state.glbFiles.empty())ImGui::TextDisabled("No .glb files found");
+            if(state.glbFiles.empty())ImGui::BeginDisabled();
+            if(ImGui::Button("PREVIEW",ImVec2(140,44)))state.glbPreviewRequest=true;
+            ImGui::SameLine();
+            if(ImGui::Button("PLACE IN SCENE",ImVec2(140,44)))state.glbPlaceScene=true;
+            ImGui::SameLine();
+            if(ImGui::Button("PLACE IN GALLERY",ImVec2(220,44)))state.glbPlaceGallery=true;
+            if(state.glbFiles.empty())ImGui::EndDisabled();
+            ImGui::TextWrapped("%s",state.glbStatus.c_str());
+            ImGui::TextDisabled("Preview follows right controller");
+            ImGui::TextDisabled("RIGHT STICK LEFT/RIGHT: resize (default 0.1)");
+            ImGui::TextDisabled("RIGHT TRIGGER: place preview");
             break;
         }
         case 3: {

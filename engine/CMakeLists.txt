@@ -106,8 +106,28 @@ if(VOXEN_WITH_IMGUI)
     endif()
 endif()
 
+# Optional CPU GLB mesh decoder. cgltf is a small header-only C parser.
+# Disable with -DVOXEN_WITH_GLB_IMPORT=OFF for offline/legacy builds.
+option(VOXEN_WITH_GLB_IMPORT "Build CPU glTF/GLB mesh decoder" ON)
+if(VOXEN_WITH_GLB_IMPORT)
+    include(FetchContent)
+    FetchContent_Declare(voxen_cgltf
+        GIT_REPOSITORY https://github.com/jkuhlmann/cgltf.git
+        GIT_TAG v1.15
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_GetProperties(voxen_cgltf)
+    if(NOT voxen_cgltf_POPULATED)
+        FetchContent_Populate(voxen_cgltf)
+    endif()
+    add_library(voxen_cgltf STATIC scene/src/CgltfImplementation.cpp)
+    target_include_directories(voxen_cgltf PUBLIC ${voxen_cgltf_SOURCE_DIR})
+endif()
+
 add_library(voxen_engine STATIC
     core/src/Engine.cpp
+    $<$<BOOL:${VOXEN_WITH_GLB_IMPORT}>:${CMAKE_CURRENT_SOURCE_DIR}/scene/src/GlbMeshDecoder.cpp>
+    $<$<BOOL:${VOXEN_WITH_GLB_IMPORT}>:${CMAKE_CURRENT_SOURCE_DIR}/render/src/GlbGpuPreview.cpp>
     audio/src/AmbientMusic.cpp
     audio/src/Mp3Library.cpp
     xr/src/XrContext.cpp
@@ -146,4 +166,9 @@ target_compile_features(voxen_engine PUBLIC cxx_std_20)
 if(VOXEN_WITH_IMGUI)
     target_link_libraries(voxen_engine PUBLIC voxen_imgui)
     target_compile_definitions(voxen_engine PUBLIC VOXEN_WITH_IMGUI=1)
+endif()
+
+if(VOXEN_WITH_GLB_IMPORT)
+    target_link_libraries(voxen_engine PUBLIC voxen_cgltf)
+    target_compile_definitions(voxen_engine PUBLIC VOXEN_WITH_GLB_IMPORT=1)
 endif()
