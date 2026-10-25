@@ -161,6 +161,8 @@ void drawCarousel(CarouselState& state) {
             ImGui::EndChild();
             if(!state.editMode)ImGui::BeginDisabled();
             if(ImGui::Button("SAVE",ImVec2(140,44)))state.sceneSave=true;
+            ImGui::SameLine();
+            if(ImGui::Button("CHARGER",ImVec2(140,44)))state.sceneLoad=true;
             if(!state.editMode)ImGui::EndDisabled();
             ImGui::SameLine();
             const bool valid=state.selectedScene>=0 &&
