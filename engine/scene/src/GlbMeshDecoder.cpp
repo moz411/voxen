@@ -1,7 +1,11 @@
 #include "voxen/scene/GlbMeshDecoder.hpp"
 #include "voxen/scene/GlbAsset.hpp"
 #include <cgltf.h>
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_NO_STDIO
+#include <stb_image.h>
 #include <algorithm>
+#include <climits>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -58,6 +62,21 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
                length<=src.buffer_view->buffer->size-offset) {
                 image.encoded.assign(base+offset,base+offset+length);
                 image.mimeType=src.mime_type;
+                int w=0,h=0,channels=0;
+                // Refuse giant decoded images before allocating RGBA memory.
+                if(image.encoded.size()<=static_cast<size_t>(INT_MAX) &&
+                   stbi_info_from_memory(image.encoded.data(),
+                       static_cast<int>(image.encoded.size()),&w,&h,&channels) &&
+                   w>0 && h>0 && w<=4096 && h<=4096 &&
+                   static_cast<uint64_t>(w)*h<=16u*1024u*1024u) {
+                    stbi_uc* rgba=stbi_load_from_memory(image.encoded.data(),
+                        static_cast<int>(image.encoded.size()),&w,&h,&channels,4);
+                    if(rgba) {
+                        image.rgba.assign(rgba,rgba+static_cast<size_t>(w)*h*4);
+                        image.width=w;image.height=h;
+                        stbi_image_free(rgba);
+                    }
+                }
             }
         }
         output.images.push_back(std::move(image));
