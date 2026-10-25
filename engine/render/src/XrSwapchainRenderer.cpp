@@ -219,35 +219,29 @@ std::vector<voxen::gallery::SceneId> XrSwapchainRenderer::savedSceneIds() const 
 }
 
 void XrSwapchainRenderer::requestGalleryDelete() {
+    // Delete only the current ray-hovered gallery sphere; never delete a
+    // previous selection or an immersive-scene object by accident.
     if(editingMode() || immersiveSceneActive_ || galleryDragging_ ||
-       pendingGalleryFloorAction_!=0 || !portalManager_ || !portalManager_->localized())return;
-    // Two presses of B within three seconds confirm destructive placement removal.
-    // B deletes the sphere currently pointed at, without requiring a trigger grab.
-    if(galleryHoveredId_) selectedPortalId_=galleryHoveredId_;
-    if(!selectedPortalId_) {
-#ifdef VOXEN_WITH_IMGUI
-        imguiCarousel_.sceneStatus="Aim at a gallery sphere, then press B twice";
+       pendingGalleryFloorAction_!=0 || !portalManager_ || !portalManager_->localized())
+        return;
+    if(!galleryHoveredId_) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenGallery","B delete: no hovered sphere");
 #endif
         return;
     }
-    const auto now=std::chrono::steady_clock::now();
-    if(!galleryDeleteTarget_ || *galleryDeleteTarget_!=*selectedPortalId_ ||
-       now>galleryDeleteArmedUntil_) {
-        galleryDeleteTarget_=selectedPortalId_;
-        galleryDeleteArmedUntil_=now+std::chrono::seconds(3);
-#ifdef VOXEN_WITH_IMGUI
-        imguiCarousel_.sceneStatus="Press B again within 3s to remove sphere";
+    const auto id=*galleryHoveredId_;
+    const bool ok=portalManager_->erase(id);
+#ifdef __ANDROID__
+    __android_log_print(ok?ANDROID_LOG_INFO:ANDROID_LOG_WARN,"VoxenGallery",
+                        "B delete hovered sphere: %s",ok?"success":"failed");
 #endif
-        return;
-    }
-    galleryDeleteArmedUntil_={};
-    galleryDeleteTarget_.reset();
-    const bool ok=portalManager_->erase(*selectedPortalId_);
     if(ok) {
         selectedPortalId_.reset();
         galleryHoveredId_.reset();
+        galleryDeleteArmedUntil_={};
 #ifdef VOXEN_WITH_IMGUI
-        imguiCarousel_.sceneStatus="Gallery sphere removed; saved scene preserved";
+        imguiCarousel_.sceneStatus="Sphere deleted; saved scene retained";
 #endif
     }
 }
@@ -1305,7 +1299,11 @@ void XrSwapchainRenderer::updateControllerInteraction(
     // Gallery right-hand ray: trigger grabs a sphere, moving controller drags it,
     // releasing trigger persists the final pose relative to the Meta room anchor.
     if(!editingMode() && !immersiveSceneActive_ && pendingGalleryFloorAction_==0 &&
-       portalManager_ && portalManager_->localized() && tracked[1]) {
+       portalManager_ && portalManager_->localized() && tracked[1]
+#ifdef VOXEN_WITH_GLB_IMPORT
+       && !glbPreview_
+#endif
+       ) {
         const auto& hand=poses[1];
         const auto& q=hand.orientation;
         const std::array<float,3> forward{
@@ -1417,7 +1415,11 @@ void XrSwapchainRenderer::updateControllerInteraction(
     // aiming at the carousel, or during gallery/immersive interactions.
     if(tracked[1] && galleryTriggerEdge && pendingGalleryFloorAction_==0 &&
        editingMode() && !immersiveSceneActive_ &&
-       imguiCarousel_.voxenPaintEnabled && !panelAimed_) {
+       imguiCarousel_.voxenPaintEnabled && !panelAimed_
+#ifdef VOXEN_WITH_GLB_IMPORT
+       && !glbPreview_
+#endif
+       ) {
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         const std::array<float,3> dir{
