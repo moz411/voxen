@@ -10,8 +10,12 @@ Branch: `feature/scene-mechanical-cannon`
 - Seeded dispersion and hard 1.5 m spectator standoff, bounded active projectile count.
 - Host-only C++ smoke test `tests/mechanical_cannon_smoke.cpp`.
 
+## Mesh generation progress
+- `MechanicalCannonMesh.hpp` generates indexed triangle meshes with normals (box and cylindrical proxies) for all 13 components; geometry is still CPU-side and not uploaded to Vulkan.
+- `mechanical_cannon_smoke` is registered in `tests/CMakeLists.txt`; test execution remains pending.
+
 ## Not implemented / integration required
-- This is a **simulation/geometry descriptor**, not a working XR scene. Renderer must turn part descriptors into actual instanced mesh draws, implement cylindrical barrel/rings, transform them into headset reference space, apply recoil and emissive shaders, and render projectile material IDs using the existing Voxen shader system.
+- This is a **simulation/geometry descriptor**, not a working XR scene. Renderer must upload generated meshes and turn part descriptors into actual instanced draws, refine hollow barrel/rings, transform them into headset reference space, apply recoil and emissive shaders, and render projectile material IDs using the existing Voxen shader system.
 - Disable passthrough only while immersed and retain a reliable exit to cyan-Sobel MR gallery. Physical guardian/boundary protection must remain active. Virtual darkness does not make the physical room safe.
 - Integrate the timeline with spatial MP3 playback; `audioPulse` is a signal, not sound.
 - Serialize scene config and time into the gallery's versioned scene payload, and add scene selection/preview; the current repository's gallery snapshot is not a full declarative scene loader.
