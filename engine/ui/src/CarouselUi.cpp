@@ -123,7 +123,9 @@ void drawCarousel(CarouselState& state) {
             ImGui::EndChild();
             if(state.glbFiles.empty())ImGui::TextDisabled("No .glb files found");
             if(state.glbFiles.empty())ImGui::BeginDisabled();
-            if(ImGui::Button("PLACE IN SCENE",ImVec2(220,44)))state.glbPlaceScene=true;
+            if(ImGui::Button("PREVIEW",ImVec2(140,44)))state.glbPreviewRequest=true;
+            ImGui::SameLine();
+            if(ImGui::Button("PLACE IN SCENE",ImVec2(140,44)))state.glbPlaceScene=true;
             ImGui::SameLine();
             if(ImGui::Button("PLACE IN GALLERY",ImVec2(220,44)))state.glbPlaceGallery=true;
             if(state.glbFiles.empty())ImGui::EndDisabled();
