@@ -2141,7 +2141,10 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.sceneLoad=false;
             if(imguiCarousel_.selectedScene>=0 &&
                static_cast<std::size_t>(imguiCarousel_.selectedScene)<sceneIds_.size())
-                imguiCarousel_.sceneStatus=loadSavedScene(sceneIds_[imguiCarousel_.selectedScene])?
+                imguiCarousel_.sceneStatus=
+                    (sceneIds_[imguiCarousel_.selectedScene]==mechanicalCannonSceneId_
+                        ? enterImmersiveScene(sceneIds_[imguiCarousel_.selectedScene])
+                        : loadSavedScene(sceneIds_[imguiCarousel_.selectedScene])) ?
                     "Scene loaded":"Load failed";
         }
         if(imguiCarousel_.voxenClear){
