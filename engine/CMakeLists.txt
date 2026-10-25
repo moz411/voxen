@@ -122,8 +122,18 @@ if(VOXEN_WITH_GLB_IMPORT)
     if(NOT voxen_cgltf_POPULATED)
         FetchContent_Populate(voxen_cgltf)
     endif()
+    FetchContent_Declare(voxen_stb
+        GIT_REPOSITORY https://github.com/nothings/stb.git
+        GIT_TAG master
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_GetProperties(voxen_stb)
+    if(NOT voxen_stb_POPULATED)
+        FetchContent_Populate(voxen_stb)
+    endif()
     add_library(voxen_cgltf STATIC scene/src/CgltfImplementation.cpp)
     target_include_directories(voxen_cgltf PUBLIC ${voxen_cgltf_SOURCE_DIR})
+    target_include_directories(voxen_cgltf PUBLIC ${voxen_stb_SOURCE_DIR})
 endif()
 
 add_library(voxen_engine STATIC
