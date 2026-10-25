@@ -24,6 +24,7 @@ struct CarouselState {
     bool scenePortalSelected = false;
     bool sceneEnter = false;
     bool sceneLeave = false;
+    bool mechanicalCannonPreview = false;
     bool sceneImmersive = false;
     bool sceneAnchorReady = false;
     std::size_t visiblePortalCount = 0;
