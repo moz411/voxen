@@ -42,6 +42,26 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
     check(cgltf_validate(data.get()), "validate");
 
     MeshAsset output;
+    output.images.reserve(data->images_count);
+    for(cgltf_size i=0;i<data->images_count;++i) {
+        EmbeddedImage image;
+        const auto& src=data->images[i];
+        if(src.buffer_view && src.buffer_view->buffer &&
+           src.buffer_view->buffer->data && src.mime_type &&
+           (std::string(src.mime_type)=="image/png" ||
+            std::string(src.mime_type)=="image/jpeg") &&
+           src.buffer_view->size<=limits.maxEmbeddedImageBytes) {
+            const auto* base=static_cast<const std::uint8_t*>(src.buffer_view->buffer->data);
+            const auto offset=src.buffer_view->offset;
+            const auto length=src.buffer_view->size;
+            if(offset<=src.buffer_view->buffer->size &&
+               length<=src.buffer_view->buffer->size-offset) {
+                image.encoded.assign(base+offset,base+offset+length);
+                image.mimeType=src.mime_type;
+            }
+        }
+        output.images.push_back(std::move(image));
+    }
     std::size_t totalVertices=0, totalIndices=0;
     std::unordered_map<const cgltf_mesh*,std::vector<std::uint32_t>> meshCache;
     auto loadMesh=[&](const cgltf_mesh* mesh)->const std::vector<std::uint32_t>& {
@@ -96,6 +116,11 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
                 std::copy_n(pbr.base_color_factor,4,dst.baseColor.data());
                 dst.metallic=pbr.metallic_factor;
                 dst.roughness=pbr.roughness_factor;
+                if(pbr.base_color_texture.texture &&
+                   pbr.base_color_texture.texture->image &&
+                   pbr.base_color_texture.texcoord==0)
+                    dst.baseColorTexture=indexOf(pbr.base_color_texture.texture->image,
+                                                 data->images,data->images_count);
             }
             refs.push_back(static_cast<std::uint32_t>(output.primitives.size()));
             output.primitives.push_back(std::move(dst));
