@@ -191,6 +191,7 @@ private:
     VkPipeline voxenMandelbulbLitPipeline_ = VK_NULL_HANDLE;
 #ifdef VOXEN_WITH_GLB_IMPORT
     VkPipeline glbPipeline_ = VK_NULL_HANDLE;
+    std::filesystem::path pendingDemoGlb_;
     struct GlbGpuPrimitive {
         VkBuffer vertexBuffer=VK_NULL_HANDLE;
         VkDeviceMemory vertexMemory=VK_NULL_HANDLE;
