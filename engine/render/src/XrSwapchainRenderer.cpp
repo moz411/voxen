@@ -1550,7 +1550,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     // glTF node world matrices are column-major, matching Vulkan push constants.
     // The prototype intentionally uses the existing lighting shader (not PBR).
     if((glbPlaced_ || glbPreview_) && glbPipeline_!=VK_NULL_HANDLE && (glbPreview_ || (glbInGallery_ ? (!editingMode() && !immersiveSceneActive_) : (editingMode() || immersiveSceneActive_)))) {
-        const bool original=imguiCarousel_.glbMaterialMode==0 && glbOriginalPipeline_!=VK_NULL_HANDLE;
+        bool original=glbOriginalPipeline_!=VK_NULL_HANDLE;
+#ifdef VOXEN_WITH_IMGUI
+        original=original && imguiCarousel_.glbMaterialMode==0;
+#endif
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,original?glbOriginalPipeline_:glbPipeline_);
         for(const auto& part:glbPrimitives_) {
             if(part.indexCount==0)continue;
