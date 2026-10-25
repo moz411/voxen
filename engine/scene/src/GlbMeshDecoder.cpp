@@ -62,6 +62,9 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
             if(!positions || positions->type!=cgltf_type_vec3)
                 throw std::runtime_error("glTF: missing VEC3 POSITION");
             const std::size_t vertexCount=positions->count;
+            // Older cgltf releases can mishandle zero-length accessors.
+            if(vertexCount==0 || (src.indices && src.indices->count==0))
+                throw std::runtime_error("glTF: empty geometry accessor");
             const std::size_t indexCount=src.indices?src.indices->count:vertexCount;
             if(vertexCount>limits.maxVertices-totalVertices ||
                indexCount>limits.maxIndices-totalIndices || indexCount%3)
@@ -139,7 +142,7 @@ MeshAsset loadMeshGlb(const std::filesystem::path& file,const Limits& limits) {
         throw std::runtime_error("glTF: invalid file size");
     std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
     stream.seekg(0);
-    if(!stream.read(reinterpret_cast<char*>(bytes.data()),size))
+    if(!stream.read(reinterpret_cast<char*>(bytes.data()),static_cast<std::streamsize>(bytes.size())))
         throw std::runtime_error("glTF: truncated file");
     (void)glb;
     return decodeMeshGlb(bytes,limits);
