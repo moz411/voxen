@@ -66,6 +66,7 @@
 #include <array>
 #include <cstring>
 #include <cfloat>
+#include <cctype>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -2262,7 +2263,7 @@ void XrSwapchainRenderer::render(
                     const auto& pos=controllerPoses_[1].position;
                     // Scene: initial position at right controller; gallery: floor hit.
                     if(!gallery) glbPlacement_={pos.x,pos.y,pos.z-0.3f};
-                    else glbPlacement_=hit->localPositionMeters;
+                    else glbPlacement_=hit->localPose.positionMeters;
                     if(loadDemoGlb(glbAssetPaths_[i])) {
                         glbInGallery_=gallery;
                         glbPlaced_=true;
