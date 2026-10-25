@@ -66,6 +66,7 @@ bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
                                         {v.normal[0],v.normal[1],v.normal[2]}});
                 GlbGpuPrimitive gpu{};
                 gpu.worldMatrix=node.worldMatrix;
+                gpu.baseColor=primitive.baseColor;
                 incoming.push_back(gpu); // record immediately for exception-safe cleanup
                 auto& target=incoming.back();
                 upload(device_,physicalDevice_,vertices.data(),
