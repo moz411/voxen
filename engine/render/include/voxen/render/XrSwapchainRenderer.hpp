@@ -14,6 +14,7 @@
 #include <voxen/audio/Mp3Library.hpp>
 #include <voxen/scene/EnvironmentSurface.hpp>
 #include <voxen/scene/RuntimeSnapshot.hpp>
+#include <voxen/scene/MechanicalCannon.hpp>
 #include <voxen/scene/SceneRepository.hpp>
 #include <unordered_map>
 #include <chrono>
@@ -221,6 +222,10 @@ private:
     std::map<std::array<int,3>,std::vector<uint32_t>> roomCollisionGrid_;
     VkPipeline carouselPipeline_ = VK_NULL_HANDLE;
     VkPipeline galleryPortalPipeline_ = VK_NULL_HANDLE;
+    VkPipeline mechanicalCannonPipeline_ = VK_NULL_HANDLE;
+    bool mechanicalCannonPreview_ = false;
+    std::chrono::steady_clock::time_point mechanicalCannonStart_{};
+    static constexpr const char* mechanicalCannonSceneId_ = "voxen-mechanical-cannon-v1";
     int nativeMenuPage_ = 0;
     bool nativeMenuStickLatched_ = false;
 #ifdef VOXEN_WITH_IMGUI

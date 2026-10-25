@@ -55,6 +55,7 @@
 #include "mandelbrotZoomFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "galleryPortalFrag.spv.hpp"
+#include "mechanicalCannonFrag.spv.hpp"
 #include "imguiPanelFrag.spv.hpp"
 
 #include <algorithm>
@@ -86,6 +87,17 @@ void checkVk(VkResult result, const char* operation) {
 void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& root) {
     sceneRepository_ = std::make_unique<voxen::gallery::SceneRepository>(root);
     portalManager_ = std::make_unique<voxen::gallery::PortalManager>(*sceneRepository_);
+    // Seed a real repository scene so gallery placement and walk-in work unchanged.
+    if(!sceneRepository_->loadSceneMetadata(mechanicalCannonSceneId_)) {
+        voxen::gallery::SavedRuntime cannon;
+        cannon.sceneKind=1;
+        cannon.liquidRoom=false;
+        auto record=voxen::gallery::SceneRepository::newScene("Canon mecanique");
+        record.id=mechanicalCannonSceneId_;
+        record.preview.materialPreset=4;
+        record.preview.boundingRadiusMeters=2.5f;
+        sceneRepository_->saveScene(record,voxen::gallery::encodeRuntime(cannon));
+    }
     refreshSceneIndex();
     selectedSceneIndex_ = 0;
 }
@@ -307,6 +319,8 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
     // Enter with only the requested scene instances resident.
     std::vector<PlasmaVoxen>{}.swap(voxens_);
     if(!loadSavedScene(id)) return false;
+    mechanicalCannonPreview_=immersiveSnapshot->sceneKind==1;
+    mechanicalCannonStart_=std::chrono::steady_clock::now();
 #ifdef VOXEN_WITH_IMGUI
     imguiCarousel_.editMode=false;
     imguiCarousel_.visible=false;
@@ -330,6 +344,7 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
     immersiveSceneActive_=false;
+    mechanicalCannonPreview_=false;
 #ifdef VOXEN_WITH_IMGUI
     imguiCarousel_.liquidRoom=false;
     imguiCarousel_.musicPlaying=false;
@@ -1027,6 +1042,16 @@ void XrSwapchainRenderer::createPipeline() {
             ds.depthTestEnable=VK_TRUE;
             ds.depthWriteEnable=VK_TRUE;
         }
+        // Solid 3D Voxen must occlude their own rear faces and other objects.
+        // Leave the explicitly volumetric/plasma, raymarched and overlay
+        // pipelines on their legacy blending paths.
+        const bool solidVoxen =
+            &out==&organicSpherePipeline_ || &out==&torusKnotPipeline_ ||
+            &out==&spikeBloomPipeline_ || &out==&jellyfishPipeline_ ||
+            &out==&earthwormPipeline_ || &out==&cloudPipeline_ ||
+            &out==&metaballsPipeline_ || &out==&voxenMandelbulbLitPipeline_ ||
+            &out==&mechanicalCannonPipeline_;
+        if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
         if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &seascapePipeline_ || &out == &octgramsPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
@@ -1042,6 +1067,7 @@ void XrSwapchainRenderer::createPipeline() {
             blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
             blend.alphaBlendOp=VK_BLEND_OP_ADD;
         }
+        if(solidVoxen) blend.blendEnable=VK_FALSE;
         if(&out==&meshDepthPipeline_) {
             blend.colorWriteMask=0;
             blend.blendEnable=VK_FALSE;
@@ -1091,6 +1117,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, mandelbrotZoomFrag, mandelbrotZoomFragSize, mandelbrotZoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
     buildPipeline(fractalVert, fractalVertSize, galleryPortalFrag, galleryPortalFragSize, galleryPortalPipeline_);
+    buildPipeline(cubeVert, cubeVertSize, mechanicalCannonFrag, mechanicalCannonFragSize, mechanicalCannonPipeline_);
 #ifdef VOXEN_WITH_IMGUI
     buildPipeline(fractalVert, fractalVertSize, imguiPanelFrag, imguiPanelFragSize, imguiPanelPipeline_);
 #endif
@@ -1352,7 +1379,14 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         layout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
-    VkClearValue clear{}; clear.color.float32[0]=0.08F; clear.color.float32[1]=0.12F; clear.color.float32[2]=0.22F; clear.color.float32[3]=0.0F;
+    VkClearValue clear{};
+    if(mechanicalCannonPreview_) {
+        clear.color.float32[0]=0.0F; clear.color.float32[1]=0.0F;
+        clear.color.float32[2]=0.0F; clear.color.float32[3]=1.0F;
+    } else {
+        clear.color.float32[0]=0.08F; clear.color.float32[1]=0.12F;
+        clear.color.float32[2]=0.22F; clear.color.float32[3]=0.0F;
+    }
     VkRenderPassBeginInfo rbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rbi.renderPass=renderPass_; rbi.framebuffer=eye.framebuffers.at(imageIndex);
     rbi.renderArea.extent={static_cast<uint32_t>(eye.width),static_cast<uint32_t>(eye.height)};
@@ -1546,6 +1580,51 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdPushConstants(commandBuffer_,pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(constants),&constants);
         vkCmdDraw(commandBuffer_,meshWireVertexCount_,1,0,0);
+    }
+    // Opt-in mechanical-cannon stereo preview. Uses the existing procedural cube
+    // vertex shader: no per-frame buffer allocations or unverified XR anchors.
+    if(mechanicalCannonPreview_ && mechanicalCannonPipeline_!=VK_NULL_HANDLE) {
+        const float sceneSeconds=std::chrono::duration<float>(
+            std::chrono::steady_clock::now()-mechanicalCannonStart_).count();
+        const auto state=voxen::scene::cannon::evaluate(sceneSeconds);
+        const auto parts=voxen::scene::cannon::geometry();
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,mechanicalCannonPipeline_);
+        for(const auto& part:parts) {
+            const float recoil=state.recoil;
+            const float x=part.center.x;
+            const float y=part.center.y;
+            const float z=-10.f+part.center.z-
+                ((part.kind==voxen::scene::cannon::Part::Barrel ||
+                  part.kind==voxen::scene::cannon::Part::Breech ||
+                  part.kind==voxen::scene::cannon::Part::Muzzle)?recoil:0.f);
+            Mat4 model=modelMatrix(x,y,1.f,z,0.f);
+            // cube.vert covers [-0.5,0.5] in each axis.
+            for(int row=0;row<4;++row) {
+                model.m[row]*=part.halfExtents.x*2.f;
+                model.m[4+row]*=part.halfExtents.y*2.f;
+                model.m[8+row]*=part.halfExtents.z*2.f;
+            }
+            const auto mvp=multiply(projView,model);
+            const bool luminous=part.kind==voxen::scene::cannon::Part::ChargingCore ||
+                part.kind==voxen::scene::cannon::Part::CoolingRing ||
+                part.kind==voxen::scene::cannon::Part::Muzzle;
+            const float intensity=luminous?(state.charging+state.muzzleFlash):0.f;
+            ProceduralPushConstants pc{mvp,{seconds,intensity,luminous?1.f:0.f,state.exposure}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,36,1,0,0);
+        }
+        if(organicSpherePipeline_!=VK_NULL_HANDLE) {
+            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,organicSpherePipeline_);
+            for(const auto& p:state.projectiles) {
+                const auto mvp=multiply(projView,modelMatrix(
+                    p.position.x,p.position.y,p.radius,p.position.z,0.f));
+                ProceduralPushConstants pc{mvp,{seconds,1.f,4.f+float(p.material),.20f}};
+                vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                    VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+                vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
+            }
+        }
     }
     // Saved scene instances are static 3D Voxen, not floor rings.
     if(!immersiveSceneActive_ && !editingMode() && portalManager_ &&
@@ -2062,7 +2141,10 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.sceneLoad=false;
             if(imguiCarousel_.selectedScene>=0 &&
                static_cast<std::size_t>(imguiCarousel_.selectedScene)<sceneIds_.size())
-                imguiCarousel_.sceneStatus=loadSavedScene(sceneIds_[imguiCarousel_.selectedScene])?
+                imguiCarousel_.sceneStatus=
+                    (sceneIds_[imguiCarousel_.selectedScene]==mechanicalCannonSceneId_
+                        ? enterImmersiveScene(sceneIds_[imguiCarousel_.selectedScene])
+                        : loadSavedScene(sceneIds_[imguiCarousel_.selectedScene])) ?
                     "Scene loaded":"Load failed";
         }
         if(imguiCarousel_.voxenClear){
@@ -2283,6 +2365,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     meshWireVertexCount_=0;
     if (carouselPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,carouselPipeline_,nullptr); carouselPipeline_=VK_NULL_HANDLE; }
     if (galleryPortalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryPortalPipeline_,nullptr); galleryPortalPipeline_=VK_NULL_HANDLE; }
+    if (mechanicalCannonPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,mechanicalCannonPipeline_,nullptr); mechanicalCannonPipeline_=VK_NULL_HANDLE; }
 #ifdef VOXEN_WITH_IMGUI
     if (imguiPanelPipeline_ != VK_NULL_HANDLE) {vkDestroyPipeline(device_,imguiPanelPipeline_,nullptr);imguiPanelPipeline_=VK_NULL_HANDLE;}
     if (imguiPanelPipelineLayout_ != VK_NULL_HANDLE) {vkDestroyPipelineLayout(device_,imguiPanelPipelineLayout_,nullptr);imguiPanelPipelineLayout_=VK_NULL_HANDLE;}

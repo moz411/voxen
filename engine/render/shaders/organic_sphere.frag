@@ -50,7 +50,7 @@ void main(){
         float highlight=pow(max(dot(reflect(-light,n),vec3(0,0,1)),0.0),32.0);
         color=mix(vec3(0.07,0.18,0.26),rainbow,0.72)+
               vec3(0.8,0.95,1.0)*highlight;
-        outColor=vec4(clamp(color,0.0,1.0),clamp(0.16+0.72*edge+0.25*highlight,0.0,0.95));
+        outColor=vec4(clamp(color,0.0,1.0),1.0);
         return;
     }else if(material==5){ // ANIME: hard cel-shading and bright rim
         float shade=floor(diffuse*3.0+0.25)/3.0;
@@ -84,7 +84,7 @@ void main(){
         color=mix(vec3(0.9,0.045,0.005),vec3(1.0,0.72,0.10),flame);
         color+=vec3(0.16,0.32,0.8)*pow(1.0-facing,2.0);
         outColor=vec4(clamp(color,0.0,1.0),
-                      clamp(0.18+0.65*flame,0.0,0.9));
+                      1.0);
         return;
     }else if(material==8){ // CELLULAR: animated glowing Voronoi-like cells
         vec3 q=p*7.0;

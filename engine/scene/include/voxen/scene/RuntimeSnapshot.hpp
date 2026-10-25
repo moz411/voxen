@@ -18,6 +18,7 @@ struct SavedVoxen {
 };
 struct SavedRuntime {
     std::vector<SavedVoxen> voxens;
+    int sceneKind = 0; // 0 = ordinary saved scene, 1 = mechanical cannon
     int musicSource = 0, musicTrack = 0, musicFile = 0;
     float musicVolume = .45f;
     bool musicPlaying = false;
@@ -32,7 +33,7 @@ struct SavedRuntime {
     float motionBounce = .82f;
 };
 inline bool valid(const SavedRuntime& r) {
-    if (r.voxens.size()>256 || r.musicSource<0 || r.musicSource>1 ||
+    if (r.sceneKind<0 || r.sceneKind>1 || r.voxens.size()>256 || r.musicSource<0 || r.musicSource>1 ||
         r.musicTrack<0 || r.musicTrack>2 || r.musicFile<0 ||
         !std::isfinite(r.musicVolume) || r.musicVolume<0 || r.musicVolume>1 ||
         r.motionMode<0 || r.motionMode>1 ||
@@ -54,7 +55,8 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
     if (!valid(r)) return {};
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<float>::max_digits10);
-    out << "VOXEN_RUNTIME 2\n" << r.voxens.size() << '\n';
+    out << "VOXEN_RUNTIME 3\n" << r.voxens.size() << '\n';
+    out << r.sceneKind << '\n';
     out << r.musicSource << ' ' << r.musicTrack << ' ' << r.musicFile << ' '
         << r.musicVolume << ' ' << r.musicPlaying << ' ' << r.motionEnabled << ' '
         << r.motionMode << ' ' << r.motionGravity << ' ' << r.motionBounce << '\n';
@@ -73,13 +75,14 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
     if(data.size()>65536) return std::nullopt;
     std::istringstream in(data);
     std::string magic; int version=0; std::size_t count=0;
-    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version!=1 && version!=2) || count>256)
+    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version!=1 && version!=2 && version!=3) || count>256)
         return std::nullopt;
     SavedRuntime r;
+    if(version==3 && !(in>>r.sceneKind))return std::nullopt;
     if(!(in>>r.musicSource>>r.musicTrack>>r.musicFile>>r.musicVolume
          >>r.musicPlaying>>r.motionEnabled>>r.motionMode>>r.motionGravity>>r.motionBounce))
         return std::nullopt;
-    if(version==2 && !(in>>r.liquidRoom>>r.liquidOpacity>>r.wallShaderMode
+    if(version>=2 && !(in>>r.liquidRoom>>r.liquidOpacity>>r.wallShaderMode
                        >>r.cycleWallShaders>>r.wallCycleSeconds))return std::nullopt;
     for(std::size_t i=0;i<count;++i) {
         SavedVoxen v;
