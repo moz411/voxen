@@ -55,8 +55,6 @@ public:
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
     void configureSceneStorage(const std::filesystem::path& root);
-    // Explicit opt-in development preview; not yet a saved gallery scene.
-    void setMechanicalCannonPreview(bool enabled) noexcept { mechanicalCannonPreview_ = enabled; }
     bool saveCurrentScene();
     bool loadSavedScene(const voxen::gallery::SceneId& id);
     bool deleteSavedScene(const voxen::gallery::SceneId& id);
@@ -226,6 +224,8 @@ private:
     VkPipeline galleryPortalPipeline_ = VK_NULL_HANDLE;
     VkPipeline mechanicalCannonPipeline_ = VK_NULL_HANDLE;
     bool mechanicalCannonPreview_ = false;
+    std::chrono::steady_clock::time_point mechanicalCannonStart_{};
+    static constexpr const char* mechanicalCannonSceneId_ = "voxen-mechanical-cannon-v1";
     int nativeMenuPage_ = 0;
     bool nativeMenuStickLatched_ = false;
 #ifdef VOXEN_WITH_IMGUI
