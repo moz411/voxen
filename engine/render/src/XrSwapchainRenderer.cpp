@@ -1354,7 +1354,14 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         layout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
 
-    VkClearValue clear{}; clear.color.float32[0]=0.08F; clear.color.float32[1]=0.12F; clear.color.float32[2]=0.22F; clear.color.float32[3]=0.0F;
+    VkClearValue clear{};
+    if(mechanicalCannonPreview_) {
+        clear.color.float32[0]=0.0F; clear.color.float32[1]=0.0F;
+        clear.color.float32[2]=0.0F; clear.color.float32[3]=1.0F;
+    } else {
+        clear.color.float32[0]=0.08F; clear.color.float32[1]=0.12F;
+        clear.color.float32[2]=0.22F; clear.color.float32[3]=0.0F;
+    }
     VkRenderPassBeginInfo rbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rbi.renderPass=renderPass_; rbi.framebuffer=eye.framebuffers.at(imageIndex);
     rbi.renderArea.extent={static_cast<uint32_t>(eye.width),static_cast<uint32_t>(eye.height)};
@@ -2045,6 +2052,7 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.visiblePortalCount=visibleGalleryPortals().size();
         imguiCarousel_.scenePortalSelected=selectedPortalId_.has_value();
         voxen::ui::drawCarousel(imguiCarousel_);
+        mechanicalCannonPreview_=imguiCarousel_.mechanicalCannonPreview;
         if(imguiCarousel_.sceneSave) {
             imguiCarousel_.sceneSave=false;
             imguiCarousel_.sceneStatus=saveCurrentScene()?"Scene saved - DISPOSE available":"Save failed";
@@ -2328,6 +2336,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     meshWireVertexCount_=0;
     if (carouselPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,carouselPipeline_,nullptr); carouselPipeline_=VK_NULL_HANDLE; }
     if (galleryPortalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryPortalPipeline_,nullptr); galleryPortalPipeline_=VK_NULL_HANDLE; }
+    if (mechanicalCannonPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,mechanicalCannonPipeline_,nullptr); mechanicalCannonPipeline_=VK_NULL_HANDLE; }
 #ifdef VOXEN_WITH_IMGUI
     if (imguiPanelPipeline_ != VK_NULL_HANDLE) {vkDestroyPipeline(device_,imguiPanelPipeline_,nullptr);imguiPanelPipeline_=VK_NULL_HANDLE;}
     if (imguiPanelPipelineLayout_ != VK_NULL_HANDLE) {vkDestroyPipelineLayout(device_,imguiPanelPipelineLayout_,nullptr);imguiPanelPipelineLayout_=VK_NULL_HANDLE;}
