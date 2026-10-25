@@ -114,6 +114,9 @@ void drawCarousel(CarouselState& state) {
         }
         case 4: {
             ImGui::TextUnformatted("GLB / LOCAL ASSETS");
+            static constexpr const char* glbModes[]={"ORIGINAL","VOXEN"};
+            ImGui::Combo("GLB material",&state.glbMaterialMode,glbModes,2);
+            ImGui::TextDisabled("ORIGINAL: base color; textures pending");
             ImGui::TextDisabled("Android/data/org.voxen.xr/files/assets");
             if(ImGui::Button("RESCAN ASSETS"))state.glbRescan=true;
             ImGui::BeginChild("glb-list",ImVec2(0,280),true);
