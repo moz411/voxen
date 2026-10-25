@@ -1071,12 +1071,12 @@ void XrSwapchainRenderer::createPipeline() {
             vi.pVertexBindingDescriptions=&binding;
             vi.vertexAttributeDescriptionCount=(&out==&voxenMandelbulbLitPipeline_
 #ifdef VOXEN_WITH_GLB_IMPORT
-            || &out==&glbPipeline_ || &out==&glbOriginalPipeline_ || &out==&glbOriginalPipeline_ || &out==&glbOriginalPipeline_
+            || &out==&glbPipeline_ || &out==&glbOriginalPipeline_
 #endif
             ) ? 2 : 1;
             vi.pVertexAttributeDescriptions=(&out==&voxenMandelbulbLitPipeline_
 #ifdef VOXEN_WITH_GLB_IMPORT
-            || &out==&glbPipeline_
+            || &out==&glbPipeline_ || &out==&glbOriginalPipeline_
 #endif
             ) ? litAttributes : &attribute;
             if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_)binding.stride=sizeof(XrVector3f);
@@ -1114,7 +1114,7 @@ void XrSwapchainRenderer::createPipeline() {
             &out==&metaballsPipeline_ || &out==&voxenMandelbulbLitPipeline_ ||
             &out==&mechanicalCannonPipeline_
 #ifdef VOXEN_WITH_GLB_IMPORT
-            || &out==&glbPipeline_
+            || &out==&glbPipeline_ || &out==&glbOriginalPipeline_
 #endif
             ;
         if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
