@@ -67,7 +67,7 @@ struct CarouselState {
     int voxenMaterial = 0; // independent surface material for procedural mesh shapes
     bool collideRoomMesh = true;
     int voxenPreset = 0; // Plasma or Spheres Intersections
-    bool voxenPaintEnabled = true;
+    bool voxenPaintEnabled = false;
     float voxenScale = 0.18f;
     float voxenHue = 0.52f;
     float voxenDensity = 1.0f;
