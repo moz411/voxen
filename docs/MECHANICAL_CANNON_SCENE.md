@@ -14,6 +14,14 @@ Branch: `feature/scene-mechanical-cannon`
 - `MechanicalCannonMesh.hpp` generates indexed triangle meshes with normals (box and cylindrical proxies) for all 13 components; geometry is still CPU-side and not uploaded to Vulkan.
 - `mechanical_cannon_smoke` is registered in `tests/CMakeLists.txt`; test execution remains pending.
 
+## First Vulkan preview (experimental)
+- SCENES carousel has an opt-in **MECHANICAL CANNON (DEV)** checkbox.
+- A stereo Vulkan draw pass uses existing cube.vert and a new dark-steel/emissive fragment shader for the 13 cannon components; organic sphere pipeline draws live shot projectiles.
+- When preview is enabled the XR projection layer clears opaque black (alpha=1), intended to hide passthrough in the projection region; runtime composition must be verified on Quest.
+- The preview deliberately uses cuboid stand-ins rather than the CPU cylinder meshes; indexed mesh buffer upload is still pending.
+- Existing gallery and editor may still draw other content over the preview. It is not a production scene or fully isolated immersive lifecycle.
+- Disable the checkbox to restore the usual alpha-clear MR rendering. Keep headset guardian/boundary protections active.
+
 ## Not implemented / integration required
 - This is a **simulation/geometry descriptor**, not a working XR scene. Renderer must upload generated meshes and turn part descriptors into actual instanced draws, refine hollow barrel/rings, transform them into headset reference space, apply recoil and emissive shaders, and render projectile material IDs using the existing Voxen shader system.
 - Disable passthrough only while immersed and retain a reliable exit to cyan-Sobel MR gallery. Physical guardian/boundary protection must remain active. Virtual darkness does not make the physical room safe.
