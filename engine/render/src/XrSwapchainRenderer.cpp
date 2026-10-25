@@ -106,7 +106,7 @@ void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& roo
 #ifdef VOXEN_WITH_GLB_IMPORT
     // Debug-only static asset; requires explicit file in app-private storage.
     const auto demo=root / "assets" / "demo.glb";
-    if(std::filesystem::is_regular_file(demo))loadDemoGlb(demo);
+    if(std::filesystem::is_regular_file(demo))pendingDemoGlb_=demo;
 #endif
 }
 
@@ -591,6 +591,12 @@ void XrSwapchainRenderer::initialize(
         }
     }
     createFramebuffers();
+#ifdef VOXEN_WITH_GLB_IMPORT
+    if(!pendingDemoGlb_.empty()) {
+        loadDemoGlb(pendingDemoGlb_);
+        pendingDemoGlb_.clear();
+    }
+#endif
 }
 
 void XrSwapchainRenderer::createCommandResources() {
