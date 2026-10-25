@@ -47,3 +47,37 @@ There is no Quest hardware or Android build validation for this branch.
 c++ -std=c++20 -Iengine/scene/include tests/glb_container_smoke.cpp -o /tmp/voxen-glb-smoke
 /tmp/voxen-glb-smoke
 ```
+
+## Prototype Vulkan stereo (2026-10-25)
+
+The branch now has an **experimental** Vulkan draw path for static GLB scenes:
+- `GlbGpuPreview.cpp` allocates host-visible vertex/index buffers for glTF triangle primitives and frees them at shutdown or replacement.
+- Each glTF scene node supplies its world transform; the prototype places the root 1.5 m in front of the initial OpenXR origin.
+- The existing illuminated vertex/fragment shaders are reused. This gives a **procedural lit appearance**, not faithful glTF PBR materials or textures.
+- A file at the app-private `voxen-gallery/assets/demo.glb` is detected on start and loaded only after Vulkan initialization.
+- The model is drawn in editor or immersive mode, not while the room gallery is displayed. It is **not** yet attached to a saved scene.
+- No GLB is bundled in the APK. Without the demo file there is no visual or memory change.
+
+### Manual smoke test on a debug Quest 3 build
+
+```sh
+git fetch origin
+git switch feature/glb-scene-import-v1
+cd android
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb push /path/to/triangles.glb /sdcard/Download/demo.glb
+adb shell run-as org.voxen.xr mkdir -p files/voxen-gallery/assets
+adb shell run-as org.voxen.xr sh -c 'cat /sdcard/Download/demo.glb > files/voxen-gallery/assets/demo.glb'
+# Some run-as sandboxes cannot read shared storage; use adb exec-out/
+# an alternate authorized app-private file transfer when that happens.
+adb shell am force-stop org.voxen.xr
+adb shell monkey -p org.voxen.xr 1
+adb logcat -s Voxen:I AndroidRuntime:E
+```
+
+**Limitations / verification required:** Android NDK compile, Vulkan validation,
+correct glTF scaling and material appearance, GPU timings, error reporting,
+asset selection UI, external textures, PBR shader, 3D animations, scene persistence
+and resource unload on immersive exit have **not been validated**. This is a
+renderer prototype and should not be merged into main without Quest QA.
