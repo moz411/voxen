@@ -33,6 +33,7 @@ struct CarouselState {
     std::string sceneStatus;
     int glbSelected=0;
     bool glbRescan=false;
+    bool glbPreviewRequest=false;
     bool glbPlaceScene=false;
     bool glbPlaceGallery=false;
     std::vector<std::string> glbFiles;
