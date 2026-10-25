@@ -45,6 +45,7 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
     check(cgltf_load_buffers(&options, data.get(), nullptr), "load embedded buffer");
     check(cgltf_validate(data.get()), "validate");
 
+    if(data->images_count>64)throw std::runtime_error("glTF: too many embedded images");
     MeshAsset output;
     output.images.reserve(data->images_count);
     for(cgltf_size i=0;i<data->images_count;++i) {
