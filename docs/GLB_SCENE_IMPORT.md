@@ -81,3 +81,28 @@ correct glTF scaling and material appearance, GPU timings, error reporting,
 asset selection UI, external textures, PBR shader, 3D animations, scene persistence
 and resource unload on immersive exit have **not been validated**. This is a
 renderer prototype and should not be merged into main without Quest QA.
+
+## GLB carousel library prototype
+
+- New **GLB** page mirrors the MUSIC list, scans
+  `/sdcard/Android/data/org.voxen.xr/files/assets` (Android), filters `.glb`
+  without adding storage permissions, and offers RESCAN ASSETS.
+- PLACE IN SCENE selects one model and uploads it to Vulkan with an initial
+  placement at the right controller.
+- PLACE IN GALLERY requires localized Meta room and a currently tracked floor
+  hit. It is a **temporary preview in OpenXR LOCAL coordinates**, NOT a saved
+  anchored gallery item. This placement will not survive headset restart.
+- v1 GPU cache holds a single model. Selecting another replaces the first;
+  repeated independent GLB instances are not yet supported.
+- Node hierarchy is rendered, but no original glTF texture/material appearance.
+  There is no controller dragging or persistent per-GLB scene serialization yet.
+
+### Transfer user GLB files (Quest developer connection)
+
+```sh
+adb shell mkdir -p /sdcard/Android/data/org.voxen.xr/files/assets
+adb push sun.glb /sdcard/Android/data/org.voxen.xr/files/assets/sun.glb
+adb push portal.glb /sdcard/Android/data/org.voxen.xr/files/assets/portal.glb
+```
+
+Open the GLB page and press RESCAN ASSETS. This UI/runtime is untested on Quest.
