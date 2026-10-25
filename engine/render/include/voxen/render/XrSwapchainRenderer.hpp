@@ -192,6 +192,12 @@ private:
 #ifdef VOXEN_WITH_GLB_IMPORT
     VkPipeline glbPipeline_ = VK_NULL_HANDLE;
     VkPipeline glbOriginalPipeline_ = VK_NULL_HANDLE;
+    VkPipeline glbTexturedPipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout glbTexturePipelineLayout_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout glbTextureSetLayout_ = VK_NULL_HANDLE;
+    VkDescriptorPool glbTextureDescriptorPool_ = VK_NULL_HANDLE;
+    struct GlbTexture { VkImage image=VK_NULL_HANDLE; VkDeviceMemory memory=VK_NULL_HANDLE; VkImageView view=VK_NULL_HANDLE; VkSampler sampler=VK_NULL_HANDLE; VkDescriptorSet descriptor=VK_NULL_HANDLE; };
+    std::vector<GlbTexture> glbTextures_;
     std::filesystem::path pendingDemoGlb_;
     std::filesystem::path glbAssetRoot_;
     std::vector<std::filesystem::path> glbAssetPaths_;
@@ -213,6 +219,7 @@ private:
         VkDeviceMemory indexMemory=VK_NULL_HANDLE;
         uint32_t indexCount=0;
         std::array<float,4> baseColor{1.f,1.f,1.f,1.f};
+        int textureIndex=-1;
         std::array<float,16> worldMatrix{};
     };
     std::vector<GlbGpuPrimitive> glbPrimitives_;
