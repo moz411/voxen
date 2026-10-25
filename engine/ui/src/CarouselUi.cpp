@@ -23,7 +23,7 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextUnformatted("VOXENS / PROCEDURAL PRESETS");
             ImGui::Separator();
             static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH","EARTHWORM","CLOUD","METABALLS"};
-            ImGui::Combo("Voxen preset",&state.voxenPreset,presets,11);
+            if(ImGui::Combo("Voxen preset",&state.voxenPreset,presets,11))state.voxenPaintEnabled=true;
             ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : state.voxenPreset==4 ? "Animated deforming 3D sphere" : state.voxenPreset==5 ? "Twisting torus knot" : state.voxenPreset==6 ? "Spiky bloom" : state.voxenPreset==7 ? "Jellyfish bell" : "Animated 12-segment earthworm");
             if(state.voxenPreset==2){
                 ImGui::Checkbox("Experimental 3D lighting",&state.mandelbulbLighting);
@@ -39,6 +39,7 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextDisabled("RIGHT STICK: UP/DOWN shape | LEFT/RIGHT size");
             ImGui::TextDisabled("RIGHT TRIGGER: place one Voxen");
             ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
+            if(!state.voxenPaintEnabled)ImGui::TextDisabled("No Voxen selected for painting");
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.06f,0.60f,"%.2f");
             ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
             ImGui::SliderFloat(state.voxenPreset>=4 ? "Deformation" : "Density",&state.voxenDensity,0.3f,2.f);
@@ -121,12 +122,18 @@ void drawCarousel(CarouselState& state) {
             if(ImGui::Button("RESCAN ASSETS"))state.glbRescan=true;
             ImGui::BeginChild("glb-list",ImVec2(0,280),true);
             for(int i=0;i<static_cast<int>(state.glbFiles.size());++i)
-                if(ImGui::Selectable(state.glbFiles[i].c_str(),state.glbSelected==i))
+                if(ImGui::Selectable(state.glbFiles[i].c_str(),state.glbSelected==i)) {
                     state.glbSelected=i;
+                    state.voxenPaintEnabled=false;
+                    state.glbPreviewRequest=true;
+                }
             ImGui::EndChild();
             if(state.glbFiles.empty())ImGui::TextDisabled("No .glb files found");
             if(state.glbFiles.empty())ImGui::BeginDisabled();
-            if(ImGui::Button("PREVIEW",ImVec2(140,44)))state.glbPreviewRequest=true;
+            if(ImGui::Button("PREVIEW",ImVec2(140,44))) {
+                state.glbPreviewRequest=true;
+                state.voxenPaintEnabled=false;
+            }
             ImGui::SameLine();
             if(ImGui::Button("PLACE IN SCENE",ImVec2(140,44)))state.glbPlaceScene=true;
             ImGui::SameLine();
