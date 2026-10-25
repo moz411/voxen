@@ -44,6 +44,8 @@
 #include "solidWallFrag.spv.hpp"
 #include "mandelbulbLitVert.spv.hpp"
 #include "mandelbulbLitFrag.spv.hpp"
+#include "glbOriginalVert.spv.hpp"
+#include "glbOriginalFrag.spv.hpp"
 #include "meshWireVert.spv.hpp"
 #include "meshWireFrag.spv.hpp"
 #include "meshDepthVert.spv.hpp"
@@ -1061,7 +1063,7 @@ void XrSwapchainRenderer::createPipeline() {
         };
         if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_ || &out==&voxenMandelbulbPipeline_ || &out==&voxenMandelbulbLitPipeline_
 #ifdef VOXEN_WITH_GLB_IMPORT
-           || &out==&glbPipeline_
+           || &out==&glbPipeline_ || &out==&glbOriginalPipeline_
 #endif
         ) {
             binding.stride=sizeof(MandelbulbLitVertex);
@@ -1069,7 +1071,7 @@ void XrSwapchainRenderer::createPipeline() {
             vi.pVertexBindingDescriptions=&binding;
             vi.vertexAttributeDescriptionCount=(&out==&voxenMandelbulbLitPipeline_
 #ifdef VOXEN_WITH_GLB_IMPORT
-            || &out==&glbPipeline_
+            || &out==&glbPipeline_ || &out==&glbOriginalPipeline_ || &out==&glbOriginalPipeline_ || &out==&glbOriginalPipeline_
 #endif
             ) ? 2 : 1;
             vi.pVertexAttributeDescriptions=(&out==&voxenMandelbulbLitPipeline_
@@ -1167,6 +1169,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(mandelbulbLitVert, mandelbulbLitVertSize, mandelbulbLitFrag, mandelbulbLitFragSize, voxenMandelbulbLitPipeline_);
 #ifdef VOXEN_WITH_GLB_IMPORT
     buildPipeline(mandelbulbLitVert,mandelbulbLitVertSize,mandelbulbLitFrag,mandelbulbLitFragSize,glbPipeline_);
+    buildPipeline(glbOriginalVert,glbOriginalVertSize,glbOriginalFrag,glbOriginalFragSize,glbOriginalPipeline_);
 #endif
     buildPipeline(voxenAttractorVert, voxenAttractorVertSize, voxenAttractorFrag, voxenAttractorFragSize, voxenAttractorPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
@@ -1547,13 +1550,15 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     // glTF node world matrices are column-major, matching Vulkan push constants.
     // The prototype intentionally uses the existing lighting shader (not PBR).
     if((glbPlaced_ || glbPreview_) && glbPipeline_!=VK_NULL_HANDLE && (glbPreview_ || (glbInGallery_ ? (!editingMode() && !immersiveSceneActive_) : (editingMode() || immersiveSceneActive_)))) {
-        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,glbPipeline_);
+        const bool original=imguiCarousel_.glbMaterialMode==0 && glbOriginalPipeline_!=VK_NULL_HANDLE;
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,original?glbOriginalPipeline_:glbPipeline_);
         for(const auto& part:glbPrimitives_) {
             if(part.indexCount==0)continue;
             Mat4 node{};
             std::copy(part.worldMatrix.begin(),part.worldMatrix.end(),node.m);
             const auto root=modelMatrix(glbPlacement_[0],glbPlacement_[1],glbScale_,glbPlacement_[2]);
             ProceduralPushConstants pc{multiply(projView,multiply(root,node)),{0.f,0.f,0.52f,1.f}};
+            if(original)std::copy(part.baseColor.begin(),part.baseColor.end(),pc.parameters);
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             const VkDeviceSize off=0;
             vkCmdBindVertexBuffers(commandBuffer_,0,1,&part.vertexBuffer,&off);
@@ -2517,6 +2522,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
 #ifdef VOXEN_WITH_GLB_IMPORT
     releaseGlbGpu();
     if(glbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,glbPipeline_,nullptr);glbPipeline_=VK_NULL_HANDLE;}
+    if(glbOriginalPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,glbOriginalPipeline_,nullptr);glbOriginalPipeline_=VK_NULL_HANDLE;}
 #endif
     for(auto& lod:mandelbulbLods_){
         if(lod.vertexBuffer!=VK_NULL_HANDLE)vkDestroyBuffer(device_,lod.vertexBuffer,nullptr);
