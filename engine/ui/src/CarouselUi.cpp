@@ -114,7 +114,6 @@ void drawCarousel(CarouselState& state) {
         }
         case 3: {
             ImGui::TextUnformatted("SAVED SCENES");
-            ImGui::Checkbox("MECHANICAL CANNON (DEV)",&state.mechanicalCannonPreview);
             ImGui::BeginChild("scene-list",ImVec2(0,360),true);
             for(std::size_t i=0;i<state.savedSceneIds.size();++i) {
                 const auto& label=i<state.savedSceneLabels.size()?state.savedSceneLabels[i]:state.savedSceneIds[i];
