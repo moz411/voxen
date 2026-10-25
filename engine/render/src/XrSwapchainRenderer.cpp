@@ -222,7 +222,17 @@ void XrSwapchainRenderer::requestGalleryDelete() {
     if(editingMode() || immersiveSceneActive_ || galleryDragging_ ||
        pendingGalleryFloorAction_!=0 || !portalManager_ || !portalManager_->localized())return;
     // Two presses of B within three seconds confirm destructive placement removal.
-    if(!selectedPortalId_)return;
+    // B deletes the sphere currently pointed at, without requiring a trigger grab.
+    if(galleryHoveredId_) {
+        if(selectedPortalId_ != galleryHoveredId_)galleryDeleteArmedUntil_={};
+        selectedPortalId_=galleryHoveredId_;
+    }
+    if(!selectedPortalId_) {
+#ifdef VOXEN_WITH_IMGUI
+        imguiCarousel_.sceneStatus="Aim at a gallery sphere, then press B twice";
+#endif
+        return;
+    }
     const auto now=std::chrono::steady_clock::now();
     if(now>galleryDeleteArmedUntil_) {
         galleryDeleteArmedUntil_=now+std::chrono::seconds(3);
@@ -1351,7 +1361,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         float axis=thumbsticks[0].x;
         if(std::fabs(axis)<0.3f)nativeMenuStickLatched_=false;
         if(!nativeMenuStickLatched_ && std::fabs(axis)>0.70f){
-            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:3))%4;
+            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:4))%5;
             nativeMenuStickLatched_=true;
         }
     }
