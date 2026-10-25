@@ -1873,8 +1873,12 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         };
         for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
+        // Only one right-hand tool preview can be active at once.
         // Live selected Voxen preview, not part of the saved scene.
         if(editingMode() && imguiCarousel_.voxenPaintEnabled &&
+#ifdef VOXEN_WITH_GLB_IMPORT
+           !glbPreview_ &&
+#endif
            controllerTracked_[1] && !panelAimed_) {
             const auto& pose=controllerPoses_[1];
             const auto& q=pose.orientation;
@@ -2240,15 +2244,16 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.musicReady=ambientMusic_.ready();
 #ifdef VOXEN_WITH_GLB_IMPORT
         imguiCarousel_.glbFiles=glbAssetNames_;
-        if(!glbAssetPaths_.empty() && imguiCarousel_.glbSelected>=0 &&
+        if(imguiCarousel_.glbPreviewRequest && !glbAssetPaths_.empty() && imguiCarousel_.glbSelected>=0 &&
            static_cast<size_t>(imguiCarousel_.glbSelected)<glbAssetPaths_.size() &&
-           (glbLoadedSelection_!=imguiCarousel_.glbSelected || imguiCarousel_.glbPreviewRequest)) {
+           static_cast<size_t>(imguiCarousel_.glbSelected)<glbAssetPaths_.size()) {
             imguiCarousel_.glbPreviewRequest=false;
             if(loadDemoGlb(glbAssetPaths_[imguiCarousel_.glbSelected])) {
                 glbLoadedSelection_=imguiCarousel_.glbSelected;
                 glbScale_=0.1f;
                 glbPreview_=true;
                 glbPlaced_=false;
+                imguiCarousel_.voxenPaintEnabled=false;
                 imguiCarousel_.glbStatus="Preview active: aim then trigger; right stick left/right changes size";
             } else {
                 glbLoadedSelection_=-1;
@@ -2266,6 +2271,9 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.visiblePortalCount=visibleGalleryPortals().size();
         imguiCarousel_.scenePortalSelected=selectedPortalId_.has_value();
         voxen::ui::drawCarousel(imguiCarousel_);
+#ifdef VOXEN_WITH_GLB_IMPORT
+        if(imguiCarousel_.voxenPaintEnabled && glbPreview_)glbPreview_=false;
+#endif
         if(imguiCarousel_.sceneSave) {
             imguiCarousel_.sceneSave=false;
             imguiCarousel_.sceneStatus=saveCurrentScene()?"Scene saved - DISPOSE available":"Save failed";
