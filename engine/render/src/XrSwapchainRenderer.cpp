@@ -1028,6 +1028,16 @@ void XrSwapchainRenderer::createPipeline() {
             ds.depthTestEnable=VK_TRUE;
             ds.depthWriteEnable=VK_TRUE;
         }
+        // Solid 3D Voxen must occlude their own rear faces and other objects.
+        // Leave the explicitly volumetric/plasma, raymarched and overlay
+        // pipelines on their legacy blending paths.
+        const bool solidVoxen =
+            &out==&organicSpherePipeline_ || &out==&torusKnotPipeline_ ||
+            &out==&spikeBloomPipeline_ || &out==&jellyfishPipeline_ ||
+            &out==&earthwormPipeline_ || &out==&cloudPipeline_ ||
+            &out==&metaballsPipeline_ || &out==&voxenMandelbulbLitPipeline_ ||
+            &out==&mechanicalCannonPipeline_;
+        if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
         if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &seascapePipeline_ || &out == &octgramsPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
@@ -1043,6 +1053,7 @@ void XrSwapchainRenderer::createPipeline() {
             blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
             blend.alphaBlendOp=VK_BLEND_OP_ADD;
         }
+        if(solidVoxen) blend.blendEnable=VK_FALSE;
         if(&out==&meshDepthPipeline_) {
             blend.colorWriteMask=0;
             blend.blendEnable=VK_FALSE;
