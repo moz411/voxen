@@ -14,6 +14,7 @@
 #include <voxen/audio/Mp3Library.hpp>
 #include <voxen/scene/EnvironmentSurface.hpp>
 #include <voxen/scene/RuntimeSnapshot.hpp>
+#include <voxen/scene/MechanicalCannon.hpp>
 #include <voxen/scene/SceneRepository.hpp>
 #include <unordered_map>
 #include <chrono>
@@ -54,6 +55,8 @@ public:
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
     void configureSceneStorage(const std::filesystem::path& root);
+    // Explicit opt-in development preview; not yet a saved gallery scene.
+    void setMechanicalCannonPreview(bool enabled) noexcept { mechanicalCannonPreview_ = enabled; }
     bool saveCurrentScene();
     bool loadSavedScene(const voxen::gallery::SceneId& id);
     bool deleteSavedScene(const voxen::gallery::SceneId& id);
@@ -221,6 +224,8 @@ private:
     std::map<std::array<int,3>,std::vector<uint32_t>> roomCollisionGrid_;
     VkPipeline carouselPipeline_ = VK_NULL_HANDLE;
     VkPipeline galleryPortalPipeline_ = VK_NULL_HANDLE;
+    VkPipeline mechanicalCannonPipeline_ = VK_NULL_HANDLE;
+    bool mechanicalCannonPreview_ = false;
     int nativeMenuPage_ = 0;
     bool nativeMenuStickLatched_ = false;
 #ifdef VOXEN_WITH_IMGUI
