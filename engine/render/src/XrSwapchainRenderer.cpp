@@ -55,6 +55,7 @@
 #include "mandelbrotZoomFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "galleryPortalFrag.spv.hpp"
+#include "mechanicalCannonFrag.spv.hpp"
 #include "imguiPanelFrag.spv.hpp"
 
 #include <algorithm>
@@ -1091,6 +1092,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, mandelbrotZoomFrag, mandelbrotZoomFragSize, mandelbrotZoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
     buildPipeline(fractalVert, fractalVertSize, galleryPortalFrag, galleryPortalFragSize, galleryPortalPipeline_);
+    buildPipeline(cubeVert, cubeVertSize, mechanicalCannonFrag, mechanicalCannonFragSize, mechanicalCannonPipeline_);
 #ifdef VOXEN_WITH_IMGUI
     buildPipeline(fractalVert, fractalVertSize, imguiPanelFrag, imguiPanelFragSize, imguiPanelPipeline_);
 #endif
@@ -1546,6 +1548,49 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdPushConstants(commandBuffer_,pipelineLayout_,
             VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(constants),&constants);
         vkCmdDraw(commandBuffer_,meshWireVertexCount_,1,0,0);
+    }
+    // Opt-in mechanical-cannon stereo preview. Uses the existing procedural cube
+    // vertex shader: no per-frame buffer allocations or unverified XR anchors.
+    if(mechanicalCannonPreview_ && mechanicalCannonPipeline_!=VK_NULL_HANDLE) {
+        const auto state=voxen::scene::cannon::evaluate(seconds);
+        const auto parts=voxen::scene::cannon::geometry();
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,mechanicalCannonPipeline_);
+        for(const auto& part:parts) {
+            const float recoil=state.recoil;
+            const float x=part.center.x;
+            const float y=part.center.y;
+            const float z=-10.f+part.center.z-
+                ((part.kind==voxen::scene::cannon::Part::Barrel ||
+                  part.kind==voxen::scene::cannon::Part::Breech ||
+                  part.kind==voxen::scene::cannon::Part::Muzzle)?recoil:0.f);
+            Mat4 model=modelMatrix(x,y,1.f,z,0.f);
+            // cube.vert covers [-0.5,0.5] in each axis.
+            for(int row=0;row<4;++row) {
+                model.m[row]*=part.halfExtents.x*2.f;
+                model.m[4+row]*=part.halfExtents.y*2.f;
+                model.m[8+row]*=part.halfExtents.z*2.f;
+            }
+            const auto mvp=multiply(projView,model);
+            const bool luminous=part.kind==voxen::scene::cannon::Part::ChargingCore ||
+                part.kind==voxen::scene::cannon::Part::CoolingRing ||
+                part.kind==voxen::scene::cannon::Part::Muzzle;
+            const float intensity=luminous?(state.charging+state.muzzleFlash):0.f;
+            ProceduralPushConstants pc{mvp,{seconds,intensity,luminous?1.f:0.f,state.exposure}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,36,1,0,0);
+        }
+        if(organicSpherePipeline_!=VK_NULL_HANDLE) {
+            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,organicSpherePipeline_);
+            for(const auto& p:state.projectiles) {
+                const auto mvp=multiply(projView,modelMatrix(
+                    p.position.x,p.position.y,p.radius,p.position.z,0.f));
+                ProceduralPushConstants pc{mvp,{seconds,1.f,4.f+float(p.material),.20f}};
+                vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                    VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+                vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
+            }
+        }
     }
     // Saved scene instances are static 3D Voxen, not floor rings.
     if(!immersiveSceneActive_ && !editingMode() && portalManager_ &&
