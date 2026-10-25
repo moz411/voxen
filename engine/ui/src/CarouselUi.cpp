@@ -128,7 +128,9 @@ void drawCarousel(CarouselState& state) {
             if(ImGui::Button("PLACE IN GALLERY",ImVec2(220,44)))state.glbPlaceGallery=true;
             if(state.glbFiles.empty())ImGui::EndDisabled();
             ImGui::TextWrapped("%s",state.glbStatus.c_str());
-            ImGui::TextDisabled("Preview: one GLB active at a time (prototype)");
+            ImGui::TextDisabled("Preview follows right controller");
+            ImGui::TextDisabled("RIGHT STICK LEFT/RIGHT: resize (default 0.1)");
+            ImGui::TextDisabled("RIGHT TRIGGER: place preview");
             break;
         }
         case 3: {
