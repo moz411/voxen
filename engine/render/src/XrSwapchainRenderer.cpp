@@ -1,5 +1,8 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
 #include <voxen/render/MandelbulbMesh.hpp>
+#ifdef VOXEN_WITH_GLB_IMPORT
+#include <voxen/scene/GlbMeshDecoder.hpp>
+#endif
 #ifdef VOXEN_WITH_IMGUI
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
@@ -100,6 +103,11 @@ void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& roo
     }
     refreshSceneIndex();
     selectedSceneIndex_ = 0;
+#ifdef VOXEN_WITH_GLB_IMPORT
+    // Debug-only static asset; requires explicit file in app-private storage.
+    const auto demo=root / "assets" / "demo.glb";
+    if(std::filesystem::is_regular_file(demo))loadDemoGlb(demo);
+#endif
 }
 
 void XrSwapchainRenderer::refreshSceneIndex() {
@@ -1011,12 +1019,24 @@ void XrSwapchainRenderer::createPipeline() {
             {0,0,VK_FORMAT_R32G32B32_SFLOAT,0},
             {1,0,VK_FORMAT_R32G32B32_SFLOAT,sizeof(XrVector3f)}
         };
-        if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_ || &out==&voxenMandelbulbPipeline_ || &out==&voxenMandelbulbLitPipeline_) {
+        if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_ || &out==&voxenMandelbulbPipeline_ || &out==&voxenMandelbulbLitPipeline_
+#ifdef VOXEN_WITH_GLB_IMPORT
+           || &out==&glbPipeline_
+#endif
+        ) {
             binding.stride=sizeof(MandelbulbLitVertex);
             vi.vertexBindingDescriptionCount=1;
             vi.pVertexBindingDescriptions=&binding;
-            vi.vertexAttributeDescriptionCount=(&out==&voxenMandelbulbLitPipeline_) ? 2 : 1;
-            vi.pVertexAttributeDescriptions=(&out==&voxenMandelbulbLitPipeline_) ? litAttributes : &attribute;
+            vi.vertexAttributeDescriptionCount=(&out==&voxenMandelbulbLitPipeline_
+#ifdef VOXEN_WITH_GLB_IMPORT
+            || &out==&glbPipeline_
+#endif
+            ) ? 2 : 1;
+            vi.pVertexAttributeDescriptions=(&out==&voxenMandelbulbLitPipeline_
+#ifdef VOXEN_WITH_GLB_IMPORT
+            || &out==&glbPipeline_
+#endif
+            ) ? litAttributes : &attribute;
             if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_)binding.stride=sizeof(XrVector3f);
         }
         VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
@@ -1050,7 +1070,11 @@ void XrSwapchainRenderer::createPipeline() {
             &out==&spikeBloomPipeline_ || &out==&jellyfishPipeline_ ||
             &out==&earthwormPipeline_ || &out==&cloudPipeline_ ||
             &out==&metaballsPipeline_ || &out==&voxenMandelbulbLitPipeline_ ||
-            &out==&mechanicalCannonPipeline_;
+            &out==&mechanicalCannonPipeline_
+#ifdef VOXEN_WITH_GLB_IMPORT
+            || &out==&glbPipeline_
+#endif
+            ;
         if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
@@ -1101,6 +1125,9 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
     buildPipeline(meshWireVert, meshWireVertSize, laserFrag, laserFragSize, voxenMandelbulbPipeline_);
     buildPipeline(mandelbulbLitVert, mandelbulbLitVertSize, mandelbulbLitFrag, mandelbulbLitFragSize, voxenMandelbulbLitPipeline_);
+#ifdef VOXEN_WITH_GLB_IMPORT
+    buildPipeline(mandelbulbLitVert,mandelbulbLitVertSize,mandelbulbLitFrag,mandelbulbLitFragSize,glbPipeline_);
+#endif
     buildPipeline(voxenAttractorVert, voxenAttractorVertSize, voxenAttractorFrag, voxenAttractorFragSize, voxenAttractorPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
@@ -1440,6 +1467,25 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     artworksAnimated=imguiCarousel_.animateArtworks;
     motionMode=imguiCarousel_.artworkMotion;
     motionAmplitude=std::clamp(imguiCarousel_.motionAmplitude,0.0f,0.5f);
+#endif
+#ifdef VOXEN_WITH_GLB_IMPORT
+    // glTF node world matrices are column-major, matching Vulkan push constants.
+    // The prototype intentionally uses the existing lighting shader (not PBR).
+    if(glbPipeline_!=VK_NULL_HANDLE && (editingMode() || immersiveSceneActive_)) {
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,glbPipeline_);
+        for(const auto& part:glbPrimitives_) {
+            if(part.indexCount==0)continue;
+            Mat4 node{};
+            std::copy(part.worldMatrix.begin(),part.worldMatrix.end(),node.m);
+            const auto root=modelMatrix(0.f,0.f,1.f,-1.5f);
+            ProceduralPushConstants pc{multiply(projView,multiply(root,node)),{0.f,0.f,0.52f,1.f}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            const VkDeviceSize off=0;
+            vkCmdBindVertexBuffers(commandBuffer_,0,1,&part.vertexBuffer,&off);
+            vkCmdBindIndexBuffer(commandBuffer_,part.indexBuffer,0,VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(commandBuffer_,part.indexCount,1,0,0,0);
+        }
+    }
 #endif
     // Depth-only static real-world mesh: occludes wall fragments behind
     // furniture, but never writes opaque pixels over the passthrough layer.
@@ -2335,6 +2381,10 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbLitPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbLitPipeline_,nullptr);voxenMandelbulbLitPipeline_=VK_NULL_HANDLE;}
+#ifdef VOXEN_WITH_GLB_IMPORT
+    releaseGlbGpu();
+    if(glbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,glbPipeline_,nullptr);glbPipeline_=VK_NULL_HANDLE;}
+#endif
     for(auto& lod:mandelbulbLods_){
         if(lod.vertexBuffer!=VK_NULL_HANDLE)vkDestroyBuffer(device_,lod.vertexBuffer,nullptr);
         if(lod.indexBuffer!=VK_NULL_HANDLE)vkDestroyBuffer(device_,lod.indexBuffer,nullptr);
