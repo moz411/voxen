@@ -22,6 +22,10 @@
 #include "torusKnotVert.spv.hpp"
 #include "spikeBloomVert.spv.hpp"
 #include "jellyfishVert.spv.hpp"
+#include "earthwormVert.spv.hpp"
+#include "metaballsVert.spv.hpp"
+#include "cloudVert.spv.hpp"
+#include "cloudFrag.spv.hpp"
 #include "organicSphereVert.spv.hpp"
 #include "organicSphereFrag.spv.hpp"
 #include "cubeVert.spv.hpp"
@@ -44,6 +48,10 @@
 #include "matrixRainFrag.spv.hpp"
 #include "heppGlowFrag.spv.hpp"
 #include "phiFieldFrag.spv.hpp"
+#include "soundDemoFrag.spv.hpp"
+#include "midnightRideFrag.spv.hpp"
+#include "seascapeFrag.spv.hpp"
+#include "octgramsFrag.spv.hpp"
 #include "mandelbrotZoomFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "galleryPortalFrag.spv.hpp"
@@ -1005,7 +1013,7 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &organicSpherePipeline_ || &out == &torusKnotPipeline_ || &out == &spikeBloomPipeline_ || &out == &jellyfishPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &organicSpherePipeline_
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &organicSpherePipeline_ || &out == &torusKnotPipeline_ || &out == &spikeBloomPipeline_ || &out == &jellyfishPipeline_ || &out == &earthwormPipeline_ || &out == &cloudPipeline_ || &out == &metaballsPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &organicSpherePipeline_
 #ifdef VOXEN_WITH_IMGUI
         || &out == &imguiPanelPipeline_
 #endif
@@ -1021,7 +1029,7 @@ void XrSwapchainRenderer::createPipeline() {
         }
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &seascapePipeline_ || &out == &octgramsPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -1060,6 +1068,9 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(torusKnotVert, torusKnotVertSize, organicSphereFrag, organicSphereFragSize, torusKnotPipeline_);
     buildPipeline(spikeBloomVert, spikeBloomVertSize, organicSphereFrag, organicSphereFragSize, spikeBloomPipeline_);
     buildPipeline(jellyfishVert, jellyfishVertSize, organicSphereFrag, organicSphereFragSize, jellyfishPipeline_);
+    buildPipeline(earthwormVert, earthwormVertSize, organicSphereFrag, organicSphereFragSize, earthwormPipeline_);
+    buildPipeline(cloudVert, cloudVertSize, cloudFrag, cloudFragSize, cloudPipeline_);
+    buildPipeline(metaballsVert, metaballsVertSize, organicSphereFrag, organicSphereFragSize, metaballsPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
     buildPipeline(meshWireVert, meshWireVertSize, laserFrag, laserFragSize, voxenMandelbulbPipeline_);
@@ -1073,6 +1084,10 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, matrixRainFrag, matrixRainFragSize, matrixRainPipeline_);
     buildPipeline(fractalVert, fractalVertSize, heppGlowFrag, heppGlowFragSize, heppGlowPipeline_);
     buildPipeline(fractalVert, fractalVertSize, phiFieldFrag, phiFieldFragSize, phiFieldPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, soundDemoFrag, soundDemoFragSize, soundDemoPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, midnightRideFrag, midnightRideFragSize, midnightRidePipeline_);
+    buildPipeline(fractalVert, fractalVertSize, seascapeFrag, seascapeFragSize, seascapePipeline_);
+    buildPipeline(fractalVert, fractalVertSize, octgramsFrag, octgramsFragSize, octgramsPipeline_);
     buildPipeline(fractalVert, fractalVertSize, mandelbrotZoomFrag, mandelbrotZoomFragSize, mandelbrotZoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
     buildPipeline(fractalVert, fractalVertSize, galleryPortalFrag, galleryPortalFragSize, galleryPortalPipeline_);
@@ -1251,8 +1266,31 @@ void XrSwapchainRenderer::updateControllerInteraction(
         }
     }
 #ifdef VOXEN_WITH_IMGUI
-    if(tracked[1] && pressed[1] && pendingGalleryFloorAction_==0 &&
-       imguiCarousel_.editMode && imguiCarousel_.voxenPaintEnabled && !panelAimed_){
+    // In editing mode the right controller holds a live preview.
+    // Thumbstick Y selects among 9 presets; X changes size, both debounced.
+    if(editingMode() && !immersiveSceneActive_) {
+        const float x=thumbsticks[1].x;
+        const float y=thumbsticks[1].y;
+        if(std::fabs(y)<0.30f)editorPresetStickLatched_=false;
+        if(!editorPresetStickLatched_ && std::fabs(y)>0.72f) {
+            imguiCarousel_.voxenPreset=(imguiCarousel_.voxenPreset+(y>0.f?1:10))%11;
+            editorPresetStickLatched_=true;
+        }
+        if(std::fabs(x)<0.30f)editorScaleStickLatched_=false;
+        if(!editorScaleStickLatched_ && std::fabs(x)>0.72f) {
+            imguiCarousel_.voxenScale=std::clamp(
+                imguiCarousel_.voxenScale*(x>0.f?1.20f:1.f/1.20f),0.06f,0.60f);
+            editorScaleStickLatched_=true;
+        }
+    } else {
+        editorPresetStickLatched_=false;
+        editorScaleStickLatched_=false;
+    }
+    // A single trigger click places exactly one instance. Never place when
+    // aiming at the carousel, or during gallery/immersive interactions.
+    if(tracked[1] && galleryTriggerEdge && pendingGalleryFloorAction_==0 &&
+       editingMode() && !immersiveSceneActive_ &&
+       imguiCarousel_.voxenPaintEnabled && !panelAimed_) {
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         const std::array<float,3> dir{
@@ -1261,31 +1299,27 @@ void XrSwapchainRenderer::updateControllerInteraction(
             -(1.f-2.f*(q.x*q.x+q.y*q.y))};
         PlasmaVoxen v;
         v.preset=imguiCarousel_.voxenPreset;
-        v.position={pose.position.x+0.17f*dir[0],
-                    pose.position.y+0.17f*dir[1],
-                    pose.position.z+0.17f*dir[2]};
-        v.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.6f);
+        v.position={pose.position.x+0.25f*dir[0],
+                    pose.position.y+0.25f*dir[1],
+                    pose.position.z+0.25f*dir[2]};
+        v.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.60f);
         v.hue=imguiCarousel_.voxenHue;
         v.density=imguiCarousel_.voxenDensity;
-        v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,3) :
+        v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,8) :
             std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
         v.speed=imguiCarousel_.voxenSpeed;
-        const float dx=v.position[0]-lastVoxenPos_[0];
-        const float dy=v.position[1]-lastVoxenPos_[1];
-        const float dz=v.position[2]-lastVoxenPos_[2];
-        if(!lastVoxenValid_ || dx*dx+dy*dy+dz*dz >= v.scale*v.scale*0.45f){
-            if(voxens_.size()<256){
-                v.velocity={dir[0]*imguiCarousel_.motionSpeed,dir[1]*imguiCarousel_.motionSpeed,dir[2]*imguiCarousel_.motionSpeed};
-                voxens_.push_back(v);
+        v.velocity={dir[0]*imguiCarousel_.motionSpeed,
+                    dir[1]*imguiCarousel_.motionSpeed,
+                    dir[2]*imguiCarousel_.motionSpeed};
+        if(voxens_.size()<256) {
+            voxens_.push_back(v);
 #ifdef __ANDROID__
-                if(v.preset==2) __android_log_print(ANDROID_LOG_INFO,"Voxen","Mandelbulb instance created: total=%zu, scale=%.2f, pos=(%.2f,%.2f,%.2f)",
-                    voxens_.size(),v.scale,v.position[0],v.position[1],v.position[2]);
+            __android_log_print(ANDROID_LOG_INFO,"Voxen",
+                "Editor placed preset=%d scale=%.2f total=%zu",
+                v.preset,v.scale,voxens_.size());
 #endif
-            }
-            lastVoxenPos_=v.position;
-            lastVoxenValid_=true;
         }
-    }else if(!pressed[1])lastVoxenValid_=false;
+    }
 #endif
 }
 
@@ -1386,7 +1420,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
     if (liquidEnabled && (wallShaderMode!=0 || liquidOpacity>0.001f) &&
-        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE) {
+        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && midnightRidePipeline_ != VK_NULL_HANDLE && seascapePipeline_ != VK_NULL_HANDLE && octgramsPipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE) {
         // Stable slots are based on scene anchor IDs, not eye-specific
         // distance ordering. Both eyes therefore show the same effect per wall.
         std::vector<uint64_t> shaderIds;
@@ -1397,7 +1431,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         std::sort(shaderIds.begin(),shaderIds.end());
         shaderIds.erase(std::unique(shaderIds.begin(),shaderIds.end()),shaderIds.end());
         const int cycleStep=static_cast<int>(std::floor(seconds / wallCycleSeconds));
-        constexpr int demoModes[]={0,2,3,4,5}; // never SOLID or IFS PHANTOM
+        constexpr int demoModes[]={0,2,3,4,5,6,7,8,9}; // omit solid diagnostic
         auto choosePipeline=[&](int mode)->VkPipeline {
             switch(mode){
                 case 1:return solidWallPipeline_;
@@ -1405,6 +1439,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 case 3:return heppGlowPipeline_;
                 case 4:return phiFieldPipeline_;
                 case 5:return mandelbrotZoomPipeline_;
+                case 6:return soundDemoPipeline_;
+                case 7:return midnightRidePipeline_;
+                case 8:return seascapePipeline_;
+                case 9:return octgramsPipeline_;
                 default:return liquidRoomPipeline_;
             }
         };
@@ -1459,7 +1497,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             if(cycleWallShaders){
                 auto it=std::lower_bound(shaderIds.begin(),shaderIds.end(),surface->id);
                 const auto rank=static_cast<int>(it-shaderIds.begin());
-                activeMode=demoModes[(rank+cycleStep)%5];
+                activeMode=demoModes[(rank+cycleStep)%9];
             }
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,choosePipeline(activeMode));
             const Mat4 wallMvp=multiply(projView,surfaceModel(*surface));
@@ -1554,7 +1592,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     // procedural fire or fingertip spheres are rendered.
     // A skinned XR_FB_hand_tracking_mesh renderer will be added separately.
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE && voxenSpheresPipeline_!=VK_NULL_HANDLE &&
-       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE && torusKnotPipeline_!=VK_NULL_HANDLE && spikeBloomPipeline_!=VK_NULL_HANDLE && jellyfishPipeline_!=VK_NULL_HANDLE){
+       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE && torusKnotPipeline_!=VK_NULL_HANDLE && spikeBloomPipeline_!=VK_NULL_HANDLE && jellyfishPipeline_!=VK_NULL_HANDLE && earthwormPipeline_!=VK_NULL_HANDLE && cloudPipeline_!=VK_NULL_HANDLE && metaballsPipeline_!=VK_NULL_HANDLE){
         auto paintPlasma=[&](const PlasmaVoxen& v){
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 v.preset==1 ? voxenSpheresPipeline_ :
@@ -1565,7 +1603,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 voxenMandelbulbPipeline_) :
                 v.preset==3 ? voxenAttractorPipeline_ : v.preset==4 ? organicSpherePipeline_ :
                 v.preset==5 ? torusKnotPipeline_ : v.preset==6 ? spikeBloomPipeline_ :
-                v.preset==7 ? jellyfishPipeline_ : voxenPlasmaPipeline_);
+                v.preset==7 ? jellyfishPipeline_ : v.preset==8 ? earthwormPipeline_ : v.preset==9 ? cloudPipeline_ : v.preset==10 ? metaballsPipeline_ : voxenPlasmaPipeline_);
             const Mat4 mvp=multiply(projView,modelMatrix(
                 v.position[0],v.position[1],v.scale,v.position[2],0.f));
             // For Mandelbulbs, pack material into the otherwise unchanged float slot.
@@ -1583,12 +1621,34 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                     vkCmdDrawIndexed(commandBuffer_,lod.indexCount,1,0,0,0);
                 }
             }else{
-                vkCmdDraw(commandBuffer_,v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6)),1,0,0);
+                vkCmdDraw(commandBuffer_,v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 : (v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6)))),1,0,0);
             }
         };
         for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
-        // No default Voxen attached to the controller in editing mode.
+        // Live selected Voxen preview, not part of the saved scene.
+        if(editingMode() && imguiCarousel_.voxenPaintEnabled &&
+           controllerTracked_[1] && !panelAimed_) {
+            const auto& pose=controllerPoses_[1];
+            const auto& q=pose.orientation;
+            const float dx=-2.f*(q.x*q.z+q.w*q.y);
+            const float dy=-2.f*(q.y*q.z-q.w*q.x);
+            const float dz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
+            PlasmaVoxen preview;
+            preview.preset=imguiCarousel_.voxenPreset;
+            preview.position={pose.position.x+0.25f*dx,
+                              pose.position.y+0.25f*dy,
+                              pose.position.z+0.25f*dz};
+            preview.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.60f);
+            preview.hue=imguiCarousel_.voxenHue;
+            preview.density=imguiCarousel_.voxenDensity;
+            preview.speed=imguiCarousel_.voxenSpeed;
+            preview.material=preview.preset>=4 ?
+                std::clamp(imguiCarousel_.voxenMaterial,0,8) :
+                std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
+            preview.lodLevel=1; // Stable medium LOD for Mandelbulb preview.
+            paintPlasma(preview);
+        }
 
 #endif
     }
@@ -2186,6 +2246,9 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(torusKnotPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,torusKnotPipeline_,nullptr);torusKnotPipeline_=VK_NULL_HANDLE;}
     if(spikeBloomPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,spikeBloomPipeline_,nullptr);spikeBloomPipeline_=VK_NULL_HANDLE;}
     if(jellyfishPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,jellyfishPipeline_,nullptr);jellyfishPipeline_=VK_NULL_HANDLE;}
+    if(earthwormPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,earthwormPipeline_,nullptr);earthwormPipeline_=VK_NULL_HANDLE;}
+    if(cloudPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,cloudPipeline_,nullptr);cloudPipeline_=VK_NULL_HANDLE;}
+    if(metaballsPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,metaballsPipeline_,nullptr);metaballsPipeline_=VK_NULL_HANDLE;}
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
@@ -2207,6 +2270,10 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(matrixRainPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,matrixRainPipeline_,nullptr);matrixRainPipeline_=VK_NULL_HANDLE;}
     if(heppGlowPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,heppGlowPipeline_,nullptr);heppGlowPipeline_=VK_NULL_HANDLE;}
     if(phiFieldPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,phiFieldPipeline_,nullptr);phiFieldPipeline_=VK_NULL_HANDLE;}
+    if(soundDemoPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,soundDemoPipeline_,nullptr);soundDemoPipeline_=VK_NULL_HANDLE;}
+    if(midnightRidePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,midnightRidePipeline_,nullptr);midnightRidePipeline_=VK_NULL_HANDLE;}
+    if(seascapePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,seascapePipeline_,nullptr);seascapePipeline_=VK_NULL_HANDLE;}
+    if(octgramsPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,octgramsPipeline_,nullptr);octgramsPipeline_=VK_NULL_HANDLE;}
     if(mandelbrotZoomPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,mandelbrotZoomPipeline_,nullptr);mandelbrotZoomPipeline_=VK_NULL_HANDLE;}
     if(meshDepthBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,meshDepthBuffer_,nullptr);meshDepthBuffer_=VK_NULL_HANDLE;}
     if(meshDepthMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,meshDepthMemory_,nullptr);meshDepthMemory_=VK_NULL_HANDLE;}

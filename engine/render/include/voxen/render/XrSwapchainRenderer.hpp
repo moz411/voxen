@@ -201,6 +201,10 @@ private:
     VkPipeline matrixRainPipeline_ = VK_NULL_HANDLE;
     VkPipeline heppGlowPipeline_ = VK_NULL_HANDLE;
     VkPipeline phiFieldPipeline_ = VK_NULL_HANDLE;
+    VkPipeline soundDemoPipeline_ = VK_NULL_HANDLE;
+    VkPipeline midnightRidePipeline_ = VK_NULL_HANDLE;
+    VkPipeline seascapePipeline_ = VK_NULL_HANDLE;
+    VkPipeline octgramsPipeline_ = VK_NULL_HANDLE;
     VkPipeline mandelbrotZoomPipeline_ = VK_NULL_HANDLE;
     VkBuffer meshWireBuffer_ = VK_NULL_HANDLE;
     VkBuffer meshDepthBuffer_ = VK_NULL_HANDLE;
@@ -234,6 +238,9 @@ private:
     VkPipeline torusKnotPipeline_ = VK_NULL_HANDLE;
     VkPipeline spikeBloomPipeline_ = VK_NULL_HANDLE;
     VkPipeline jellyfishPipeline_ = VK_NULL_HANDLE;
+    VkPipeline earthwormPipeline_ = VK_NULL_HANDLE;
+    VkPipeline cloudPipeline_ = VK_NULL_HANDLE;
+    VkPipeline metaballsPipeline_ = VK_NULL_HANDLE;
     VkPipeline laserPipeline_ = VK_NULL_HANDLE;
     std::array<EyeSwapchain, 2> eyes_{};
     voxen::scene::EnvironmentSurfaceRegistry environmentSurfaces_{};
@@ -288,6 +295,8 @@ private:
         int mode, float swarmRadius, float swarmStrength, float swarmSeparation, bool collideRoomMesh);
     std::array<float,3> lastVoxenPos_{};
     bool lastVoxenValid_=false;
+    bool editorPresetStickLatched_=false;
+    bool editorScaleStickLatched_=false;
     std::array<XrPosef, 2> controllerPoses_{};
     std::array<bool, 2> controllerTracked_{};
     bool firstFrameLogged_ = false;
