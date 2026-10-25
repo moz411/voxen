@@ -31,6 +31,12 @@ struct CarouselState {
     std::vector<std::string> savedSceneIds;
     std::vector<std::string> savedSceneLabels;
     std::string sceneStatus;
+    int glbSelected=0;
+    bool glbRescan=false;
+    bool glbPlaceScene=false;
+    bool glbPlaceGallery=false;
+    std::vector<std::string> glbFiles;
+    std::string glbStatus;
     int musicTrack = 0;
     bool musicPlaying = false;
     float musicVolume = 0.45f;
@@ -84,8 +90,8 @@ struct CarouselState {
     float gpuMs = 0.0f;
     bool gpuAvailable = false;
 };
-inline constexpr std::array<std::string_view, 4> pages = {
-    "VOXENS","BACKGROUNDS","MUSIC","SCENES"
+inline constexpr std::array<std::string_view, 5> pages = {
+    "VOXENS","BACKGROUNDS","MUSIC","SCENES","GLB"
 };
 // Caller owns ImGui frame lifecycle. Draws controls into ImDrawData; no XR
 // input/passthrough assumptions are hidden in this unit.
