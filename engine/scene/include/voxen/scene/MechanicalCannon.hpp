@@ -89,7 +89,7 @@ inline Frame evaluate(float seconds, const Config& cfg = {}) {
     if (seconds<10.f) return f;
     const float interval=cfg.fireInterval;
     const int last=static_cast<int>(std::floor((seconds-10.f)/interval));
-    const float travel=std::max(0.f,10.f-cfg.stopDistance);
+    const float travel=std::max(0.1f, -cfg.cannonPosition.z-3.25f-cfg.stopDistance);
     const float lifetime=travel/cfg.projectileSpeed+1.15f;
     const int first=std::max(0,static_cast<int>(std::floor((seconds-10.f-lifetime)/interval)));
     const float shotAge=seconds-(10.f+last*interval);
