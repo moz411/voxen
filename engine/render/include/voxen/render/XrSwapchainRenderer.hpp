@@ -199,6 +199,12 @@ private:
     std::array<float,3> glbPlacement_{0.f,0.f,-1.5f};
     bool glbInGallery_=false;
     bool glbPlaced_=false;
+    bool glbPreview_=false;
+    float glbScale_=0.1f;
+    int glbLoadedSelection_=-1;
+    bool glbStickLatched_=false;
+    bool galleryDeletePending_=false;
+    std::optional<voxen::gallery::InstanceId> galleryDeleteTarget_;
     struct GlbGpuPrimitive {
         VkBuffer vertexBuffer=VK_NULL_HANDLE;
         VkDeviceMemory vertexMemory=VK_NULL_HANDLE;
