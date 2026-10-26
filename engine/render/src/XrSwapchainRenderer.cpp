@@ -2221,6 +2221,7 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
         spikeProjectiles_.clear();
         spikeImpacts_.clear();
         handWasClosed_.fill(false);
+        thumbPeakExtension_.fill(0.f);
         handShotCooldown_.fill(0.f);
         return;
     }
@@ -2240,18 +2241,26 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
         const auto& middleTip=hand.joints[XR_HAND_JOINT_MIDDLE_TIP_EXT];
         const auto& ringTip=hand.joints[XR_HAND_JOINT_RING_TIP_EXT];
         const auto& thumbTip=hand.joints[XR_HAND_JOINT_THUMB_TIP_EXT];
-        const auto& thumbBase=hand.joints[XR_HAND_JOINT_THUMB_METACARPAL_EXT];
         const float indexReach=distance(tip,base);
         const float indexPalm=distance(tip,palm);
         const bool pointing=indexReach>0.065f && indexPalm>0.105f;
         const bool fingersCurled=distance(middleTip,palm)<0.115f &&
                                  distance(ringTip,palm)<0.12f;
         const float thumbExtension=distance(thumbTip,base);
-        const bool thumbRaised=thumbExtension>0.085f;
-        const bool thumbLowered=thumbExtension<0.065f;
-        // The thumb-raised pose arms the shot; lowered thumb is the trigger.
-        if(pointing && fingersCurled && thumbRaised)handWasClosed_[i]=true;
-        if(!pointing || !fingersCurled)handWasClosed_[i]=false;
+        // Real Quest measurements: 0.050..0.077 m, rather than 0.085 m.
+        // Capture the user's recent raised-thumb peak and detect a drop.
+        // Decay peak slowly so a held pose cannot stay armed indefinitely.
+        if(!pointing || !fingersCurled) {
+            handWasClosed_[i]=false;
+            thumbPeakExtension_[i]=0.f;
+        } else {
+            thumbPeakExtension_[i]=std::max(thumbExtension,
+                thumbPeakExtension_[i]-dt*0.012f);
+            if(thumbExtension>=0.069f)handWasClosed_[i]=true;
+        }
+        const bool thumbLowered=thumbExtension<=0.060f ||
+            (thumbPeakExtension_[i]>=0.068f &&
+             thumbPeakExtension_[i]-thumbExtension>=0.010f);
         if(handWasClosed_[i] && pointing && fingersCurled && thumbLowered &&
            handShotCooldown_[i]<=0.f && spikeProjectiles_.size()<32) {
             float dx=tip.x-base.x,dy=tip.y-base.y,dz=tip.z-base.z;
@@ -2265,6 +2274,7 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
                 spikeProjectiles_.push_back(p);
                 handShotCooldown_[i]=0.28f;
                 handWasClosed_[i]=false;
+                thumbPeakExtension_[i]=0.f;
 #ifdef __ANDROID__
                 __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
                     "FINGER_GUN FIRED hand=%zu total=%zu",i,spikeProjectiles_.size());
