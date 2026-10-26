@@ -75,6 +75,8 @@ if(ANDROID OR WIN32)
     voxen_embed_shader(galleryPortalFrag gallery_portal.frag)
     voxen_embed_shader(mechanicalCannonFrag mechanical_cannon.frag)
     voxen_embed_shader(imguiPanelFrag imgui_panel.frag)
+    voxen_embed_shader(panoramaVert panorama.vert)
+    voxen_embed_shader(panoramaFrag panorama.frag)
 endif()
 
 
