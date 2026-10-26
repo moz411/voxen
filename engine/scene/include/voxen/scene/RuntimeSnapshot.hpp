@@ -39,7 +39,7 @@ struct SavedRuntime {
 inline bool valid(const SavedRuntime& r) {
     if(r.panoramaFile.size()>128 ||
        r.panoramaFile.find('/')!=std::string::npos ||
-       r.panoramaFile.find('\\\\')!=std::string::npos ||
+       r.panoramaFile.find('\\')!=std::string::npos ||
        r.panoramaFile.find("..")!=std::string::npos ||
        !std::isfinite(r.panoramaYawDegrees) ||
        !std::isfinite(r.panoramaHorizontalDegrees) ||
@@ -70,8 +70,11 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
     if (!valid(r)) return {};
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<float>::max_digits10);
-    out << "VOXEN_RUNTIME 3\n" << r.voxens.size() << '\n';
+    out << "VOXEN_RUNTIME 4\n" << r.voxens.size() << '\n';
     out << r.sceneKind << '\n';
+    out << (r.panoramaFile.empty() ? "-" : r.panoramaFile) << ' '
+        << r.panoramaYawDegrees << ' ' << r.panoramaHorizontalDegrees << ' '
+        << r.panoramaVerticalDegrees << '\n';
     out << r.musicSource << ' ' << r.musicTrack << ' ' << r.musicFile << ' '
         << r.musicVolume << ' ' << r.musicPlaying << ' ' << r.motionEnabled << ' '
         << r.motionMode << ' ' << r.motionGravity << ' ' << r.motionBounce << '\n';
