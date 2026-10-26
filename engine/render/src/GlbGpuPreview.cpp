@@ -6,6 +6,9 @@
 #include <cstring>
 #include <algorithm>
 #include <limits>
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
 
 namespace voxen::render {
 namespace {
