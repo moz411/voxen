@@ -440,6 +440,12 @@ bool XrSwapchainRenderer::saveCurrentScene() {
         runtime.voxens.push_back(saved);
     }
 #ifdef VOXEN_WITH_IMGUI
+    const int panoramaIndex=imguiCarousel_.panoramaSelected;
+    if(panoramaIndex>=0 && static_cast<std::size_t>(panoramaIndex)<panoramaNames_.size())
+        runtime.panoramaFile=panoramaNames_[panoramaIndex];
+    runtime.panoramaYawDegrees=imguiCarousel_.panoramaYawDegrees;
+    runtime.panoramaHorizontalDegrees=imguiCarousel_.panoramaHorizontalDegrees;
+    runtime.panoramaVerticalDegrees=imguiCarousel_.panoramaVerticalDegrees;
     runtime.liquidRoom=imguiCarousel_.liquidRoom;
     runtime.liquidOpacity=imguiCarousel_.liquidOpacity;
     runtime.wallShaderMode=imguiCarousel_.wallShaderMode;
@@ -520,6 +526,16 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
 #ifdef VOXEN_WITH_IMGUI
+    rescanPanoramaAssets();
+    const auto match=std::find(panoramaNames_.begin(),panoramaNames_.end(),snapshot->panoramaFile);
+    imguiCarousel_.panoramaSelected=snapshot->panoramaFile.empty() ||
+        match==panoramaNames_.end() ? -1 : static_cast<int>(match-panoramaNames_.begin());
+    panoramaDecodedSelection_=-2; // force validation of restored selection next frame
+    imguiCarousel_.panoramaYawDegrees=snapshot->panoramaYawDegrees;
+    imguiCarousel_.panoramaHorizontalDegrees=snapshot->panoramaHorizontalDegrees;
+    imguiCarousel_.panoramaVerticalDegrees=snapshot->panoramaVerticalDegrees;
+    if(!snapshot->panoramaFile.empty() && match==panoramaNames_.end())
+        imguiCarousel_.panoramaStatus="Saved panorama missing: "+snapshot->panoramaFile;
     imguiCarousel_.liquidRoom=snapshot->liquidRoom;
     imguiCarousel_.liquidOpacity=snapshot->liquidOpacity;
     imguiCarousel_.wallShaderMode=snapshot->wallShaderMode;
