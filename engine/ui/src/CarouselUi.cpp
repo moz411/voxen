@@ -70,6 +70,7 @@ void drawCarousel(CarouselState& state) {
 
         case 1:
             ImGui::SeparatorText("PANORAMAS / LOCAL PHOTOS");
+            if(ImGui::Button("USE PASSTHROUGH SOBEL")) state.panoramaSelected=-1;
             if (ImGui::Button("IMPORT JPEG / PNG")) state.panoramaImportRequest=true;
             ImGui::SameLine();
             if (ImGui::Button("RESCAN PHOTOS")) state.panoramaRescanRequest=true;
