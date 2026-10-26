@@ -349,6 +349,7 @@ private:
     std::vector<SpikeProjectile> spikeProjectiles_;
     std::vector<SpikeImpact> spikeImpacts_;
     std::array<bool,2> handWasClosed_{};
+    std::array<float,2> thumbPeakExtension_{};
     std::array<float,2> handShotCooldown_{};
     void advanceHandProjectiles(float dt);
 
