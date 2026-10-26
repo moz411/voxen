@@ -117,8 +117,29 @@ void XrSwapchainRenderer::rescanGlbAssets() {
 }
 #endif
 
+void XrSwapchainRenderer::rescanPanoramaAssets() {
+    panoramaNames_.clear();
+    try {
+        if(panoramaRoot_.empty())return;
+        std::filesystem::create_directories(panoramaRoot_);
+        for(const auto& item:std::filesystem::directory_iterator(panoramaRoot_)) {
+            if(!item.is_regular_file() || item.is_symlink())continue;
+            auto ext=item.path().extension().string();
+            std::transform(ext.begin(),ext.end(),ext.begin(),
+                [](unsigned char c){return static_cast<char>(std::tolower(c));});
+            if(ext==".jpg" || ext==".jpeg" || ext==".png")
+                panoramaNames_.push_back(item.path().filename().string());
+        }
+        std::sort(panoramaNames_.begin(),panoramaNames_.end());
+    } catch(const std::exception&) {
+        panoramaNames_.clear();
+    }
+}
+
 void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& root) {
     sceneRepository_ = std::make_unique<voxen::gallery::SceneRepository>(root);
+    panoramaRoot_=root / "panoramas";
+    rescanPanoramaAssets();
     portalManager_ = std::make_unique<voxen::gallery::PortalManager>(*sceneRepository_);
     // Seed a real repository scene so gallery placement and walk-in work unchanged.
     if(!sceneRepository_->loadSceneMetadata(mechanicalCannonSceneId_)) {
@@ -2261,6 +2282,11 @@ void XrSwapchainRenderer::render(
             }
         }
 #endif
+        if(imguiCarousel_.panoramaRescanRequest) {
+            imguiCarousel_.panoramaRescanRequest=false;
+            rescanPanoramaAssets();
+        }
+        imguiCarousel_.panoramaFiles=panoramaNames_;
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         imguiCarousel_.savedSceneIds=sceneIds_;
