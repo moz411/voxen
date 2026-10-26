@@ -40,6 +40,11 @@ struct CarouselState {
     bool glbPlaceGallery=false;
     std::vector<std::string> glbFiles;
     std::string glbStatus;
+    bool panoramaImportRequest = false;
+    bool panoramaRescanRequest = false;
+    int panoramaSelected = -1;
+    std::vector<std::string> panoramaFiles;
+    std::string panoramaStatus;
     int musicTrack = 0;
     bool musicPlaying = false;
     float musicVolume = 0.45f;
