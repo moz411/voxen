@@ -2081,6 +2081,28 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             }
         };
         for(const auto& v:voxens_)paintPlasma(v);
+        // Reuse the existing procedural GPU Spike Bloom pipeline (preset 6).
+        for(const auto& p:spikeProjectiles_) {
+            PlasmaVoxen orb{};
+            orb.preset=6;
+            orb.position=p.position;
+            orb.scale=p.radius*2.f;
+            orb.hue=0.08f;
+            orb.speed=2.0f;
+            paintPlasma(orb);
+        }
+        for(const auto& e:spikeImpacts_) {
+            PlasmaVoxen flash{};
+            flash.preset=6;
+            flash.position=e.position;
+            const float duration=e.explosion?0.5f:0.2f;
+            const float phase=std::clamp(e.age/duration,0.f,1.f);
+            flash.scale=e.radius*(e.explosion?1.f+3.f*phase:1.f+phase);
+            flash.hue=0.13f;
+            flash.speed=4.f;
+            flash.density=std::max(0.3f,1.f-phase);
+            paintPlasma(flash);
+        }
 #ifdef VOXEN_WITH_IMGUI
         // Only one right-hand tool preview can be active at once.
         // Live selected Voxen preview, not part of the saved scene.
@@ -2174,6 +2196,96 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             lastGpuMs_ = completedGpuSamples_++ == 0 ? ms : lastGpuMs_*0.9f+ms*0.1f;
         }
     }
+}
+
+// Hands shoot procedural Spike Bloom orbs after a fist opens with a forward thrust.
+// Projectiles intentionally ignore the room mesh, walls, ceiling and floor.
+void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
+    dt=std::clamp(dt,0.f,0.05f);
+    const bool active=immersiveSceneActive_ && !editingMode();
+    if(!active) {
+        spikeProjectiles_.clear();
+        spikeImpacts_.clear();
+        handWasClosed_.fill(false);
+        handShotCooldown_.fill(0.f);
+        return;
+    }
+    auto distance=[](const XrVector3f& a,const XrVector3f& b) {
+        const float x=a.x-b.x,y=a.y-b.y,z=a.z-b.z;
+        return std::sqrt(x*x+y*y+z*z);
+    };
+    for(size_t i=0;i<2;++i) {
+        handShotCooldown_[i]=std::max(0.f,handShotCooldown_[i]-dt);
+        const auto& hand=holographicHands_[i];
+        if(!hand.tracked){handWasClosed_[i]=false;continue;}
+        const auto& palm=hand.joints[XR_HAND_JOINT_PALM_EXT];
+        const float index=distance(palm,hand.joints[XR_HAND_JOINT_INDEX_TIP_EXT]);
+        const float middle=distance(palm,hand.joints[XR_HAND_JOINT_MIDDLE_TIP_EXT]);
+        const float ring=distance(palm,hand.joints[XR_HAND_JOINT_RING_TIP_EXT]);
+        const bool closed=index<0.105f && middle<0.11f && ring<0.115f;
+        const bool opened=index>0.135f && middle>0.145f && ring>0.14f;
+        const auto& knuckle=hand.joints[XR_HAND_JOINT_MIDDLE_METACARPAL_EXT];
+        const auto& wrist=hand.joints[XR_HAND_JOINT_WRIST_EXT];
+        float dx=knuckle.x-wrist.x,dy=knuckle.y-wrist.y,dz=knuckle.z-wrist.z;
+        const float length=std::sqrt(dx*dx+dy*dy+dz*dz);
+        if(length>0.025f) {
+            dx/=length;dy/=length;dz/=length;
+            const float thrust=hand.palmVelocity.x*dx+hand.palmVelocity.y*dy+hand.palmVelocity.z*dz;
+            if(handWasClosed_[i] && opened && thrust>0.35f &&
+               handShotCooldown_[i]<=0.f && spikeProjectiles_.size()<32) {
+                SpikeProjectile p{};
+                p.position={palm.x+dx*0.12f,palm.y+dy*0.12f,palm.z+dz*0.12f};
+                const float speed=4.5f+std::min(thrust,2.f);
+                p.velocity={dx*speed,dy*speed,dz*speed};
+                spikeProjectiles_.push_back(p);
+                handShotCooldown_[i]=0.35f;
+            }
+        }
+        if(closed)handWasClosed_[i]=true;
+        else if(opened)handWasClosed_[i]=false;
+    }
+    for(auto& e:spikeImpacts_)e.age+=dt;
+    spikeImpacts_.erase(std::remove_if(spikeImpacts_.begin(),spikeImpacts_.end(),
+        [](const SpikeImpact& e){return e.age>(e.explosion?0.5f:0.20f);}),spikeImpacts_.end());
+    // Segment/sphere sweep avoids tunneling through small moving Voxens.
+    for(auto& p:spikeProjectiles_) {
+        if(p.age>=2.5f)continue;
+        const auto start=p.position;
+        std::array<float,3> displacement{};
+        for(int k=0;k<3;++k) {
+            displacement[k]=p.velocity[k]*dt;
+            p.position[k]+=displacement[k];
+        }
+        p.age+=dt;
+        const float len2=displacement[0]*displacement[0]+displacement[1]*displacement[1]+displacement[2]*displacement[2];
+        for(auto it=voxens_.begin();it!=voxens_.end();++it) {
+            const auto& v=*it;
+            float t=0.f;
+            if(len2>1e-8f) {
+                float dot=0.f;
+                for(int k=0;k<3;++k)dot+=(v.position[k]-start[k])*displacement[k];
+                t=std::clamp(dot/len2,0.f,1.f);
+            }
+            float d2=0.f;
+            for(int k=0;k<3;++k) {
+                const float delta=v.position[k]-(start[k]+t*displacement[k]);
+                d2+=delta*delta;
+            }
+            const float radius=p.radius+0.5f*v.scale;
+            if(d2>radius*radius)continue;
+            const bool lastSize=v.scale<=0.065f;
+            spikeImpacts_.push_back({v.position,0.f,std::max(0.12f,v.scale*1.3f),lastSize});
+            if(lastSize)voxens_.erase(it);
+            else {
+                it->scale=std::max(0.06f,it->scale*0.72f);
+                it->lodLevel=-1;
+            }
+            p.age=3.f; // One orb damages exactly one Voxen.
+            break;
+        }
+    }
+    spikeProjectiles_.erase(std::remove_if(spikeProjectiles_.begin(),spikeProjectiles_.end(),
+        [](const SpikeProjectile& p){return p.age>=2.5f;}),spikeProjectiles_.end());
 }
 
 // Fixed-step, world-space sphere proxy physics. One update per stereo frame.
@@ -2722,6 +2834,7 @@ void XrSwapchainRenderer::render(
     const float physicsDt=lastPhysicsFrame_.time_since_epoch().count()==0 ? 0.f :
         std::clamp(std::chrono::duration<float>(physicsNow-lastPhysicsFrame_).count(),0.f,0.1f);
     lastPhysicsFrame_=physicsNow;
+    advanceHandProjectiles(physicsDt);
     if(imguiCarousel_.motionEnabled){
         physicsAccumulator_=std::min(physicsAccumulator_+physicsDt,0.1f);
         constexpr float step=1.f/60.f;
