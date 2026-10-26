@@ -154,7 +154,11 @@ void XrSwapchainRenderer::rescanPanoramaAssets() {
 
 void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& root) {
     sceneRepository_ = std::make_unique<voxen::gallery::SceneRepository>(root);
-    panoramaRoot_=root / "panoramas";
+#ifdef __ANDROID__
+    panoramaRoot_="/sdcard/Android/data/org.voxen.xr/files/Backgrounds";
+#else
+    panoramaRoot_=root / "Backgrounds";
+#endif
     rescanPanoramaAssets();
     portalManager_ = std::make_unique<voxen::gallery::PortalManager>(*sceneRepository_);
     // Seed a real repository scene so gallery placement and walk-in work unchanged.
