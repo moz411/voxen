@@ -67,6 +67,8 @@
 #include "galleryPortalFrag.spv.hpp"
 #include "mechanicalCannonFrag.spv.hpp"
 #include "imguiPanelFrag.spv.hpp"
+#include "panoramaVert.spv.hpp"
+#include "panoramaFrag.spv.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -1079,6 +1081,31 @@ void XrSwapchainRenderer::createPipeline() {
     texLayout.pushConstantRangeCount=1;texLayout.pPushConstantRanges=&push;
     checkVk(vkCreatePipelineLayout(device_,&texLayout,nullptr,&glbTexturePipelineLayout_),"glb pipeline layout");
 #endif
+    // Panorama uses a sampled image and an 80-byte per-eye inverse projection.
+    // Descriptor allocation and texture upload are separate from pipeline creation.
+    {
+        VkDescriptorSetLayoutBinding sampler{};
+        sampler.binding=0;
+        sampler.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        sampler.descriptorCount=1;
+        sampler.stageFlags=VK_SHADER_STAGE_FRAGMENT_BIT;
+        VkDescriptorSetLayoutCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        ci.bindingCount=1;
+        ci.pBindings=&sampler;
+        checkVk(vkCreateDescriptorSetLayout(device_,&ci,nullptr,&panoramaSetLayout_),
+                "panorama descriptor layout");
+        VkPushConstantRange range{};
+        range.stageFlags=VK_SHADER_STAGE_FRAGMENT_BIT;
+        range.offset=0;
+        range.size=80;
+        VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        layout.setLayoutCount=1;
+        layout.pSetLayouts=&panoramaSetLayout_;
+        layout.pushConstantRangeCount=1;
+        layout.pPushConstantRanges=&range;
+        checkVk(vkCreatePipelineLayout(device_,&layout,nullptr,&panoramaPipelineLayout_),
+                "panorama pipeline layout");
+    }
     // Shared render pass and push constants.
     auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
                              const std::uint8_t* fb, std::size_t fsz,
@@ -1144,6 +1171,7 @@ void XrSwapchainRenderer::createPipeline() {
         || &out == &imguiPanelPipeline_
 #endif
         ) ? VK_FALSE : VK_TRUE;
+        if (&out == &panoramaPipeline_) ds.depthTestEnable=VK_FALSE;
         if (&out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
@@ -1167,6 +1195,7 @@ void XrSwapchainRenderer::createPipeline() {
 #endif
             ;
         if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
+        if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
         if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &seascapePipeline_ || &out == &octgramsPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
@@ -1203,11 +1232,13 @@ void XrSwapchainRenderer::createPipeline() {
 #ifdef VOXEN_WITH_GLB_IMPORT
         if(&out==&glbTexturedPipeline_)pi.layout=glbTexturePipelineLayout_;
 #endif
+        if(&out==&panoramaPipeline_)pi.layout=panoramaPipelineLayout_;
         pi.renderPass=renderPass_;
         checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &out), "vkCreateGraphicsPipelines");
         vkDestroyShaderModule(device_, fs, nullptr);
         vkDestroyShaderModule(device_, vs, nullptr);
     };
+    buildPipeline(panoramaVert,panoramaVertSize,panoramaFrag,panoramaFragSize,panoramaPipeline_);
     buildPipeline(organicSphereVert, organicSphereVertSize, organicSphereFrag, organicSphereFragSize, organicSpherePipeline_);
     buildPipeline(torusKnotVert, torusKnotVertSize, organicSphereFrag, organicSphereFragSize, torusKnotPipeline_);
     buildPipeline(spikeBloomVert, spikeBloomVertSize, organicSphereFrag, organicSphereFragSize, spikeBloomPipeline_);
@@ -1806,7 +1837,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             vkCmdDraw(commandBuffer_,36,1,0,0);
         }
-        if(organicSpherePipeline_!=VK_NULL_HANDLE) {
+        if(panoramaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,panoramaPipeline_,nullptr);panoramaPipeline_=VK_NULL_HANDLE;}
+    if(panoramaPipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,panoramaPipelineLayout_,nullptr);panoramaPipelineLayout_=VK_NULL_HANDLE;}
+    if(panoramaSetLayout_!=VK_NULL_HANDLE){vkDestroyDescriptorSetLayout(device_,panoramaSetLayout_,nullptr);panoramaSetLayout_=VK_NULL_HANDLE;}
+    if(organicSpherePipeline_!=VK_NULL_HANDLE) {
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,organicSpherePipeline_);
             for(const auto& p:state.projectiles) {
                 const auto mvp=multiply(projView,modelMatrix(
