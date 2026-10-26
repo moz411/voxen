@@ -1,6 +1,7 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
 #ifdef VOXEN_WITH_GLB_IMPORT
 #include <voxen/scene/GlbMeshDecoder.hpp>
+#include <voxen/render/PanoramaImage.hpp>
 #include <stdexcept>
 #include <cstring>
 #include <algorithm>
@@ -230,6 +231,50 @@ bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
             if(part.vertexMemory)vkFreeMemory(device_,part.vertexMemory,nullptr);
             if(part.indexMemory)vkFreeMemory(device_,part.indexMemory,nullptr);
         }
+        return false;
+    }
+}
+
+void XrSwapchainRenderer::releasePanoramaGpu() noexcept {
+    if(!device_)return;
+    if(panoramaTexture_.sampler)vkDestroySampler(device_,panoramaTexture_.sampler,nullptr);
+    if(panoramaTexture_.view)vkDestroyImageView(device_,panoramaTexture_.view,nullptr);
+    if(panoramaTexture_.image)vkDestroyImage(device_,panoramaTexture_.image,nullptr);
+    if(panoramaTexture_.memory)vkFreeMemory(device_,panoramaTexture_.memory,nullptr);
+    panoramaTexture_={};
+    if(panoramaDescriptorPool_)vkDestroyDescriptorPool(device_,panoramaDescriptorPool_,nullptr);
+    panoramaDescriptorPool_=VK_NULL_HANDLE;
+}
+bool XrSwapchainRenderer::loadPanoramaGpu(const std::filesystem::path& file) {
+    if(!device_ || !panoramaSetLayout_ || !commandPool_)return false;
+    GlbTexture incoming{};
+    VkDescriptorPool pool=VK_NULL_HANDLE;
+    try {
+        auto decoded=decodePanoramaImage(file);
+        voxen::scene::gltf::EmbeddedImage image;
+        image.width=decoded.width;
+        image.height=decoded.height;
+        image.rgba=std::move(decoded.rgba);
+        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1};
+        VkDescriptorPoolCreateInfo info{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        info.maxSets=1;
+        info.poolSizeCount=1;
+        info.pPoolSizes=&size;
+        checked(vkCreateDescriptorPool(device_,&info,nullptr,&pool),"Panorama descriptor pool");
+        uploadTexture(device_,physicalDevice_,queue_,commandPool_,panoramaSetLayout_,
+                      pool,image,incoming.image,incoming.memory,incoming.view,
+                      incoming.sampler,incoming.descriptor);
+        checked(vkDeviceWaitIdle(device_),"Panorama replace GPU texture");
+        releasePanoramaGpu();
+        panoramaTexture_=incoming;
+        panoramaDescriptorPool_=pool;
+        return true;
+    } catch(const std::exception&) {
+        if(incoming.sampler)vkDestroySampler(device_,incoming.sampler,nullptr);
+        if(incoming.view)vkDestroyImageView(device_,incoming.view,nullptr);
+        if(incoming.image)vkDestroyImage(device_,incoming.image,nullptr);
+        if(incoming.memory)vkFreeMemory(device_,incoming.memory,nullptr);
+        if(pool)vkDestroyDescriptorPool(device_,pool,nullptr);
         return false;
     }
 }
