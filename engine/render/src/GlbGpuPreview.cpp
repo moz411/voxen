@@ -256,9 +256,15 @@ bool XrSwapchainRenderer::loadPanoramaGpu(const std::filesystem::path& file) {
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO,"VoxenPanorama","Loading %s",file.filename().string().c_str());
 #endif
-        auto decoded=decodePanoramaImage(file);
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(physicalDevice_,&properties);
+        const int deviceLimit=static_cast<int>(std::min(
+            properties.limits.maxImageDimension2D,8192u));
+        // RGBA8: 16M texels = 64 MiB VRAM, with one panorama resident.
+        constexpr std::uint64_t pixelBudget=16ull*1024ull*1024ull;
+        auto decoded=decodePanoramaImage(file,deviceLimit,pixelBudget);
 #ifdef __ANDROID__
-        __android_log_print(ANDROID_LOG_INFO,"VoxenPanorama","Decoded %dx%d",decoded.width,decoded.height);
+        __android_log_print(ANDROID_LOG_INFO,"VoxenPanorama","GPU texture %dx%d (%.1f MiB RGBA8)",decoded.width,decoded.height,decoded.rgba.size()/1048576.0);
 #endif
         voxen::scene::gltf::EmbeddedImage image;
         image.width=decoded.width;
