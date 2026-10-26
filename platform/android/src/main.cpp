@@ -20,6 +20,40 @@ void logError(const char* message) {
 }
 // Android's permission prompt is asynchronous. Never assume that a
 // manifest declaration implies the user granted Meta spatial data access.
+// Poll the Android SAF import queue without holding references to Activity JNI objects.
+void pollPanoramaImports(android_app* app) {
+    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) return;
+    JNIEnv* env = nullptr;
+    JavaVM* vm = app->activity->vm;
+    const bool attached = vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK;
+    if (attached && vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
+    jclass activityClass = env->GetObjectClass(app->activity->clazz);
+    if (activityClass) {
+        jmethodID poll = env->GetMethodID(activityClass, "pollImportedPanorama",
+                                          "()Ljava/lang/String;");
+        if (poll && !env->ExceptionCheck()) {
+            for (unsigned n = 0; n < 8; ++n) {
+                auto value = static_cast<jstring>(
+                    env->CallObjectMethod(app->activity->clazz, poll));
+                if (env->ExceptionCheck() || !value) break;
+                const char* utf = env->GetStringUTFChars(value, nullptr);
+                if (utf) {
+                    __android_log_print(ANDROID_LOG_INFO, "VoxenPanorama",
+                        "Panorama import ready: %s", utf);
+                    // TODO: enqueue the private path for validated decode and Vulkan upload.
+                    env->ReleaseStringUTFChars(value, utf);
+                }
+                env->DeleteLocalRef(value);
+            }
+        }
+        env->DeleteLocalRef(activityClass);
+    }
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+    }
+    if (attached) vm->DetachCurrentThread();
+}
 constexpr const char* kScenePermission="com.oculus.permission.USE_SCENE";
 
 bool scenePermissionGranted(android_app* app, bool requestIfMissing) {
@@ -153,6 +187,7 @@ void android_main(android_app* app) {
             }
 
             running = session.pollEvents();
+            pollPanoramaImports(app);
             // Poll the permission state after Android handles the system dialog.
             // Re-request spatial discovery once the user grants access.
             if(!sceneGranted && (++permissionPollCounter % 120u)==0u &&
