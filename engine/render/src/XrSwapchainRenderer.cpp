@@ -71,6 +71,7 @@
 #include "panoramaFrag.spv.hpp"
 
 #include <algorithm>
+#include <future>
 #include <cmath>
 #include <array>
 #include <cstring>
@@ -560,8 +561,8 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     imguiCarousel_.musicTrack=snapshot->musicTrack;
     imguiCarousel_.musicFile=snapshot->musicFile;
     imguiCarousel_.musicVolume=snapshot->musicVolume;
-    // Deliberately do not auto-start playback on load.
-    imguiCarousel_.musicPlaying=false;
+    // Restore the scene's saved music choice, including autoplay on load.
+    imguiCarousel_.musicPlaying=snapshot->musicPlaying;
     imguiCarousel_.motionEnabled=snapshot->motionEnabled;
     imguiCarousel_.motionMode=snapshot->motionMode;
     imguiCarousel_.motionGravity=snapshot->motionGravity;
@@ -1600,6 +1601,12 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     }
 
     VkClearValue clear{};
+#ifdef VOXEN_WITH_IMGUI
+    if(imguiCarousel_.panoramaSelected>=0) {
+        clear.color.float32[0]=1.f;clear.color.float32[1]=1.f;
+        clear.color.float32[2]=1.f;clear.color.float32[3]=1.f;
+    } else
+#endif
     if(mechanicalCannonPreview_) {
         clear.color.float32[0]=0.0F; clear.color.float32[1]=0.0F;
         clear.color.float32[2]=0.0F; clear.color.float32[3]=1.0F;
@@ -1641,6 +1648,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         pc.controls[0]=imguiCarousel_.panoramaYawDegrees*radians;
         pc.controls[1]=imguiCarousel_.panoramaHorizontalDegrees*radians;
         pc.controls[2]=imguiCarousel_.panoramaVerticalDegrees*radians;
+        pc.controls[3]=panoramaFadeActive_
+            ? std::clamp(std::chrono::duration<float>(
+                std::chrono::steady_clock::now()-panoramaFadeStart_).count()/1.5f,0.f,1.f)
+            : 1.f;
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,panoramaPipeline_);
         vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
             panoramaPipelineLayout_,0,1,&panoramaTexture_.descriptor,0,nullptr);
@@ -2380,34 +2391,54 @@ void XrSwapchainRenderer::render(
             rescanPanoramaAssets();
         }
         imguiCarousel_.panoramaFiles=panoramaNames_;
+#ifdef VOXEN_WITH_GLB_IMPORT
+        // Never decode/downscale on the XR render thread. A single worker
+        // decodes at a time; rapid selection changes discard stale results.
+        if(panoramaDecodeFuture_.valid() &&
+           panoramaDecodeFuture_.wait_for(std::chrono::seconds(0))==std::future_status::ready) {
+            try {
+                auto decoded=panoramaDecodeFuture_.get();
+                if(panoramaDecodeIndex_==imguiCarousel_.panoramaSelected &&
+                   panoramaDecodeIndex_>=0) {
+                    if(loadPanoramaGpu(std::move(decoded))) {
+                        panoramaFadeStart_=std::chrono::steady_clock::now();
+                        panoramaFadeActive_=true;
+                        imguiCarousel_.panoramaStatus="Panorama ready";
+                    } else imguiCarousel_.panoramaStatus="Panorama GPU upload failed";
+                }
+            } catch(const std::exception& error) {
+                if(panoramaDecodeIndex_==imguiCarousel_.panoramaSelected)
+                    imguiCarousel_.panoramaStatus=error.what();
+            }
+            panoramaDecodeIndex_=-1;
+        }
+#endif
         if(imguiCarousel_.panoramaSelected!=panoramaDecodedSelection_) {
             panoramaDecodedSelection_=imguiCarousel_.panoramaSelected;
 #ifdef VOXEN_WITH_GLB_IMPORT
-            const int index=panoramaDecodedSelection_;
-            if(index>=0 && static_cast<std::size_t>(index)<panoramaNames_.size()) {
-                try {
-                    const auto file=panoramaRoot_/panoramaNames_[index];
-                    if(loadPanoramaGpu(file))
-                        imguiCarousel_.panoramaStatus="Panorama active: "+panoramaNames_[index];
-                    else {
-                        if(device_)vkDeviceWaitIdle(device_);
-                        releasePanoramaGpu();
-                        imguiCarousel_.panoramaStatus="Failed to decode/upload panorama";
-                    }
-                } catch(const std::exception& error) {
-                    if(device_)vkDeviceWaitIdle(device_);
-                    releasePanoramaGpu();
-                    imguiCarousel_.panoramaStatus=error.what();
-                }
-            } else {
-                if(device_)vkDeviceWaitIdle(device_);
-                releasePanoramaGpu();
-                imguiCarousel_.panoramaStatus.clear();
-            }
-#else
-            imguiCarousel_.panoramaStatus="Image decoding requires GLB/STB support";
+            panoramaFadeActive_=false;
+            if(device_)vkDeviceWaitIdle(device_);
+            releasePanoramaGpu();
+            imguiCarousel_.panoramaStatus=panoramaDecodedSelection_<0
+                ? std::string{} : "Loading panorama in background...";
 #endif
         }
+#ifdef VOXEN_WITH_GLB_IMPORT
+        const int selected=imguiCarousel_.panoramaSelected;
+        if(selected>=0 && static_cast<std::size_t>(selected)<panoramaNames_.size() &&
+           !panoramaTexture_.descriptor && !panoramaDecodeFuture_.valid() &&
+           panoramaDecodeIndex_<0 &&
+           imguiCarousel_.panoramaStatus=="Loading panorama in background...") {
+            const auto file=panoramaRoot_/panoramaNames_[selected];
+            VkPhysicalDeviceProperties props{};
+            vkGetPhysicalDeviceProperties(physicalDevice_,&props);
+            const int limit=static_cast<int>(std::min(props.limits.maxImageDimension2D,8192u));
+            panoramaDecodeIndex_=selected;
+            panoramaDecodeFuture_=std::async(std::launch::async,[file,limit] {
+                return decodePanoramaImage(file,limit,16ull*1024ull*1024ull);
+            });
+        }
+#endif
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         imguiCarousel_.savedSceneIds=sceneIds_;
@@ -2685,6 +2716,13 @@ void XrSwapchainRenderer::render(
 }
 
 void XrSwapchainRenderer::shutdown() noexcept {
+#ifdef VOXEN_WITH_GLB_IMPORT
+    // Join the worker before destroying renderer state and scene storage.
+    if(panoramaDecodeFuture_.valid()) {
+        panoramaDecodeFuture_.wait();
+        try { (void)panoramaDecodeFuture_.get(); } catch(...) {}
+    }
+#endif
     mp3Library_.shutdown();
     ambientMusic_.stop();
     if (device_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
