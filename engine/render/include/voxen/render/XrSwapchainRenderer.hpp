@@ -59,6 +59,16 @@ public:
     // Explicit prototype import: app-private assets/demo.glb.
     bool loadDemoGlb(const std::filesystem::path& file);
 #endif
+    bool consumePanoramaImportRequest() noexcept {
+#ifdef VOXEN_WITH_IMGUI
+        const bool requested=imguiCarousel_.panoramaImportRequest;
+        imguiCarousel_.panoramaImportRequest=false;
+        return requested;
+#else
+        return false;
+#endif
+    }
+    void rescanPanoramaAssets();
     bool saveCurrentScene();
     bool loadSavedScene(const voxen::gallery::SceneId& id);
     bool deleteSavedScene(const voxen::gallery::SceneId& id);
@@ -167,6 +177,8 @@ private:
     void createFramebuffers();
     void renderImage(EyeSwapchain& eye, uint32_t imageIndex, const XrView& view);
 
+    std::filesystem::path panoramaRoot_;
+    std::vector<std::string> panoramaNames_;
     voxen::audio::AmbientMusic ambientMusic_{};
     voxen::audio::Mp3Library mp3Library_{};
     ::XrSession session_ = XR_NULL_HANDLE;
