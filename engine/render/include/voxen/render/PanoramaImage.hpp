@@ -16,5 +16,7 @@ struct PanoramaImage {
 };
 // Decode a local JPEG/PNG into RGBA8 with bounded dimensions and allocation.
 // Throws std::runtime_error on invalid input.
-PanoramaImage decodePanoramaImage(const std::filesystem::path& file);
+PanoramaImage decodePanoramaImage(const std::filesystem::path& file,
+                                  int maxDimension=8192,
+                                  std::uint64_t maxPixels=16ull*1024ull*1024ull);
 }
