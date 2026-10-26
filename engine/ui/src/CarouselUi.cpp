@@ -79,7 +79,10 @@ void drawCarousel(CarouselState& state) {
                     state.panoramaSelected=i;
             ImGui::EndChild();
             if(!state.panoramaStatus.empty()) ImGui::TextWrapped("%s",state.panoramaStatus.c_str());
-            ImGui::TextDisabled("Photo projection: not connected yet");
+            ImGui::SliderFloat("Panorama yaw",&state.panoramaYawDegrees,-180.f,180.f,"%.0f deg");
+            ImGui::SliderFloat("Horizontal coverage",&state.panoramaHorizontalDegrees,60.f,360.f,"%.0f deg");
+            ImGui::SliderFloat("Vertical coverage",&state.panoramaVerticalDegrees,30.f,180.f,"%.0f deg");
+            ImGui::TextDisabled("Projection shader staged; GPU display not connected");
             ImGui::Separator();
             ImGui::Checkbox("Wall effect",&state.liquidRoom);
             static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","SEASCAPE","OCTGRAMS"};
