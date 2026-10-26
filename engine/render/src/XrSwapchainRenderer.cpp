@@ -316,6 +316,10 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
         voxens_.swap(editorVoxens_);
         imguiCarousel_.editMode=false;
         imguiCarousel_.visible=false;
+        // Keep the panorama in editorSettings_ for the next edit session,
+        // but Gallery must always render the live Sobel passthrough.
+        imguiCarousel_.panoramaSelected=-1;
+        panoramaFadeActive_=false;
         ambientMusic_.configure(0,false,0.f);
         mp3Library_.update(-1,false,0.f);
     }
@@ -436,6 +440,11 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
 #ifdef VOXEN_WITH_IMGUI
     imguiCarousel_.liquidRoom=false;
     imguiCarousel_.musicPlaying=false;
+    // Gallery always returns to live Meta passthrough with cyan Sobel edges.
+    // The next render tick releases the panorama texture and discards any
+    // in-flight asynchronous decode by comparing the selected index.
+    imguiCarousel_.panoramaSelected=-1;
+    panoramaFadeActive_=false;
 #endif
     immersivePortalId_.reset();
     galleryExitSince_={};
@@ -1631,7 +1640,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 
 #if defined(VOXEN_WITH_GLB_IMPORT) && defined(VOXEN_WITH_IMGUI)
     // Opaque background first, with no depth writes. Real scene objects draw over it.
-    if(panoramaTexture_.descriptor && panoramaPipeline_) {
+    if(imguiCarousel_.panoramaSelected>=0 && panoramaTexture_.descriptor && panoramaPipeline_) {
         struct PanoramaPush {
             float orientation[4];
             float tangents[4];
