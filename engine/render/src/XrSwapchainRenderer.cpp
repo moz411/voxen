@@ -1566,7 +1566,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         v.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.60f);
         v.hue=imguiCarousel_.voxenHue;
         v.density=imguiCarousel_.voxenDensity;
-        v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,8) :
+        v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,10) :
             std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
         v.speed=imguiCarousel_.voxenSpeed;
         v.velocity={dir[0]*imguiCarousel_.motionSpeed,
