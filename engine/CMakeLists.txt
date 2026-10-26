@@ -149,6 +149,7 @@ add_library(voxen_engine STATIC
     xr/src/MetaSceneProvider.cpp
     render/src/VulkanContext.cpp
     render/src/XrSwapchainRenderer.cpp
+    $<$<BOOL:${VOXEN_WITH_GLB_IMPORT}>:${CMAKE_CURRENT_SOURCE_DIR}/render/src/PanoramaImage.cpp>
     ${VOXEN_SHADER_HEADERS}
 )
 
