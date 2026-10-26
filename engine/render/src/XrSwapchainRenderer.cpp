@@ -316,6 +316,10 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
         voxens_.swap(editorVoxens_);
         imguiCarousel_.editMode=false;
         imguiCarousel_.visible=false;
+        // Keep the panorama in editorSettings_ for the next edit session,
+        // but Gallery must always render the live Sobel passthrough.
+        imguiCarousel_.panoramaSelected=-1;
+        panoramaFadeActive_=false;
         ambientMusic_.configure(0,false,0.f);
         mp3Library_.update(-1,false,0.f);
     }
