@@ -2219,30 +2219,56 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
         const auto& hand=holographicHands_[i];
         if(!hand.tracked){handWasClosed_[i]=false;continue;}
         const auto& palm=hand.joints[XR_HAND_JOINT_PALM_EXT];
-        const float index=distance(palm,hand.joints[XR_HAND_JOINT_INDEX_TIP_EXT]);
-        const float middle=distance(palm,hand.joints[XR_HAND_JOINT_MIDDLE_TIP_EXT]);
-        const float ring=distance(palm,hand.joints[XR_HAND_JOINT_RING_TIP_EXT]);
-        const bool closed=index<0.105f && middle<0.11f && ring<0.115f;
-        const bool opened=index>0.135f && middle>0.145f && ring>0.14f;
+        // Gesture v2: rapid open-palm thrust, without an unreliable closed-fist
+        // prerequisite. Arm again only after slowing down (speed hysteresis).
         const auto& knuckle=hand.joints[XR_HAND_JOINT_MIDDLE_METACARPAL_EXT];
         const auto& wrist=hand.joints[XR_HAND_JOINT_WRIST_EXT];
         float dx=knuckle.x-wrist.x,dy=knuckle.y-wrist.y,dz=knuckle.z-wrist.z;
         const float length=std::sqrt(dx*dx+dy*dy+dz*dz);
         if(length>0.025f) {
             dx/=length;dy/=length;dz/=length;
-            const float thrust=hand.palmVelocity.x*dx+hand.palmVelocity.y*dy+hand.palmVelocity.z*dz;
-            if(handWasClosed_[i] && opened && thrust>0.35f &&
+            const float vx=hand.palmVelocity.x,vy=hand.palmVelocity.y,vz=hand.palmVelocity.z;
+            const float speed=std::sqrt(vx*vx+vy*vy+vz*vz);
+            const float thrust=vx*dx+vy*dy+vz*dz;
+            // Start armed, and rearm when hand motion settles.
+            if(speed<0.22f)handWasClosed_[i]=true;
+            const float index=distance(palm,hand.joints[XR_HAND_JOINT_INDEX_TIP_EXT]);
+            const float middle=distance(palm,hand.joints[XR_HAND_JOINT_MIDDLE_TIP_EXT]);
+            const bool handOpen=index>0.105f && middle>0.11f;
+            if(handWasClosed_[i] && handOpen && speed>0.65f && thrust>0.16f &&
                handShotCooldown_[i]<=0.f && spikeProjectiles_.size()<32) {
+                // Blend finger direction with actual throwing movement.
+                const float inv=1.f/std::max(speed,0.001f);
+                float fx=0.35f*dx+0.65f*vx*inv;
+                float fy=0.35f*dy+0.65f*vy*inv;
+                float fz=0.35f*dz+0.65f*vz*inv;
+                const float fl=std::sqrt(fx*fx+fy*fy+fz*fz);
+                fx/=fl;fy/=fl;fz/=fl;
                 SpikeProjectile p{};
-                p.position={palm.x+dx*0.12f,palm.y+dy*0.12f,palm.z+dz*0.12f};
-                const float speed=4.5f+std::min(thrust,2.f);
-                p.velocity={dx*speed,dy*speed,dz*speed};
+                p.position={palm.x+fx*0.12f,palm.y+fy*0.12f,palm.z+fz*0.12f};
+                const float launchSpeed=5.5f+std::min(speed,2.f);
+                p.velocity={fx*launchSpeed,fy*launchSpeed,fz*launchSpeed};
                 spikeProjectiles_.push_back(p);
-                handShotCooldown_[i]=0.35f;
+                handShotCooldown_[i]=0.45f;
+                handWasClosed_[i]=false;
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
+                    "FIRED hand=%zu speed=%.2f thrust=%.2f projectiles=%zu",
+                    i,speed,thrust,spikeProjectiles_.size());
+#endif
             }
+#ifdef __ANDROID__
+            static auto lastDebug=std::chrono::steady_clock::now();
+            const auto now=std::chrono::steady_clock::now();
+            if(i==0 && now-lastDebug>std::chrono::seconds(2)) {
+                lastDebug=now;
+                __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
+                    "tracking=%d/%d speed=%.2f thrust=%.2f open=%d armed=%d immersive=%d",
+                    holographicHands_[0].tracked?1:0,holographicHands_[1].tracked?1:0,
+                    speed,thrust,handOpen?1:0,handWasClosed_[i]?1:0,immersiveSceneActive_?1:0);
+            }
+#endif
         }
-        if(closed)handWasClosed_[i]=true;
-        else if(opened)handWasClosed_[i]=false;
     }
     for(auto& e:spikeImpacts_)e.age+=dt;
     spikeImpacts_.erase(std::remove_if(spikeImpacts_.begin(),spikeImpacts_.end(),
