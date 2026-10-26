@@ -69,6 +69,18 @@ void drawCarousel(CarouselState& state) {
 
 
         case 1:
+            ImGui::SeparatorText("PANORAMAS / LOCAL PHOTOS");
+            if (ImGui::Button("IMPORT JPEG / PNG")) state.panoramaImportRequest=true;
+            ImGui::SameLine();
+            if (ImGui::Button("RESCAN PHOTOS")) state.panoramaRescanRequest=true;
+            ImGui::BeginChild("panorama-list",ImVec2(0,100),true);
+            for (int i=0;i<static_cast<int>(state.panoramaFiles.size());++i)
+                if(ImGui::Selectable(state.panoramaFiles[i].c_str(),state.panoramaSelected==i))
+                    state.panoramaSelected=i;
+            ImGui::EndChild();
+            if(!state.panoramaStatus.empty()) ImGui::TextWrapped("%s",state.panoramaStatus.c_str());
+            ImGui::TextDisabled("Photo projection: not connected yet");
+            ImGui::Separator();
             ImGui::Checkbox("Wall effect",&state.liquidRoom);
             static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","SEASCAPE","OCTGRAMS"};
             ImGui::Checkbox("Different shader per wall",&state.cycleWallShaders);
