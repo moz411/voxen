@@ -8,10 +8,11 @@ Branch: `feature/panorama-backgrounds`.
 - A 64 MiB file-size cap, unique filenames, and a synchronized queue of imported paths.
 - `openPanoramaPicker()` and `pollImportedPanorama()` methods for a future JNI UI bridge.
 - No broad external-storage permission required.
+- Native XR loop polls completed imports through JNI and logs their private paths (no decode/render yet).
 
 ## Not yet implemented
 - Calling the picker from the native Backgrounds carousel.
-- Native consumption of the imported-file queue.
+- Passing polled paths from the JNI bridge into the renderer's validated texture loader.
 - JPEG/PNG decoding, validation, texture upload, and GPU lifetime management.
 - Cylindrical/equirectangular shader, seamless edges, floor/sky fill, yaw control.
 - Scene serialization and gallery restoration of selected panorama.
