@@ -14,14 +14,16 @@ Branch: `feature/panorama-backgrounds`.
 
 ## Not yet implemented
 - Passing polled paths from the JNI bridge into the renderer's validated texture loader.
-- JPEG/PNG decoding, validation, texture upload, and GPU lifetime management.
-- Cylindrical/equirectangular shader, seamless edges, floor/sky fill, yaw control.
+- Vulkan texture upload and GPU lifetime management (CPU decode/validation implemented).
+- Connect staged panorama shaders to the Vulkan pipeline and per-eye matrices; implement improved sky/ground reconstruction and edge handling.
 - Scene serialization and gallery restoration of selected panorama.
 - Headset test and build verification.
 
 ## Verification needed
 - Android Gradle/NDK compilation, immersive SAF activity transition, import and rescan on a Quest 3.
-- The image list is intentionally filename-only; selecting it does not activate an image yet.
+- Selecting a filename now attempts bounded CPU JPEG/PNG decode and displays dimensions or an error; it does not activate the image yet.
+- Panorama vertex/fragment GLSL shaders are added to the CMake shader compilation list, but no graphics pipeline or texture descriptors are bound yet.
+- UI yaw and horizontal/vertical coverage controls are available but not yet connected to a GPU draw.
 
 ## Implementation caveat
 Launching Android's 2D system picker from an immersive OpenXR session may require
