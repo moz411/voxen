@@ -8,7 +8,8 @@ Branch: `feature/panorama-backgrounds` (not merged into `main`).
 - Backgrounds → Panoramas → **RESCAN PHOTOS** lists JPEG/PNG files in this folder.
 - No headset file picker required; the older Android picker plumbing remains dormant for now.
 - Existing MP3 folder is `/sdcard/Android/data/org.voxen.xr/files/Music/`.
-- JPEG/PNG validation and bounded RGBA8 decode (maximum 64 MiB encoded, 8192 px per axis, 33.5 million pixels).
+- JPEG/PNG validation and automatic aspect-preserving downscaling: up to 64 MiB encoded, up to 64 megapixels in source dimensions; GPU target capped to 16 megapixels / 64 MiB RGBA8 and the Vulkan device's maximum image dimension (also capped at 8192).
+- Only one panorama texture remains resident after replacement. Source decode is currently full resolution in CPU memory before downscaling; extremely large images above 64 MP are rejected to avoid memory spikes.
 - Reuses the existing Vulkan staging/upload code to allocate a sampled SRGB texture and descriptor set.
 - Per-eye fullscreen panoramic draw before world objects, with OpenXR eye orientation and asymmetric FOV.
 - Adjustable yaw, horizontal coverage and vertical coverage for incomplete smartphone panoramas.
@@ -22,7 +23,7 @@ Branch: `feature/panorama-backgrounds` (not merged into `main`).
 - Verify both eyes display a correctly oriented panorama, with no mirrored view, reversed vertical axis or stereo seam.
 - Verify imported file persists across app restarts and scene Save/Load.
 - Verify GLB/voxens render over the panorama, and that passthrough returns on deselection.
-- Measure GPU memory use and frame time with 8K images.
+- Measure GPU memory use and frame time with 8K images; verify automatic downscaling of 10K–16K-wide JPEGs.
 
 ## Build and headset smoke test
 ```bash
