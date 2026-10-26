@@ -1,31 +1,39 @@
-# Panorama backgrounds — development status
+# Panorama backgrounds — integration status
 
-Branch: `feature/panorama-backgrounds`.
+Branch: `feature/panorama-backgrounds` (not merged into `main`).
 
-## Implemented in this branch
-- Android NativeActivity subclass with a system SAF image picker.
-- JPEG/PNG selection and copy to app-private `files/voxen-gallery/panoramas`.
-- A 64 MiB file-size cap, unique filenames, and a synchronized queue of imported paths.
-- `openPanoramaPicker()` and `pollImportedPanorama()` methods for a future JNI UI bridge.
-- No broad external-storage permission required.
-- Native XR loop polls completed imports through JNI and refreshes the local image catalog.
-- Backgrounds carousel exposes IMPORT JPEG / PNG, RESCAN PHOTOS and an image filename list.
-- UI import action launches Android document picker through the native activity JNI bridge.
+## Implemented
+- Android SAF document picker launched from **Backgrounds → Panoramas → IMPORT JPEG / PNG**.
+- Copies selected files into `getFilesDir()/voxen-gallery/panoramas` without storage permissions.
+- Native JNI polling and photo-library refresh; stable filename selection on rescan.
+- JPEG/PNG validation and bounded RGBA8 decode (maximum 64 MiB encoded, 8192 px per axis, 33.5 million pixels).
+- Reuses the existing Vulkan staging/upload code to allocate a sampled SRGB texture and descriptor set.
+- Per-eye fullscreen panoramic draw before world objects, with OpenXR eye orientation and asymmetric FOV.
+- Adjustable yaw, horizontal coverage and vertical coverage for incomplete smartphone panoramas.
+- Opaque background behind voxens and GLB; **USE PASSTHROUGH SOBEL** resets the selection.
+- Scene snapshot format `VOXEN_RUNTIME 4` stores selected filename and angles; v1–v3 remain readable.
+- Releases panorama texture on deselection/shutdown, and the graphics pipeline on shutdown.
 
-## Not yet implemented
-- Passing polled paths from the JNI bridge into the renderer's validated texture loader.
-- Vulkan texture upload and GPU lifetime management (CPU decode/validation implemented).
-- Connect staged panorama shaders to the Vulkan pipeline and per-eye matrices; implement improved sky/ground reconstruction and edge handling.
-- GPU-backed activation and testing of restored panorama (v4 scene serialization/restoration of filename and angles implemented).
-- Headset test and build verification.
+## Testing still required
+- **Not compiled or tested on Quest 3.** The GitHub gallery smoke workflow does not build the Android application.
+- Verify Java NativeActivity subclass starts correctly and Android SAF picker returns focus to immersive OpenXR.
+- Verify both eyes display a correctly oriented panorama, with no mirrored view, reversed vertical axis or stereo seam.
+- Verify imported file persists across app restarts and scene Save/Load.
+- Verify GLB/voxens render over the panorama, and that passthrough returns on deselection.
+- Measure GPU memory use and frame time with 8K images.
 
-## Verification needed
-- Android Gradle/NDK compilation, immersive SAF activity transition, import and rescan on a Quest 3.
-- Selecting a filename now attempts bounded CPU JPEG/PNG decode and displays dimensions or an error; it does not activate the image yet.
-- Panorama vertex/fragment GLSL shaders are compiled via CMake; Vulkan pipeline and sampler descriptor layout creation/destruction are implemented. Texture allocation, descriptor sets, per-eye uniforms and draw are not yet implemented.
-- UI yaw and horizontal/vertical coverage controls persist with the selected filename in VOXEN_RUNTIME v4; v1-v3 remain readable. They are not yet connected to a GPU draw.
+## Build and headset smoke test
+```bash
+git fetch origin feature/panorama-backgrounds
+git switch feature/panorama-backgrounds
+cd android
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb logcat -s VoxenPanorama:* Voxen:* AndroidRuntime:E
+```
 
-## Implementation caveat
-Launching Android's 2D system picker from an immersive OpenXR session may require
-session focus/pause handling and device-specific testing. This branch does not
-claim that the complete import flow or panorama rendering works on Quest 3.
+## Caveats
+- Fullscreen projection currently fills unknown areas with a neutral dark color, not a reconstructed sky or ground.
+- Photos are displayed as monoscopic imagery projected independently into the two eye views, not as stereo 3D panoramas.
+- A panorama overlays passthrough in the projection layer; it does not remove the underlying Meta passthrough composition layer.
+- Import decoding and GPU upload occur on selection and may cause a short pause for large files.
