@@ -363,6 +363,8 @@ private:
     bool immersiveSceneActive_ = false;
     std::optional<voxen::gallery::InstanceId> galleryEntryCandidate_;
     std::optional<voxen::gallery::InstanceId> immersivePortalId_;
+    // Temporarily hide the completed scene's portal until the headset moves away.
+    std::optional<voxen::gallery::InstanceId> suppressedPortalId_;
     std::chrono::steady_clock::time_point galleryExitSince_{};
     std::chrono::steady_clock::time_point galleryEntrySince_{};
     bool galleryEntryArmed_ = true;
