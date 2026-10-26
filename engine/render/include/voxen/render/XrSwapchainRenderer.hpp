@@ -214,6 +214,10 @@ private:
     VkDescriptorPool glbTextureDescriptorPool_ = VK_NULL_HANDLE;
     struct GlbTexture { VkImage image=VK_NULL_HANDLE; VkDeviceMemory memory=VK_NULL_HANDLE; VkImageView view=VK_NULL_HANDLE; VkSampler sampler=VK_NULL_HANDLE; VkDescriptorSet descriptor=VK_NULL_HANDLE; };
     std::vector<GlbTexture> glbTextures_;
+    GlbTexture panoramaTexture_{};
+    VkDescriptorPool panoramaDescriptorPool_=VK_NULL_HANDLE;
+    bool loadPanoramaGpu(const std::filesystem::path& file);
+    void releasePanoramaGpu() noexcept;
     std::filesystem::path pendingDemoGlb_;
     std::filesystem::path glbAssetRoot_;
     std::vector<std::filesystem::path> glbAssetPaths_;
