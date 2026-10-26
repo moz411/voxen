@@ -2082,6 +2082,20 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         };
         for(const auto& v:voxens_)paintPlasma(v);
         // Reuse the existing procedural GPU Spike Bloom pipeline (preset 6).
+        // Loaded miniature spike ball follows each tracked index tip.
+        if(immersiveSceneActive_ && !editingMode()) {
+            for(const auto& hand:holographicHands_) {
+                if(!hand.tracked)continue;
+                const auto& tip=hand.joints[XR_HAND_JOINT_INDEX_TIP_EXT];
+                PlasmaVoxen loaded{};
+                loaded.preset=6;
+                loaded.position={tip.x,tip.y,tip.z};
+                loaded.scale=0.065f;
+                loaded.hue=0.08f;
+                loaded.speed=1.5f;
+                paintPlasma(loaded);
+            }
+        }
         for(const auto& p:spikeProjectiles_) {
             PlasmaVoxen orb{};
             orb.preset=6;
@@ -2219,56 +2233,56 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
         const auto& hand=holographicHands_[i];
         if(!hand.tracked){handWasClosed_[i]=false;continue;}
         const auto& palm=hand.joints[XR_HAND_JOINT_PALM_EXT];
-        // Gesture v2: rapid open-palm thrust, without an unreliable closed-fist
-        // prerequisite. Arm again only after slowing down (speed hysteresis).
-        const auto& knuckle=hand.joints[XR_HAND_JOINT_MIDDLE_METACARPAL_EXT];
-        const auto& wrist=hand.joints[XR_HAND_JOINT_WRIST_EXT];
-        float dx=knuckle.x-wrist.x,dy=knuckle.y-wrist.y,dz=knuckle.z-wrist.z;
-        const float length=std::sqrt(dx*dx+dy*dy+dz*dz);
-        if(length>0.025f) {
-            dx/=length;dy/=length;dz/=length;
-            const float vx=hand.palmVelocity.x,vy=hand.palmVelocity.y,vz=hand.palmVelocity.z;
-            const float speed=std::sqrt(vx*vx+vy*vy+vz*vz);
-            const float thrust=vx*dx+vy*dy+vz*dz;
-            // Start armed, and rearm when hand motion settles.
-            if(speed<0.22f)handWasClosed_[i]=true;
-            const float index=distance(palm,hand.joints[XR_HAND_JOINT_INDEX_TIP_EXT]);
-            const float middle=distance(palm,hand.joints[XR_HAND_JOINT_MIDDLE_TIP_EXT]);
-            const bool handOpen=index>0.105f && middle>0.11f;
-            if(handWasClosed_[i] && handOpen && speed>0.65f && thrust>0.16f &&
-               handShotCooldown_[i]<=0.f && spikeProjectiles_.size()<32) {
-                // Blend finger direction with actual throwing movement.
-                const float inv=1.f/std::max(speed,0.001f);
-                float fx=0.35f*dx+0.65f*vx*inv;
-                float fy=0.35f*dy+0.65f*vy*inv;
-                float fz=0.35f*dz+0.65f*vz*inv;
-                const float fl=std::sqrt(fx*fx+fy*fy+fz*fz);
-                fx/=fl;fy/=fl;fz/=fl;
+        // Finger gun: index straight, other fingers curled; thumb bends to fire.
+        // Use per-joint distances rather than absolute positions in world space.
+        const auto& tip=hand.joints[XR_HAND_JOINT_INDEX_TIP_EXT];
+        const auto& base=hand.joints[XR_HAND_JOINT_INDEX_PROXIMAL_EXT];
+        const auto& middleTip=hand.joints[XR_HAND_JOINT_MIDDLE_TIP_EXT];
+        const auto& ringTip=hand.joints[XR_HAND_JOINT_RING_TIP_EXT];
+        const auto& thumbTip=hand.joints[XR_HAND_JOINT_THUMB_TIP_EXT];
+        const auto& thumbBase=hand.joints[XR_HAND_JOINT_THUMB_METACARPAL_EXT];
+        const float indexReach=distance(tip,base);
+        const float indexPalm=distance(tip,palm);
+        const bool pointing=indexReach>0.065f && indexPalm>0.105f;
+        const bool fingersCurled=distance(middleTip,palm)<0.115f &&
+                                 distance(ringTip,palm)<0.12f;
+        const float thumbExtension=distance(thumbTip,base);
+        const bool thumbRaised=thumbExtension>0.085f;
+        const bool thumbLowered=thumbExtension<0.065f;
+        // The thumb-raised pose arms the shot; lowered thumb is the trigger.
+        if(pointing && fingersCurled && thumbRaised)handWasClosed_[i]=true;
+        if(!pointing || !fingersCurled)handWasClosed_[i]=false;
+        if(handWasClosed_[i] && pointing && fingersCurled && thumbLowered &&
+           handShotCooldown_[i]<=0.f && spikeProjectiles_.size()<32) {
+            float dx=tip.x-base.x,dy=tip.y-base.y,dz=tip.z-base.z;
+            const float norm=std::sqrt(dx*dx+dy*dy+dz*dz);
+            if(norm>0.04f) {
+                dx/=norm;dy/=norm;dz/=norm;
                 SpikeProjectile p{};
-                p.position={palm.x+fx*0.12f,palm.y+fy*0.12f,palm.z+fz*0.12f};
-                const float launchSpeed=5.5f+std::min(speed,2.f);
-                p.velocity={fx*launchSpeed,fy*launchSpeed,fz*launchSpeed};
+                p.position={tip.x+dx*0.035f,tip.y+dy*0.035f,tip.z+dz*0.035f};
+                p.velocity={dx*5.5f,dy*5.5f,dz*5.5f};
+                p.radius=0.045f;
                 spikeProjectiles_.push_back(p);
-                handShotCooldown_[i]=0.45f;
+                handShotCooldown_[i]=0.28f;
                 handWasClosed_[i]=false;
 #ifdef __ANDROID__
                 __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
-                    "FIRED hand=%zu speed=%.2f thrust=%.2f projectiles=%zu",
-                    i,speed,thrust,spikeProjectiles_.size());
+                    "FINGER_GUN FIRED hand=%zu total=%zu",i,spikeProjectiles_.size());
 #endif
             }
-#ifdef __ANDROID__
-            static auto lastDebug=std::chrono::steady_clock::now();
-            const auto now=std::chrono::steady_clock::now();
-            if(i==0 && now-lastDebug>std::chrono::seconds(2)) {
-                lastDebug=now;
-                __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
-                    "tracking=%d/%d speed=%.2f thrust=%.2f open=%d armed=%d immersive=%d",
-                    holographicHands_[0].tracked?1:0,holographicHands_[1].tracked?1:0,
-                    speed,thrust,handOpen?1:0,handWasClosed_[i]?1:0,immersiveSceneActive_?1:0);
-            }
-#endif
         }
+#ifdef __ANDROID__
+        static auto lastGestureLog=std::chrono::steady_clock::now();
+        const auto gestureNow=std::chrono::steady_clock::now();
+        if(i==0 && gestureNow-lastGestureLog>std::chrono::seconds(2)) {
+            lastGestureLog=gestureNow;
+            __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
+                "finger-gun tracked=%d/%d index=%.3f thumb=%.3f pointing=%d curled=%d armed=%d",
+                holographicHands_[0].tracked?1:0,holographicHands_[1].tracked?1:0,
+                indexReach,thumbExtension,pointing?1:0,fingersCurled?1:0,
+                handWasClosed_[i]?1:0);
+        }
+#endif
     }
     for(auto& e:spikeImpacts_)e.age+=dt;
     spikeImpacts_.erase(std::remove_if(spikeImpacts_.begin(),spikeImpacts_.end(),
