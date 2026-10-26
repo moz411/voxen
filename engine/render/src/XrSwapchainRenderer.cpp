@@ -123,6 +123,11 @@ void XrSwapchainRenderer::rescanGlbAssets() {
 #endif
 
 void XrSwapchainRenderer::rescanPanoramaAssets() {
+#ifdef VOXEN_WITH_IMGUI
+    const int oldIndex=imguiCarousel_.panoramaSelected;
+    const std::string oldName=(oldIndex>=0 && static_cast<std::size_t>(oldIndex)<panoramaNames_.size())
+        ? panoramaNames_[oldIndex] : std::string{};
+#endif
     panoramaNames_.clear();
     try {
         if(panoramaRoot_.empty())return;
@@ -136,6 +141,12 @@ void XrSwapchainRenderer::rescanPanoramaAssets() {
                 panoramaNames_.push_back(item.path().filename().string());
         }
         std::sort(panoramaNames_.begin(),panoramaNames_.end());
+#ifdef VOXEN_WITH_IMGUI
+        const auto found=std::find(panoramaNames_.begin(),panoramaNames_.end(),oldName);
+        imguiCarousel_.panoramaSelected=oldName.empty() || found==panoramaNames_.end()
+            ? -1 : static_cast<int>(found-panoramaNames_.begin());
+        panoramaDecodedSelection_=-2;
+#endif
     } catch(const std::exception&) {
         panoramaNames_.clear();
     }
