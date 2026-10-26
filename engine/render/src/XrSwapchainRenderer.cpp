@@ -1097,7 +1097,7 @@ void XrSwapchainRenderer::createPipeline() {
     texLayout.pushConstantRangeCount=1;texLayout.pPushConstantRanges=&push;
     checkVk(vkCreatePipelineLayout(device_,&texLayout,nullptr,&glbTexturePipelineLayout_),"glb pipeline layout");
 #endif
-    // Panorama uses a sampled image and an 80-byte per-eye inverse projection.
+    // Panorama uses a sampled image and 48-byte per-eye orientation/FOV parameters.
     // Descriptor allocation and texture upload are separate from pipeline creation.
     {
         VkDescriptorSetLayoutBinding sampler{};
@@ -1113,7 +1113,7 @@ void XrSwapchainRenderer::createPipeline() {
         VkPushConstantRange range{};
         range.stageFlags=VK_SHADER_STAGE_FRAGMENT_BIT;
         range.offset=0;
-        range.size=80;
+        range.size=48;
         VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
         layout.setLayoutCount=1;
         layout.pSetLayouts=&panoramaSetLayout_;
@@ -1606,6 +1606,34 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     VkViewport viewport{0,static_cast<float>(eye.height),static_cast<float>(eye.width),-static_cast<float>(eye.height),0,1};
     VkRect2D scissor{{0,0},{static_cast<uint32_t>(eye.width),static_cast<uint32_t>(eye.height)}};
     vkCmdSetViewport(commandBuffer_,0,1,&viewport); vkCmdSetScissor(commandBuffer_,0,1,&scissor);
+
+#if defined(VOXEN_WITH_GLB_IMPORT) && defined(VOXEN_WITH_IMGUI)
+    // Opaque background first, with no depth writes. Real scene objects draw over it.
+    if(panoramaTexture_.descriptor && panoramaPipeline_) {
+        struct PanoramaPush {
+            float orientation[4];
+            float tangents[4];
+            float controls[4];
+        } pc{};
+        const auto& q=xrView.pose.orientation;
+        pc.orientation[0]=q.x;pc.orientation[1]=q.y;
+        pc.orientation[2]=q.z;pc.orientation[3]=q.w;
+        pc.tangents[0]=std::tan(xrView.fov.angleLeft);
+        pc.tangents[1]=std::tan(xrView.fov.angleRight);
+        pc.tangents[2]=std::tan(xrView.fov.angleDown);
+        pc.tangents[3]=std::tan(xrView.fov.angleUp);
+        constexpr float radians=3.14159265358979323846f/180.f;
+        pc.controls[0]=imguiCarousel_.panoramaYawDegrees*radians;
+        pc.controls[1]=imguiCarousel_.panoramaHorizontalDegrees*radians;
+        pc.controls[2]=imguiCarousel_.panoramaVerticalDegrees*radians;
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,panoramaPipeline_);
+        vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+            panoramaPipelineLayout_,0,1,&panoramaTexture_.descriptor,0,nullptr);
+        vkCmdPushConstants(commandBuffer_,panoramaPipelineLayout_,
+            VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+        vkCmdDraw(commandBuffer_,3,1,0,0);
+    }
+#endif
 
     const float seconds = std::chrono::duration<float>(
         std::chrono::steady_clock::now() - animationStart_).count();
@@ -2343,14 +2371,24 @@ void XrSwapchainRenderer::render(
             const int index=panoramaDecodedSelection_;
             if(index>=0 && static_cast<std::size_t>(index)<panoramaNames_.size()) {
                 try {
-                    const auto decoded=decodePanoramaImage(panoramaRoot_/panoramaNames_[index]);
-                    imguiCarousel_.panoramaStatus="Decoded "+
-                        std::to_string(decoded.width)+" x "+std::to_string(decoded.height)+
-                        " (GPU projection pending)";
+                    const auto file=panoramaRoot_/panoramaNames_[index];
+                    if(loadPanoramaGpu(file))
+                        imguiCarousel_.panoramaStatus="Panorama active: "+panoramaNames_[index];
+                    else {
+                        if(device_)vkDeviceWaitIdle(device_);
+                        releasePanoramaGpu();
+                        imguiCarousel_.panoramaStatus="Failed to decode/upload panorama";
+                    }
                 } catch(const std::exception& error) {
+                    if(device_)vkDeviceWaitIdle(device_);
+                    releasePanoramaGpu();
                     imguiCarousel_.panoramaStatus=error.what();
                 }
-            } else imguiCarousel_.panoramaStatus.clear();
+            } else {
+                if(device_)vkDeviceWaitIdle(device_);
+                releasePanoramaGpu();
+                imguiCarousel_.panoramaStatus.clear();
+            }
 #else
             imguiCarousel_.panoramaStatus="Image decoding requires GLB/STB support";
 #endif
@@ -2661,6 +2699,9 @@ void XrSwapchainRenderer::shutdown() noexcept {
         eye.layouts.clear();
     }
 
+#ifdef VOXEN_WITH_GLB_IMPORT
+    releasePanoramaGpu();
+#endif
     if(panoramaPipeline_) { vkDestroyPipeline(device_,panoramaPipeline_,nullptr); panoramaPipeline_=VK_NULL_HANDLE; }
     if(panoramaPipelineLayout_) { vkDestroyPipelineLayout(device_,panoramaPipelineLayout_,nullptr); panoramaPipelineLayout_=VK_NULL_HANDLE; }
     if(panoramaSetLayout_) { vkDestroyDescriptorSetLayout(device_,panoramaSetLayout_,nullptr); panoramaSetLayout_=VK_NULL_HANDLE; }
