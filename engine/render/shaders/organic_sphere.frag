@@ -16,7 +16,7 @@ void main(){
     float diffuse=max(dot(n,light),0.0);
     float rim=pow(1.0-abs(n.z),3.0);
     float phase=pc.parameters.z+0.11*vPulse+0.045*pc.parameters.x*pc.parameters.y;
-    int material=clamp(int(floor(pc.parameters.z+0.0001)),0,9);
+    int material=clamp(int(floor(pc.parameters.z+0.0001)),0,10);
     vec3 base=palette(fract(phase));
     float bands=0.5+0.5*sin(22.0*vPulse+6.0*vPosition.y-pc.parameters.x*pc.parameters.y*2.0);
     vec3 color=base*(0.22+0.68*diffuse)+vec3(0.05,0.30,0.44)*bands*0.32;
@@ -75,6 +75,28 @@ void main(){
         vec3 stone=mix(vec3(0.045,0.07,0.15),vec3(0.2,0.7,0.78),
                        0.5+0.5*sin(warp+q.z));
         color=stone*(0.25+0.75*diffuse)+vec3(0.95,0.78,0.5)*vein;
+    }else if(material==10){ // MAGMA: procedural flowing lava with dark crust
+        vec3 q=p*5.5;
+        q+=0.28*vec3(sin(q.y*1.7+time*0.38),
+                      cos(q.z*1.9-time*0.28),
+                      sin(q.x*1.5+time*0.23));
+        float noise=0.0,amp=0.5;
+        for(int i=0;i<4;++i){
+            noise+=amp*(sin(q.x)*sin(q.y+0.71*q.z)*cos(q.z+0.53*q.x));
+            q=q*1.93+vec3(1.7,2.3,0.8);amp*=0.5;
+        }
+        float vein=abs(sin(noise*5.0+vPulse*2.7+time*0.75));
+        float heat=1.0-smoothstep(0.12,0.63,vein);
+        heat=clamp(heat+0.13*sin(time*1.3+noise*12.0),0.0,1.0);
+        vec3 rock=vec3(0.018,0.013,0.014)*(0.40+0.60*diffuse);
+        vec3 magma=mix(vec3(0.45,0.025,0.001),vec3(1.8,0.75,0.11),
+                       smoothstep(0.18,0.95,heat));
+        color=mix(rock,magma,heat);
+        color+=vec3(0.65,0.12,0.009)*pow(heat,3.0)*rim;
+        // ACES filmic tonemapping + display gamma, no multipass glow cost.
+        color=clamp((color*(2.51*color+0.03))/
+                    (color*(2.43*color+0.59)+0.14),0.0,1.0);
+        color=pow(color,vec3(0.4545));
     }else if(material==9){ // FIRE HANDS: procedural flame field
         float t=pc.parameters.x*1.7;
         vec3 q=vPosition;
