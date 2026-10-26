@@ -1,6 +1,9 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
 #include <voxen/render/MandelbulbMesh.hpp>
 #ifdef VOXEN_WITH_GLB_IMPORT
+#include <voxen/render/PanoramaImage.hpp>
+#endif
+#ifdef VOXEN_WITH_GLB_IMPORT
 #include <voxen/scene/GlbMeshDecoder.hpp>
 #endif
 #ifdef VOXEN_WITH_IMGUI
@@ -2287,6 +2290,24 @@ void XrSwapchainRenderer::render(
             rescanPanoramaAssets();
         }
         imguiCarousel_.panoramaFiles=panoramaNames_;
+        if(imguiCarousel_.panoramaSelected!=panoramaDecodedSelection_) {
+            panoramaDecodedSelection_=imguiCarousel_.panoramaSelected;
+#ifdef VOXEN_WITH_GLB_IMPORT
+            const int index=panoramaDecodedSelection_;
+            if(index>=0 && static_cast<std::size_t>(index)<panoramaNames_.size()) {
+                try {
+                    const auto decoded=decodePanoramaImage(panoramaRoot_/panoramaNames_[index]);
+                    imguiCarousel_.panoramaStatus="Decoded "+
+                        std::to_string(decoded.width)+" x "+std::to_string(decoded.height)+
+                        " (GPU projection pending)";
+                } catch(const std::exception& error) {
+                    imguiCarousel_.panoramaStatus=error.what();
+                }
+            } else imguiCarousel_.panoramaStatus.clear();
+#else
+            imguiCarousel_.panoramaStatus="Image decoding requires GLB/STB support";
+#endif
+        }
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         imguiCarousel_.savedSceneIds=sceneIds_;
