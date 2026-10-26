@@ -37,12 +37,13 @@ void openPanoramaPicker(android_app* app) {
     if(env->ExceptionCheck()) {env->ExceptionDescribe();env->ExceptionClear();}
     if(attached)vm->DetachCurrentThread();
 }
-void pollPanoramaImports(android_app* app) {
-    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) return;
+bool pollPanoramaImports(android_app* app) {
+    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) return false;
+    bool imported=false;
     JNIEnv* env = nullptr;
     JavaVM* vm = app->activity->vm;
     const bool attached = vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK;
-    if (attached && vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
+    if (attached && vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return false;
     jclass activityClass = env->GetObjectClass(app->activity->clazz);
     if (activityClass) {
         jmethodID poll = env->GetMethodID(activityClass, "pollImportedPanorama",
@@ -56,6 +57,7 @@ void pollPanoramaImports(android_app* app) {
                 if (utf) {
                     __android_log_print(ANDROID_LOG_INFO, "VoxenPanorama",
                         "Panorama import ready: %s", utf);
+                    imported=true;
                     // TODO: enqueue the private path for validated decode and Vulkan upload.
                     env->ReleaseStringUTFChars(value, utf);
                 }
@@ -69,6 +71,7 @@ void pollPanoramaImports(android_app* app) {
         env->ExceptionClear();
     }
     if (attached) vm->DetachCurrentThread();
+    return imported;
 }
 constexpr const char* kScenePermission="com.oculus.permission.USE_SCENE";
 
@@ -203,7 +206,7 @@ void android_main(android_app* app) {
             }
 
             running = session.pollEvents();
-            pollPanoramaImports(app);
+            if(pollPanoramaImports(app))renderer.rescanPanoramaAssets();
             if(renderer.consumePanoramaImportRequest())openPanoramaPicker(app);
             // Poll the permission state after Android handles the system dialog.
             // Re-request spatial discovery once the user grants access.
