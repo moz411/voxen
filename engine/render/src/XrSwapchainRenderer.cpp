@@ -349,6 +349,23 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
     // Enter/exit using the headset's actual 3D position relative to a sphere.
     // Hysteresis prevents repeated scene loads at the boundary.
     const auto portals=portalManager_->visible();
+    if(suppressedPortalId_ && !immersiveSceneActive_) {
+        const auto it=std::find_if(portals.begin(),portals.end(),
+            [&](const voxen::gallery::VisiblePortal& p){return p.id==*suppressedPortalId_;});
+        if(it==portals.end())suppressedPortalId_.reset();
+        else {
+            const auto& pos=it->localPose.positionMeters;
+            const float x=headPosition.x-pos[0],y=headPosition.y-pos[1],z=headPosition.z-pos[2];
+            const float rearmRadius=0.42f*std::clamp(it->scale,0.1f,4.f);
+            if(x*x+y*y+z*z>rearmRadius*rearmRadius) {
+                suppressedPortalId_.reset();
+                galleryEntryCandidate_.reset();
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_INFO,"VoxenGallery","Completed sphere re-enabled after moving away");
+#endif
+            }
+        }
+    }
     if(immersiveSceneActive_) {
         if(!immersivePortalId_)return; // explicit editing session
         const auto it=std::find_if(portals.begin(),portals.end(),
@@ -373,6 +390,7 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
     const voxen::gallery::VisiblePortal* inside=nullptr;
     float bestDistance2=100000.f;
     for(const auto& portal:portals) {
+        if(suppressedPortalId_ && portal.id==*suppressedPortalId_)continue;
         const auto& p=portal.localPose.positionMeters;
         const float dx=headPosition.x-p[0],dy=headPosition.y-p[1],dz=headPosition.z-p[2];
         const float d2=dx*dx+dy*dy+dz*dz;
@@ -459,6 +477,8 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     imguiCarousel_.panoramaSelected=-1;
     panoramaFadeActive_=false;
 #endif
+    if(victoryExitAt_.time_since_epoch().count()!=0 && immersivePortalId_)
+        suppressedPortalId_=immersivePortalId_;
     immersivePortalId_.reset();
     galleryExitSince_={};
     galleryEntryArmed_=false; // do not re-enter until physically leaving the ring
@@ -1960,6 +1980,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         const auto count=std::min<std::size_t>(portals.size(),64);
         for(std::size_t i=0;i<count;++i) {
             const auto& p=portals[i];
+            if(suppressedPortalId_ && p.id==*suppressedPortalId_)continue;
             const auto& xyz=(galleryDragging_ && selectedPortalId_ && p.id==*selectedPortalId_)
                 ? galleryDraggedPose_.positionMeters : p.localPose.positionMeters;
             const float radius=0.125f*std::clamp(p.scale,0.1f,4.f);
