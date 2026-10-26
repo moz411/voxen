@@ -2,6 +2,8 @@
 #include <stb_image.h>
 #include <stdexcept>
 #include <limits>
+#include <fstream>
+#include <iterator>
 
 namespace voxen::render {
 PanoramaImage decodePanoramaImage(const std::filesystem::path& file) {
@@ -12,16 +14,20 @@ PanoramaImage decodePanoramaImage(const std::filesystem::path& file) {
     const auto bytes=std::filesystem::file_size(file);
     if(bytes==0 || bytes>64ull*1024ull*1024ull)
         throw std::runtime_error("Panorama: invalid file size");
-    const auto path=file.string();
+    std::ifstream input(file,std::ios::binary);
+    if(!input)throw std::runtime_error("Panorama: cannot read file");
+    std::vector<stbi_uc> encoded((std::istreambuf_iterator<char>(input)),
+                                  std::istreambuf_iterator<char>());
+    if(encoded.size()!=bytes)throw std::runtime_error("Panorama: truncated read");
     int width=0,height=0,components=0;
-    if(!stbi_info(path.c_str(),&width,&height,&components))
+    if(!stbi_info_from_memory(encoded.data(),static_cast<int>(encoded.size()),&width,&height,&components))
         throw std::runtime_error("Panorama: unsupported or corrupt image");
     if(width<=0 || height<=0 || width>maxDimension || height>maxDimension ||
        static_cast<std::uint64_t>(width)*height>maxPixels)
         throw std::runtime_error("Panorama: image dimensions exceed limit");
     int decodedWidth=0,decodedHeight=0,decodedComponents=0;
-    stbi_uc* data=stbi_load(path.c_str(),&decodedWidth,&decodedHeight,
-                             &decodedComponents,STBI_rgb_alpha);
+    stbi_uc* data=stbi_load_from_memory(encoded.data(),static_cast<int>(encoded.size()),
+                                &decodedWidth,&decodedHeight,&decodedComponents,STBI_rgb_alpha);
     if(!data)throw std::runtime_error("Panorama: decode failed");
     PanoramaImage result;
     if(decodedWidth!=width || decodedHeight!=height) {
