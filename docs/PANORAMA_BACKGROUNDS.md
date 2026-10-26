@@ -3,9 +3,11 @@
 Branch: `feature/panorama-backgrounds` (not merged into `main`).
 
 ## Implemented
-- Android SAF document picker launched from **Backgrounds → Panoramas → IMPORT JPEG / PNG**.
-- Copies selected files into `getFilesDir()/voxen-gallery/panoramas` without storage permissions.
-- Native JNI polling and photo-library refresh; stable filename selection on rescan.
+- One ADB-accessible folder for panoramas, matching the existing MP3 workflow:
+  `/sdcard/Android/data/org.voxen.xr/files/Backgrounds/`.
+- Backgrounds → Panoramas → **RESCAN PHOTOS** lists JPEG/PNG files in this folder.
+- No headset file picker required; the older Android picker plumbing remains dormant for now.
+- Existing MP3 folder is `/sdcard/Android/data/org.voxen.xr/files/Music/`.
 - JPEG/PNG validation and bounded RGBA8 decode (maximum 64 MiB encoded, 8192 px per axis, 33.5 million pixels).
 - Reuses the existing Vulkan staging/upload code to allocate a sampled SRGB texture and descriptor set.
 - Per-eye fullscreen panoramic draw before world objects, with OpenXR eye orientation and asymmetric FOV.
@@ -37,3 +39,14 @@ adb logcat -s VoxenPanorama:* Voxen:* AndroidRuntime:E
 - Photos are displayed as monoscopic imagery projected independently into the two eye views, not as stereo 3D panoramas.
 - A panorama overlays passthrough in the projection layer; it does not remove the underlying Meta passthrough composition layer.
 - Import decoding and GPU upload occur on selection and may cause a short pause for large files.
+
+## Upload panoramas with ADB
+
+```bash
+adb shell mkdir -p /sdcard/Android/data/org.voxen.xr/files/Backgrounds
+adb push panorama.jpg /sdcard/Android/data/org.voxen.xr/files/Backgrounds/
+adb push ~/Images/Panoramas/. /sdcard/Android/data/org.voxen.xr/files/Backgrounds/
+adb shell ls -lh /sdcard/Android/data/org.voxen.xr/files/Backgrounds/
+```
+
+Open Voxen → Edit → Backgrounds → Panoramas → RESCAN PHOTOS, then select a photo.
