@@ -264,6 +264,7 @@ private:
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
     VkPipeline meshWirePipeline_ = VK_NULL_HANDLE;
+    VkPipeline handOutlinePipeline_ = VK_NULL_HANDLE;
     VkPipeline meshDepthPipeline_ = VK_NULL_HANDLE;
     VkPipeline matrixRainPipeline_ = VK_NULL_HANDLE;
     VkPipeline heppGlowPipeline_ = VK_NULL_HANDLE;
