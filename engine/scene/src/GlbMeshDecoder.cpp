@@ -1,7 +1,11 @@
 #include "voxen/scene/GlbMeshDecoder.hpp"
 #include "voxen/scene/GlbAsset.hpp"
 #include <cgltf.h>
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_NO_STDIO
+#include <stb_image.h>
 #include <algorithm>
+#include <climits>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -41,7 +45,43 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
     check(cgltf_load_buffers(&options, data.get(), nullptr), "load embedded buffer");
     check(cgltf_validate(data.get()), "validate");
 
+    if(data->images_count>64)throw std::runtime_error("glTF: too many embedded images");
     MeshAsset output;
+    output.images.reserve(data->images_count);
+    for(cgltf_size i=0;i<data->images_count;++i) {
+        EmbeddedImage image;
+        const auto& src=data->images[i];
+        if(src.buffer_view && src.buffer_view->buffer &&
+           src.buffer_view->buffer->data && src.mime_type &&
+           (std::string(src.mime_type)=="image/png" ||
+            std::string(src.mime_type)=="image/jpeg") &&
+           src.buffer_view->size<=limits.maxEmbeddedImageBytes) {
+            const auto* base=static_cast<const std::uint8_t*>(src.buffer_view->buffer->data);
+            const auto offset=src.buffer_view->offset;
+            const auto length=src.buffer_view->size;
+            if(offset<=src.buffer_view->buffer->size &&
+               length<=src.buffer_view->buffer->size-offset) {
+                image.encoded.assign(base+offset,base+offset+length);
+                image.mimeType=src.mime_type;
+                int w=0,h=0,channels=0;
+                // Refuse giant decoded images before allocating RGBA memory.
+                if(image.encoded.size()<=static_cast<size_t>(INT_MAX) &&
+                   stbi_info_from_memory(image.encoded.data(),
+                       static_cast<int>(image.encoded.size()),&w,&h,&channels) &&
+                   w>0 && h>0 && w<=4096 && h<=4096 &&
+                   static_cast<uint64_t>(w)*h<=16u*1024u*1024u) {
+                    stbi_uc* rgba=stbi_load_from_memory(image.encoded.data(),
+                        static_cast<int>(image.encoded.size()),&w,&h,&channels,4);
+                    if(rgba) {
+                        image.rgba.assign(rgba,rgba+static_cast<size_t>(w)*h*4);
+                        image.width=w;image.height=h;
+                        stbi_image_free(rgba);
+                    }
+                }
+            }
+        }
+        output.images.push_back(std::move(image));
+    }
     std::size_t totalVertices=0, totalIndices=0;
     std::unordered_map<const cgltf_mesh*,std::vector<std::uint32_t>> meshCache;
     auto loadMesh=[&](const cgltf_mesh* mesh)->const std::vector<std::uint32_t>& {
@@ -96,6 +136,11 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
                 std::copy_n(pbr.base_color_factor,4,dst.baseColor.data());
                 dst.metallic=pbr.metallic_factor;
                 dst.roughness=pbr.roughness_factor;
+                if(pbr.base_color_texture.texture &&
+                   pbr.base_color_texture.texture->image &&
+                   pbr.base_color_texture.texcoord==0)
+                    dst.baseColorTexture=indexOf(pbr.base_color_texture.texture->image,
+                                                 data->images,data->images_count);
             }
             refs.push_back(static_cast<std::uint32_t>(output.primitives.size()));
             output.primitives.push_back(std::move(dst));

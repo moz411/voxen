@@ -44,6 +44,10 @@
 #include "solidWallFrag.spv.hpp"
 #include "mandelbulbLitVert.spv.hpp"
 #include "mandelbulbLitFrag.spv.hpp"
+#include "glbOriginalVert.spv.hpp"
+#include "glbOriginalFrag.spv.hpp"
+#include "glbTexturedVert.spv.hpp"
+#include "glbTexturedFrag.spv.hpp"
 #include "meshWireVert.spv.hpp"
 #include "meshWireFrag.spv.hpp"
 #include "meshDepthVert.spv.hpp"
@@ -1039,7 +1043,19 @@ void XrSwapchainRenderer::createPipeline() {
     panelInfo.pushConstantRangeCount=1;panelInfo.pPushConstantRanges=&panelPush;
     checkVk(vkCreatePipelineLayout(device_,&panelInfo,nullptr,&imguiPanelPipelineLayout_),"vkCreatePipelineLayout(imgui)");
 #endif
-    // All three pipelines share a render pass and one 80-byte push constant layout.
+#ifdef VOXEN_WITH_GLB_IMPORT
+    VkDescriptorSetLayoutBinding binding{};
+    binding.binding=0;binding.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    binding.descriptorCount=1;binding.stageFlags=VK_SHADER_STAGE_FRAGMENT_BIT;
+    VkDescriptorSetLayoutCreateInfo info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    info.bindingCount=1;info.pBindings=&binding;
+    checkVk(vkCreateDescriptorSetLayout(device_,&info,nullptr,&glbTextureSetLayout_),"glb set layout");
+    VkPipelineLayoutCreateInfo texLayout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    texLayout.setLayoutCount=1;texLayout.pSetLayouts=&glbTextureSetLayout_;
+    texLayout.pushConstantRangeCount=1;texLayout.pPushConstantRanges=&push;
+    checkVk(vkCreatePipelineLayout(device_,&texLayout,nullptr,&glbTexturePipelineLayout_),"glb pipeline layout");
+#endif
+    // Shared render pass and push constants.
     auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
                              const std::uint8_t* fb, std::size_t fsz,
                              VkPipeline& out) {
@@ -1061,7 +1077,7 @@ void XrSwapchainRenderer::createPipeline() {
         };
         if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_ || &out==&voxenMandelbulbPipeline_ || &out==&voxenMandelbulbLitPipeline_
 #ifdef VOXEN_WITH_GLB_IMPORT
-           || &out==&glbPipeline_
+           || &out==&glbPipeline_ || &out==&glbOriginalPipeline_ || &out==&glbTexturedPipeline_
 #endif
         ) {
             binding.stride=sizeof(MandelbulbLitVertex);
@@ -1069,16 +1085,27 @@ void XrSwapchainRenderer::createPipeline() {
             vi.pVertexBindingDescriptions=&binding;
             vi.vertexAttributeDescriptionCount=(&out==&voxenMandelbulbLitPipeline_
 #ifdef VOXEN_WITH_GLB_IMPORT
-            || &out==&glbPipeline_
+            || &out==&glbPipeline_ || &out==&glbOriginalPipeline_ || &out==&glbTexturedPipeline_
 #endif
             ) ? 2 : 1;
             vi.pVertexAttributeDescriptions=(&out==&voxenMandelbulbLitPipeline_
 #ifdef VOXEN_WITH_GLB_IMPORT
-            || &out==&glbPipeline_
+            || &out==&glbPipeline_ || &out==&glbOriginalPipeline_ || &out==&glbTexturedPipeline_
 #endif
             ) ? litAttributes : &attribute;
             if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_)binding.stride=sizeof(XrVector3f);
         }
+#ifdef VOXEN_WITH_GLB_IMPORT
+        VkVertexInputAttributeDescription texAttrs[3]{
+            {0,0,VK_FORMAT_R32G32B32_SFLOAT,0},{1,0,VK_FORMAT_R32G32B32_SFLOAT,12},
+            {2,0,VK_FORMAT_R32G32_SFLOAT,24}};
+        if(&out==&glbPipeline_ || &out==&glbOriginalPipeline_ ||
+           &out==&glbTexturedPipeline_)binding.stride=32;
+        if(&out==&glbTexturedPipeline_) {
+            vi.vertexAttributeDescriptionCount=3;
+            vi.pVertexAttributeDescriptions=texAttrs;
+        }
+#endif
         VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
         vp.viewportCount=1; vp.scissorCount=1;
         VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
@@ -1112,7 +1139,7 @@ void XrSwapchainRenderer::createPipeline() {
             &out==&metaballsPipeline_ || &out==&voxenMandelbulbLitPipeline_ ||
             &out==&mechanicalCannonPipeline_
 #ifdef VOXEN_WITH_GLB_IMPORT
-            || &out==&glbPipeline_
+            || &out==&glbPipeline_ || &out==&glbOriginalPipeline_ || &out==&glbTexturedPipeline_
 #endif
             ;
         if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
@@ -1149,6 +1176,9 @@ void XrSwapchainRenderer::createPipeline() {
 #ifdef VOXEN_WITH_IMGUI
         if(&out==&imguiPanelPipeline_)pi.layout=imguiPanelPipelineLayout_;
 #endif
+#ifdef VOXEN_WITH_GLB_IMPORT
+        if(&out==&glbTexturedPipeline_)pi.layout=glbTexturePipelineLayout_;
+#endif
         pi.renderPass=renderPass_;
         checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &out), "vkCreateGraphicsPipelines");
         vkDestroyShaderModule(device_, fs, nullptr);
@@ -1167,6 +1197,8 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(mandelbulbLitVert, mandelbulbLitVertSize, mandelbulbLitFrag, mandelbulbLitFragSize, voxenMandelbulbLitPipeline_);
 #ifdef VOXEN_WITH_GLB_IMPORT
     buildPipeline(mandelbulbLitVert,mandelbulbLitVertSize,mandelbulbLitFrag,mandelbulbLitFragSize,glbPipeline_);
+    buildPipeline(glbOriginalVert,glbOriginalVertSize,glbOriginalFrag,glbOriginalFragSize,glbOriginalPipeline_);
+    buildPipeline(glbTexturedVert,glbTexturedVertSize,glbTexturedFrag,glbTexturedFragSize,glbTexturedPipeline_);
 #endif
     buildPipeline(voxenAttractorVert, voxenAttractorVertSize, voxenAttractorFrag, voxenAttractorFragSize, voxenAttractorPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
@@ -1547,14 +1579,29 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     // glTF node world matrices are column-major, matching Vulkan push constants.
     // The prototype intentionally uses the existing lighting shader (not PBR).
     if((glbPlaced_ || glbPreview_) && glbPipeline_!=VK_NULL_HANDLE && (glbPreview_ || (glbInGallery_ ? (!editingMode() && !immersiveSceneActive_) : (editingMode() || immersiveSceneActive_)))) {
-        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,glbPipeline_);
+        bool original=glbOriginalPipeline_!=VK_NULL_HANDLE;
+#ifdef VOXEN_WITH_IMGUI
+        original=original && imguiCarousel_.glbMaterialMode==0;
+#endif
+
         for(const auto& part:glbPrimitives_) {
             if(part.indexCount==0)continue;
             Mat4 node{};
             std::copy(part.worldMatrix.begin(),part.worldMatrix.end(),node.m);
             const auto root=modelMatrix(glbPlacement_[0],glbPlacement_[1],glbScale_,glbPlacement_[2]);
+            const bool textured=original && glbTexturedPipeline_!=VK_NULL_HANDLE &&
+                part.textureIndex>=0 && static_cast<size_t>(part.textureIndex)<glbTextures_.size() &&
+                glbTextures_[part.textureIndex].descriptor!=VK_NULL_HANDLE;
+            const auto active=original?(textured?glbTexturedPipeline_:glbOriginalPipeline_):glbPipeline_;
+            const auto layout=textured?glbTexturePipelineLayout_:pipelineLayout_;
+            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,active);
+            if(textured) {
+                const auto set=glbTextures_[part.textureIndex].descriptor;
+                vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,layout,0,1,&set,0,nullptr);
+            }
             ProceduralPushConstants pc{multiply(projView,multiply(root,node)),{0.f,0.f,0.52f,1.f}};
-            vkCmdPushConstants(commandBuffer_,pipelineLayout_,VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            if(original)std::copy(part.baseColor.begin(),part.baseColor.end(),pc.parameters);
+            vkCmdPushConstants(commandBuffer_,layout,VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             const VkDeviceSize off=0;
             vkCmdBindVertexBuffers(commandBuffer_,0,1,&part.vertexBuffer,&off);
             vkCmdBindIndexBuffer(commandBuffer_,part.indexBuffer,0,VK_INDEX_TYPE_UINT32);
@@ -1826,8 +1873,12 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         };
         for(const auto& v:voxens_)paintPlasma(v);
 #ifdef VOXEN_WITH_IMGUI
+        // Only one right-hand tool preview can be active at once.
         // Live selected Voxen preview, not part of the saved scene.
         if(editingMode() && imguiCarousel_.voxenPaintEnabled &&
+#ifdef VOXEN_WITH_GLB_IMPORT
+           !glbPreview_ &&
+#endif
            controllerTracked_[1] && !panelAimed_) {
             const auto& pose=controllerPoses_[1];
             const auto& q=pose.orientation;
@@ -2193,15 +2244,15 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.musicReady=ambientMusic_.ready();
 #ifdef VOXEN_WITH_GLB_IMPORT
         imguiCarousel_.glbFiles=glbAssetNames_;
-        if(!glbAssetPaths_.empty() && imguiCarousel_.glbSelected>=0 &&
-           static_cast<size_t>(imguiCarousel_.glbSelected)<glbAssetPaths_.size() &&
-           (glbLoadedSelection_!=imguiCarousel_.glbSelected || imguiCarousel_.glbPreviewRequest)) {
+        if(imguiCarousel_.glbPreviewRequest && !glbAssetPaths_.empty() && imguiCarousel_.glbSelected>=0 &&
+           static_cast<size_t>(imguiCarousel_.glbSelected)<glbAssetPaths_.size()) {
             imguiCarousel_.glbPreviewRequest=false;
             if(loadDemoGlb(glbAssetPaths_[imguiCarousel_.glbSelected])) {
                 glbLoadedSelection_=imguiCarousel_.glbSelected;
                 glbScale_=0.1f;
                 glbPreview_=true;
                 glbPlaced_=false;
+                imguiCarousel_.voxenPaintEnabled=false;
                 imguiCarousel_.glbStatus="Preview active: aim then trigger; right stick left/right changes size";
             } else {
                 glbLoadedSelection_=-1;
@@ -2219,6 +2270,9 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.visiblePortalCount=visibleGalleryPortals().size();
         imguiCarousel_.scenePortalSelected=selectedPortalId_.has_value();
         voxen::ui::drawCarousel(imguiCarousel_);
+#ifdef VOXEN_WITH_GLB_IMPORT
+        if(imguiCarousel_.voxenPaintEnabled && glbPreview_)glbPreview_=false;
+#endif
         if(imguiCarousel_.sceneSave) {
             imguiCarousel_.sceneSave=false;
             imguiCarousel_.sceneStatus=saveCurrentScene()?"Scene saved - DISPOSE available":"Save failed";
@@ -2276,6 +2330,16 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.scenePortalDelete=false;
             imguiCarousel_.sceneStatus=deleteSelectedGalleryPortal()?
                 "Portal removed (saved scene kept)":"Portal removal failed";
+        }
+        if(imguiCarousel_.sceneLoadEdit) {
+            imguiCarousel_.sceneLoadEdit=false;
+            const int index=imguiCarousel_.selectedScene;
+            const bool valid=index>=0 && static_cast<size_t>(index)<sceneIds_.size();
+            // CHARGER is an editor action only. In particular, do not
+            // treat the built-in mechanical cannon as a walk-in portal.
+            const bool ok=imguiCarousel_.editMode && !immersiveSceneActive_ &&
+                          valid && loadSavedScene(sceneIds_[index]);
+            imguiCarousel_.sceneStatus=ok?"Scene loaded in editor":"Cannot load selected scene in editor";
         }
         if(imguiCarousel_.sceneLoad) {
             imguiCarousel_.sceneLoad=false;
@@ -2517,6 +2581,10 @@ void XrSwapchainRenderer::shutdown() noexcept {
 #ifdef VOXEN_WITH_GLB_IMPORT
     releaseGlbGpu();
     if(glbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,glbPipeline_,nullptr);glbPipeline_=VK_NULL_HANDLE;}
+    if(glbOriginalPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,glbOriginalPipeline_,nullptr);glbOriginalPipeline_=VK_NULL_HANDLE;}
+    if(glbTexturedPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,glbTexturedPipeline_,nullptr);glbTexturedPipeline_=VK_NULL_HANDLE;}
+    if(glbTexturePipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,glbTexturePipelineLayout_,nullptr);glbTexturePipelineLayout_=VK_NULL_HANDLE;}
+    if(glbTextureSetLayout_!=VK_NULL_HANDLE){vkDestroyDescriptorSetLayout(device_,glbTextureSetLayout_,nullptr);glbTextureSetLayout_=VK_NULL_HANDLE;}
 #endif
     for(auto& lod:mandelbulbLods_){
         if(lod.vertexBuffer!=VK_NULL_HANDLE)vkDestroyBuffer(device_,lod.vertexBuffer,nullptr);

@@ -13,6 +13,7 @@ struct CarouselState {
     bool editMode = false; // Gallery at startup; painting only in edit mode.
     bool sceneSave = false;
     bool sceneLoad = false;
+    bool sceneLoadEdit = false;
     bool sceneDelete = false;
     bool sceneDeleteConfirm = false;
     bool scenePlace = false;
@@ -32,6 +33,7 @@ struct CarouselState {
     std::vector<std::string> savedSceneLabels;
     std::string sceneStatus;
     int glbSelected=0;
+    int glbMaterialMode=0; // 0 ORIGINAL, 1 VOXEN
     bool glbRescan=false;
     bool glbPreviewRequest=false;
     bool glbPlaceScene=false;
@@ -66,7 +68,7 @@ struct CarouselState {
     int voxenMaterial = 0; // independent surface material for procedural mesh shapes
     bool collideRoomMesh = true;
     int voxenPreset = 0; // Plasma or Spheres Intersections
-    bool voxenPaintEnabled = true;
+    bool voxenPaintEnabled = false;
     float voxenScale = 0.18f;
     float voxenHue = 0.52f;
     float voxenDensity = 1.0f;
