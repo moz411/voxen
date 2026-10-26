@@ -12,6 +12,9 @@ Branch: `feature/panorama-backgrounds` (not merged into `main`).
 - Only one panorama texture remains resident after replacement. Source decode is currently full resolution in CPU memory before downscaling; extremely large images above 64 MP are rejected to avoid memory spikes.
 - Reuses the existing Vulkan staging/upload code to allocate a sampled SRGB texture and descriptor set.
 - Per-eye fullscreen panoramic draw before world objects, with OpenXR eye orientation and asymmetric FOV.
+- JPEG decode and bilinear downscale run in one background worker, polled without blocking the XR frame loop. A selected panorama starts on opaque white and fades in over 1.5 seconds after upload.
+- Outside partial panoramas, the background remains pure white with no edge feathering.
+- Saved music playback choice is restored on scene load; gallery immersive entry already restores this choice.
 - Adjustable yaw, horizontal coverage and vertical coverage for incomplete smartphone panoramas.
 - Opaque background behind voxens and GLB; **USE PASSTHROUGH SOBEL** resets the selection.
 - Scene snapshot format `VOXEN_RUNTIME 4` stores selected filename and angles; v1–v3 remain readable.
@@ -39,7 +42,7 @@ adb logcat -s VoxenPanorama:* Voxen:* AndroidRuntime:E
 - Fullscreen projection currently fills unknown areas with a neutral dark color, not a reconstructed sky or ground.
 - Photos are displayed as monoscopic imagery projected independently into the two eye views, not as stereo 3D panoramas.
 - A panorama overlays passthrough in the projection layer; it does not remove the underlying Meta passthrough composition layer.
-- Import decoding and GPU upload occur on selection and may cause a short pause for large files.
+- GPU staging/upload and vkDeviceWaitIdle still occur on the render thread when decode completes; this can cause a short frame hitch. Fully asynchronous GPU transfers require a dedicated command pool/queue and synchronization.
 
 ## Upload panoramas with ADB
 
