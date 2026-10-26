@@ -22,8 +22,8 @@ void drawCarousel(CarouselState& state) {
         case 0:
             ImGui::TextUnformatted("VOXENS / PROCEDURAL PRESETS");
             ImGui::Separator();
-            static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH","EARTHWORM","CLOUD","METABALLS"};
-            if(ImGui::Combo("Voxen preset",&state.voxenPreset,presets,11))state.voxenPaintEnabled=true;
+            static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH","EARTHWORM","CLOUD","METABALLS","TENTACLE CREATURE"};
+            if(ImGui::Combo("Voxen preset",&state.voxenPreset,presets,12))state.voxenPaintEnabled=true;
             ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : state.voxenPreset==4 ? "Animated deforming 3D sphere" : state.voxenPreset==5 ? "Twisting torus knot" : state.voxenPreset==6 ? "Spiky bloom" : state.voxenPreset==7 ? "Jellyfish bell" : "Animated 12-segment earthworm");
             if(state.voxenPreset==2){
                 ImGui::Checkbox("Experimental 3D lighting",&state.mandelbulbLighting);
@@ -33,8 +33,8 @@ void drawCarousel(CarouselState& state) {
                 }
             }
             if(state.voxenPreset>=4){
-                static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS","MATRIX","BUBBLE 3D","ANIME CEL","MANGA INK","FLOWING MARBLE","CELLULAR GLOW"};
-                ImGui::Combo("Surface material",&state.voxenMaterial,materials,9);
+                static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS","MATRIX","BUBBLE 3D","ANIME CEL","MANGA INK","FLOWING MARBLE","CELLULAR GLOW","FIRE","MAGMA LAVA","ASCII MORPH"};
+                ImGui::Combo("Surface material",&state.voxenMaterial,materials,12);
             }
             ImGui::TextDisabled("RIGHT STICK: UP/DOWN shape | LEFT/RIGHT size");
             ImGui::TextDisabled("RIGHT TRIGGER: place one Voxen");
@@ -85,10 +85,10 @@ void drawCarousel(CarouselState& state) {
 
             ImGui::Separator();
             ImGui::Checkbox("Wall effect",&state.liquidRoom);
-            static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","SEASCAPE","OCTGRAMS"};
+            static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","SEASCAPE","OCTGRAMS","RAINBOW SPIRAL","MOBIUS SPIRAL","THEREMIN WAVE","GEOMETRIC KALEIDOSCOPE"};
             ImGui::Checkbox("Different shader per wall",&state.cycleWallShaders);
             if(state.cycleWallShaders) ImGui::SliderFloat("Change every (seconds)",&state.wallCycleSeconds,10.f,90.f,"%.0f");
-            else ImGui::Combo("Wall shader",&state.wallShaderMode,effects,10);
+            else ImGui::Combo("Wall shader",&state.wallShaderMode,effects,14);
             if(state.wallShaderMode==1) {
                 ImGui::ColorEdit3("Wall color",state.wallColor);
                 ImGui::SliderFloat("Solid opacity",&state.wallSolidOpacity,0.1f,1.0f);

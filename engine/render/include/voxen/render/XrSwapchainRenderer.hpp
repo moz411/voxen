@@ -264,6 +264,7 @@ private:
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
     VkPipeline meshWirePipeline_ = VK_NULL_HANDLE;
+    VkPipeline handOutlinePipeline_ = VK_NULL_HANDLE;
     VkPipeline meshDepthPipeline_ = VK_NULL_HANDLE;
     VkPipeline matrixRainPipeline_ = VK_NULL_HANDLE;
     VkPipeline heppGlowPipeline_ = VK_NULL_HANDLE;
@@ -272,6 +273,10 @@ private:
     VkPipeline midnightRidePipeline_ = VK_NULL_HANDLE;
     VkPipeline seascapePipeline_ = VK_NULL_HANDLE;
     VkPipeline octgramsPipeline_ = VK_NULL_HANDLE;
+    VkPipeline rainbowSpiralPipeline_ = VK_NULL_HANDLE;
+    VkPipeline mobiusSpiralPipeline_ = VK_NULL_HANDLE;
+    VkPipeline thereminWavePipeline_ = VK_NULL_HANDLE;
+    VkPipeline geometricKaleidoscopePipeline_ = VK_NULL_HANDLE;
     VkPipeline mandelbrotZoomPipeline_ = VK_NULL_HANDLE;
     VkBuffer meshWireBuffer_ = VK_NULL_HANDLE;
     VkBuffer meshDepthBuffer_ = VK_NULL_HANDLE;
@@ -309,6 +314,7 @@ private:
     VkPipeline torusKnotPipeline_ = VK_NULL_HANDLE;
     VkPipeline spikeBloomPipeline_ = VK_NULL_HANDLE;
     VkPipeline jellyfishPipeline_ = VK_NULL_HANDLE;
+    VkPipeline tentacleCreaturePipeline_ = VK_NULL_HANDLE;
     VkPipeline earthwormPipeline_ = VK_NULL_HANDLE;
     VkPipeline cloudPipeline_ = VK_NULL_HANDLE;
     VkPipeline metaballsPipeline_ = VK_NULL_HANDLE;

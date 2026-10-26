@@ -28,6 +28,8 @@
 #include "torusKnotVert.spv.hpp"
 #include "spikeBloomVert.spv.hpp"
 #include "jellyfishVert.spv.hpp"
+#include "tentacleCreatureVert.spv.hpp"
+#include "tentacleCreatureFrag.spv.hpp"
 #include "earthwormVert.spv.hpp"
 #include "metaballsVert.spv.hpp"
 #include "cloudVert.spv.hpp"
@@ -43,6 +45,7 @@
 #include "voxenAttractorFrag.spv.hpp"
 #include "fractalVert.spv.hpp"
 #include "laserFrag.spv.hpp"
+#include "handOutlineFrag.spv.hpp"
 #include "liquidRoomFrag.spv.hpp"
 #include "solidWallFrag.spv.hpp"
 #include "mandelbulbLitVert.spv.hpp"
@@ -62,6 +65,10 @@
 #include "midnightRideFrag.spv.hpp"
 #include "seascapeFrag.spv.hpp"
 #include "octgramsFrag.spv.hpp"
+#include "rainbowSpiralFrag.spv.hpp"
+#include "mobiusSpiralFrag.spv.hpp"
+#include "thereminWaveFrag.spv.hpp"
+#include "geometricKaleidoscopeFrag.spv.hpp"
 #include "mandelbrotZoomFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "galleryPortalFrag.spv.hpp"
@@ -1207,7 +1214,7 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &organicSpherePipeline_ || &out == &torusKnotPipeline_ || &out == &spikeBloomPipeline_ || &out == &jellyfishPipeline_ || &out == &earthwormPipeline_ || &out == &cloudPipeline_ || &out == &metaballsPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &organicSpherePipeline_
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &organicSpherePipeline_ || &out == &torusKnotPipeline_ || &out == &spikeBloomPipeline_ || &out == &jellyfishPipeline_ || &out == &earthwormPipeline_ || &out == &cloudPipeline_ || &out == &metaballsPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &organicSpherePipeline_
 #ifdef VOXEN_WITH_IMGUI
         || &out == &imguiPanelPipeline_
 #endif
@@ -1227,7 +1234,7 @@ void XrSwapchainRenderer::createPipeline() {
         // pipelines on their legacy blending paths.
         const bool solidVoxen =
             &out==&organicSpherePipeline_ || &out==&torusKnotPipeline_ ||
-            &out==&spikeBloomPipeline_ || &out==&jellyfishPipeline_ ||
+            &out==&spikeBloomPipeline_ || &out==&jellyfishPipeline_ || &out==&tentacleCreaturePipeline_ || &out==&tentacleCreaturePipeline_ ||
             &out==&earthwormPipeline_ || &out==&cloudPipeline_ ||
             &out==&metaballsPipeline_ || &out==&voxenMandelbulbLitPipeline_ ||
             &out==&mechanicalCannonPipeline_
@@ -1239,7 +1246,7 @@ void XrSwapchainRenderer::createPipeline() {
         if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &seascapePipeline_ || &out == &octgramsPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &seascapePipeline_ || &out == &octgramsPipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -1284,6 +1291,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(torusKnotVert, torusKnotVertSize, organicSphereFrag, organicSphereFragSize, torusKnotPipeline_);
     buildPipeline(spikeBloomVert, spikeBloomVertSize, organicSphereFrag, organicSphereFragSize, spikeBloomPipeline_);
     buildPipeline(jellyfishVert, jellyfishVertSize, organicSphereFrag, organicSphereFragSize, jellyfishPipeline_);
+    buildPipeline(tentacleCreatureVert, tentacleCreatureVertSize, tentacleCreatureFrag, tentacleCreatureFragSize, tentacleCreaturePipeline_);
     buildPipeline(earthwormVert, earthwormVertSize, organicSphereFrag, organicSphereFragSize, earthwormPipeline_);
     buildPipeline(cloudVert, cloudVertSize, cloudFrag, cloudFragSize, cloudPipeline_);
     buildPipeline(metaballsVert, metaballsVertSize, organicSphereFrag, organicSphereFragSize, metaballsPipeline_);
@@ -1298,6 +1306,7 @@ void XrSwapchainRenderer::createPipeline() {
 #endif
     buildPipeline(voxenAttractorVert, voxenAttractorVertSize, voxenAttractorFrag, voxenAttractorFragSize, voxenAttractorPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
+    buildPipeline(cubeVert, cubeVertSize, handOutlineFrag, handOutlineFragSize, handOutlinePipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, solidWallFrag, solidWallFragSize, solidWallPipeline_);
     buildPipeline(meshWireVert, meshWireVertSize, meshWireFrag, meshWireFragSize, meshWirePipeline_);
@@ -1309,6 +1318,10 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, midnightRideFrag, midnightRideFragSize, midnightRidePipeline_);
     buildPipeline(fractalVert, fractalVertSize, seascapeFrag, seascapeFragSize, seascapePipeline_);
     buildPipeline(fractalVert, fractalVertSize, octgramsFrag, octgramsFragSize, octgramsPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, rainbowSpiralFrag, rainbowSpiralFragSize, rainbowSpiralPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, mobiusSpiralFrag, mobiusSpiralFragSize, mobiusSpiralPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, thereminWaveFrag, thereminWaveFragSize, thereminWavePipeline_);
+    buildPipeline(fractalVert, fractalVertSize, geometricKaleidoscopeFrag, geometricKaleidoscopeFragSize, geometricKaleidoscopePipeline_);
     buildPipeline(fractalVert, fractalVertSize, mandelbrotZoomFrag, mandelbrotZoomFragSize, mandelbrotZoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
     buildPipeline(fractalVert, fractalVertSize, galleryPortalFrag, galleryPortalFragSize, galleryPortalPipeline_);
@@ -1526,7 +1539,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         const float y=thumbsticks[1].y;
         if(std::fabs(y)<0.30f)editorPresetStickLatched_=false;
         if(!editorPresetStickLatched_ && std::fabs(y)>0.72f) {
-            imguiCarousel_.voxenPreset=(imguiCarousel_.voxenPreset+(y>0.f?1:10))%11;
+            imguiCarousel_.voxenPreset=(imguiCarousel_.voxenPreset+(y>0.f?1:11))%12;
             editorPresetStickLatched_=true;
         }
         if(std::fabs(x)<0.30f)editorScaleStickLatched_=false;
@@ -1562,7 +1575,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         v.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.60f);
         v.hue=imguiCarousel_.voxenHue;
         v.density=imguiCarousel_.voxenDensity;
-        v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,8) :
+        v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,11) :
             std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
         v.speed=imguiCarousel_.voxenSpeed;
         v.velocity={dir[0]*imguiCarousel_.motionSpeed,
@@ -1756,7 +1769,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
     if (liquidEnabled && (wallShaderMode!=0 || liquidOpacity>0.001f) &&
-        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && midnightRidePipeline_ != VK_NULL_HANDLE && seascapePipeline_ != VK_NULL_HANDLE && octgramsPipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE) {
+        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && midnightRidePipeline_ != VK_NULL_HANDLE && seascapePipeline_ != VK_NULL_HANDLE && octgramsPipeline_ != VK_NULL_HANDLE && rainbowSpiralPipeline_ != VK_NULL_HANDLE && mobiusSpiralPipeline_ != VK_NULL_HANDLE && thereminWavePipeline_ != VK_NULL_HANDLE && geometricKaleidoscopePipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE) {
         // Stable slots are based on scene anchor IDs, not eye-specific
         // distance ordering. Both eyes therefore show the same effect per wall.
         std::vector<uint64_t> shaderIds;
@@ -1767,7 +1780,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         std::sort(shaderIds.begin(),shaderIds.end());
         shaderIds.erase(std::unique(shaderIds.begin(),shaderIds.end()),shaderIds.end());
         const int cycleStep=static_cast<int>(std::floor(seconds / wallCycleSeconds));
-        constexpr int demoModes[]={0,2,3,4,5,6,7,8,9}; // omit solid diagnostic
+        constexpr int demoModes[]={0,2,3,4,5,6,7,8,9,10,11,12,13}; // omit solid diagnostic
         auto choosePipeline=[&](int mode)->VkPipeline {
             switch(mode){
                 case 1:return solidWallPipeline_;
@@ -1779,6 +1792,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 case 7:return midnightRidePipeline_;
                 case 8:return seascapePipeline_;
                 case 9:return octgramsPipeline_;
+                case 10:return rainbowSpiralPipeline_;
+                case 11:return mobiusSpiralPipeline_;
+                case 12:return thereminWavePipeline_;
+                case 13:return geometricKaleidoscopePipeline_;
                 default:return liquidRoomPipeline_;
             }
         };
@@ -1833,7 +1850,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             if(cycleWallShaders){
                 auto it=std::lower_bound(shaderIds.begin(),shaderIds.end(),surface->id);
                 const auto rank=static_cast<int>(it-shaderIds.begin());
-                activeMode=demoModes[(rank+cycleStep)%9];
+                activeMode=demoModes[(rank+cycleStep)%13];
             }
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,choosePipeline(activeMode));
             const Mat4 wallMvp=multiply(projView,surfaceModel(*surface));
@@ -1969,11 +1986,69 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
         }
     }
-    // Gallery hands are tracked for pinches and UI interaction, but no
-    // procedural fire or fingertip spheres are rendered.
-    // A skinned XR_FB_hand_tracking_mesh renderer will be added separately.
+    // Cheap optical skeleton: thin white translucent finger segments and palm.
+    // This is a visual approximation, not Meta's system hand mesh. No buffers
+    // allocated per frame, no gesture click actions, Gallery scene only.
+    if(immersiveSceneActive_ && !editingMode() &&
+       handOutlinePipeline_!=VK_NULL_HANDLE) {
+        constexpr std::array<std::array<int,5>,5> chains{{
+            {{XR_HAND_JOINT_WRIST_EXT,XR_HAND_JOINT_THUMB_METACARPAL_EXT,
+              XR_HAND_JOINT_THUMB_PROXIMAL_EXT,XR_HAND_JOINT_THUMB_DISTAL_EXT,
+              XR_HAND_JOINT_THUMB_TIP_EXT}},
+            {{XR_HAND_JOINT_WRIST_EXT,XR_HAND_JOINT_INDEX_METACARPAL_EXT,
+              XR_HAND_JOINT_INDEX_PROXIMAL_EXT,XR_HAND_JOINT_INDEX_DISTAL_EXT,
+              XR_HAND_JOINT_INDEX_TIP_EXT}},
+            {{XR_HAND_JOINT_WRIST_EXT,XR_HAND_JOINT_MIDDLE_METACARPAL_EXT,
+              XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT,XR_HAND_JOINT_MIDDLE_DISTAL_EXT,
+              XR_HAND_JOINT_MIDDLE_TIP_EXT}},
+            {{XR_HAND_JOINT_WRIST_EXT,XR_HAND_JOINT_RING_METACARPAL_EXT,
+              XR_HAND_JOINT_RING_PROXIMAL_EXT,XR_HAND_JOINT_RING_DISTAL_EXT,
+              XR_HAND_JOINT_RING_TIP_EXT}},
+            {{XR_HAND_JOINT_WRIST_EXT,XR_HAND_JOINT_LITTLE_METACARPAL_EXT,
+              XR_HAND_JOINT_LITTLE_PROXIMAL_EXT,XR_HAND_JOINT_LITTLE_DISTAL_EXT,
+              XR_HAND_JOINT_LITTLE_TIP_EXT}}
+        }};
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,handOutlinePipeline_);
+        auto drawSegment=[&](const XrVector3f& a,const XrVector3f& b,float thickness) {
+            const float dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z;
+            const float len=std::sqrt(dx*dx+dy*dy+dz*dz);
+            if(len<0.002f || len>0.20f)return;
+            const float ux=dx/len,uy=dy/len,uz=dz/len;
+            const float rx=std::fabs(uy)<0.95f?0.f:1.f;
+            const float ry=std::fabs(uy)<0.95f?1.f:0.f;
+            const float sx=ry*uz,sy=-rx*uz,sz=rx*uy-ry*ux;
+            const float sl=std::sqrt(sx*sx+sy*sy+sz*sz);
+            if(sl<1e-5f)return;
+            const float nx=sx/sl,ny=sy/sl,nz=sz/sl;
+            const float tx=uy*nz-uz*ny,ty=uz*nx-ux*nz,tz=ux*ny-uy*nx;
+            Mat4 model=modelMatrix((a.x+b.x)*0.5f,(a.y+b.y)*0.5f,1.f,
+                                   (a.z+b.z)*0.5f,0.f);
+            model.m[0]=nx*thickness;model.m[1]=ny*thickness;model.m[2]=nz*thickness;
+            model.m[4]=ux*len;model.m[5]=uy*len;model.m[6]=uz*len;
+            model.m[8]=tx*thickness;model.m[9]=ty*thickness;model.m[10]=tz*thickness;
+            ProceduralPushConstants pc{multiply(projView,model),{0.f,0.f,0.f,0.f}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,36,1,0,0);
+        };
+        for(const auto& hand:holographicHands_) {
+            if(!hand.tracked)continue;
+            for(const auto& chain:chains) {
+                for(int i=0;i<4;++i)
+                    drawSegment(hand.joints[chain[i]],hand.joints[chain[i+1]],0.012f);
+            }
+            // Connect knuckles into a visible translucent palm outline.
+            constexpr std::array<int,5> knuckles{{
+                XR_HAND_JOINT_THUMB_METACARPAL_EXT,XR_HAND_JOINT_INDEX_METACARPAL_EXT,
+                XR_HAND_JOINT_MIDDLE_METACARPAL_EXT,XR_HAND_JOINT_RING_METACARPAL_EXT,
+                XR_HAND_JOINT_LITTLE_METACARPAL_EXT
+            }};
+            for(int i=0;i<4;++i)
+                drawSegment(hand.joints[knuckles[i]],hand.joints[knuckles[i+1]],0.014f);
+        }
+    }
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE && voxenSpheresPipeline_!=VK_NULL_HANDLE &&
-       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE && torusKnotPipeline_!=VK_NULL_HANDLE && spikeBloomPipeline_!=VK_NULL_HANDLE && jellyfishPipeline_!=VK_NULL_HANDLE && earthwormPipeline_!=VK_NULL_HANDLE && cloudPipeline_!=VK_NULL_HANDLE && metaballsPipeline_!=VK_NULL_HANDLE){
+       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE && torusKnotPipeline_!=VK_NULL_HANDLE && spikeBloomPipeline_!=VK_NULL_HANDLE && jellyfishPipeline_!=VK_NULL_HANDLE && tentacleCreaturePipeline_!=VK_NULL_HANDLE && earthwormPipeline_!=VK_NULL_HANDLE && cloudPipeline_!=VK_NULL_HANDLE && metaballsPipeline_!=VK_NULL_HANDLE){
         auto paintPlasma=[&](const PlasmaVoxen& v){
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 v.preset==1 ? voxenSpheresPipeline_ :
@@ -1984,7 +2059,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 voxenMandelbulbPipeline_) :
                 v.preset==3 ? voxenAttractorPipeline_ : v.preset==4 ? organicSpherePipeline_ :
                 v.preset==5 ? torusKnotPipeline_ : v.preset==6 ? spikeBloomPipeline_ :
-                v.preset==7 ? jellyfishPipeline_ : v.preset==8 ? earthwormPipeline_ : v.preset==9 ? cloudPipeline_ : v.preset==10 ? metaballsPipeline_ : voxenPlasmaPipeline_);
+                v.preset==7 ? jellyfishPipeline_ : v.preset==8 ? earthwormPipeline_ : v.preset==9 ? cloudPipeline_ : v.preset==10 ? metaballsPipeline_ : v.preset==11 ? tentacleCreaturePipeline_ : voxenPlasmaPipeline_);
             const Mat4 mvp=multiply(projView,modelMatrix(
                 v.position[0],v.position[1],v.scale,v.position[2],0.f));
             // For Mandelbulbs, pack material into the otherwise unchanged float slot.
@@ -2002,7 +2077,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                     vkCmdDrawIndexed(commandBuffer_,lod.indexCount,1,0,0,0);
                 }
             }else{
-                vkCmdDraw(commandBuffer_,v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 : (v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6)))),1,0,0);
+                vkCmdDraw(commandBuffer_,v.preset==11 ? (24*16*6+8*12*6*6) : (v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 : (v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6))))),1,0,0);
             }
         };
         for(const auto& v:voxens_)paintPlasma(v);
@@ -2029,7 +2104,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             preview.density=imguiCarousel_.voxenDensity;
             preview.speed=imguiCarousel_.voxenSpeed;
             preview.material=preview.preset>=4 ?
-                std::clamp(imguiCarousel_.voxenMaterial,0,8) :
+                std::clamp(imguiCarousel_.voxenMaterial,0,11) :
                 std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
             preview.lodLevel=1; // Stable medium LOD for Mandelbulb preview.
             paintPlasma(preview);
@@ -2149,46 +2224,75 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
             v.position[k]+=v.velocity[k]*dt;
         }
         const float radius=std::max(0.025f,v.scale*0.5f);
-        // Lightweight hand interaction: each tracked palm is one static sphere.
-        // Only active with the carousel hidden. No fingers, controller poses,
-        // or mesh collision tests; cost is at most two checks per moving voxen.
-        if(!carouselVisible()) {
-            constexpr float palmRadius=0.105f;
-            for(const auto& hand:holographicHands_) {
-                if(!hand.tracked)continue;
-                const auto& palm=hand.joints[XR_HAND_JOINT_PALM_EXT];
-                const float dx=v.position[0]-palm.x;
-                const float dy=v.position[1]-palm.y;
-                const float dz=v.position[2]-palm.z;
-                const float minDistance=radius+palmRadius;
+        // Hand collision proxies: one palm sphere and three capsules per finger.
+        // All tests run on the CPU physics step; no hand mesh GPU readback.
+        // Only interact with hands inside a scene entered from Gallery.
+        // Gallery overview and Edit mode never activate hand collisions.
+        if(immersiveSceneActive_ && !editingMode()) {
+            constexpr float palmRadius=0.085f;
+            constexpr std::array<std::array<int,4>,5> fingerChains{{
+                {{XR_HAND_JOINT_THUMB_METACARPAL_EXT,XR_HAND_JOINT_THUMB_PROXIMAL_EXT,
+                  XR_HAND_JOINT_THUMB_DISTAL_EXT,XR_HAND_JOINT_THUMB_TIP_EXT}},
+                {{XR_HAND_JOINT_INDEX_PROXIMAL_EXT,XR_HAND_JOINT_INDEX_INTERMEDIATE_EXT,
+                  XR_HAND_JOINT_INDEX_DISTAL_EXT,XR_HAND_JOINT_INDEX_TIP_EXT}},
+                {{XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT,XR_HAND_JOINT_MIDDLE_INTERMEDIATE_EXT,
+                  XR_HAND_JOINT_MIDDLE_DISTAL_EXT,XR_HAND_JOINT_MIDDLE_TIP_EXT}},
+                {{XR_HAND_JOINT_RING_PROXIMAL_EXT,XR_HAND_JOINT_RING_INTERMEDIATE_EXT,
+                  XR_HAND_JOINT_RING_DISTAL_EXT,XR_HAND_JOINT_RING_TIP_EXT}},
+                {{XR_HAND_JOINT_LITTLE_PROXIMAL_EXT,XR_HAND_JOINT_LITTLE_INTERMEDIATE_EXT,
+                  XR_HAND_JOINT_LITTLE_DISTAL_EXT,XR_HAND_JOINT_LITTLE_TIP_EXT}}
+            }};
+            auto resolveHandContact=[&](const XrVector3f& closest,float proxyRadius,
+                                         const XrVector3f& handVelocity) {
+                float dx=v.position[0]-closest.x;
+                float dy=v.position[1]-closest.y;
+                float dz=v.position[2]-closest.z;
+                const float minDistance=radius+proxyRadius;
                 const float d2=dx*dx+dy*dy+dz*dz;
-                if(d2>=minDistance*minDistance)continue;
+                if(d2>=minDistance*minDistance)return;
                 const float distance=std::sqrt(d2);
-                // If centers coincide, use a stable upward normal.
                 const float nx=distance>1e-5f?dx/distance:0.f;
                 const float ny=distance>1e-5f?dy/distance:1.f;
                 const float nz=distance>1e-5f?dz/distance:0.f;
-                v.position[0]=palm.x+nx*minDistance;
-                v.position[1]=palm.y+ny*minDistance;
-                v.position[2]=palm.z+nz*minDistance;
-                // Reflect relative to the moving palm, not a static obstacle.
-                // A fast palm can now impart momentum to an otherwise still voxen.
+                v.position[0]=closest.x+nx*minDistance;
+                v.position[1]=closest.y+ny*minDistance;
+                v.position[2]=closest.z+nz*minDistance;
                 const float relativeNormalSpeed=
-                    (v.velocity[0]-hand.palmVelocity.x)*nx+
-                    (v.velocity[1]-hand.palmVelocity.y)*ny+
-                    (v.velocity[2]-hand.palmVelocity.z)*nz;
+                    (v.velocity[0]-handVelocity.x)*nx+
+                    (v.velocity[1]-handVelocity.y)*ny+
+                    (v.velocity[2]-handVelocity.z)*nz;
                 if(relativeNormalSpeed<0.f) {
-                    const float impulse=(1.f+std::clamp(bounce,0.f,1.f))*
-                                        relativeNormalSpeed;
+                    const float impulse=(1.f+std::clamp(bounce,0.f,1.f))*relativeNormalSpeed;
                     v.velocity[0]-=impulse*nx;
                     v.velocity[1]-=impulse*ny;
                     v.velocity[2]-=impulse*nz;
                     const float speed=std::sqrt(v.velocity[0]*v.velocity[0]+
                                                 v.velocity[1]*v.velocity[1]+
                                                 v.velocity[2]*v.velocity[2]);
-                    if(speed>4.f) {
-                        const float limit=4.f/speed;
-                        for(float& component:v.velocity)component*=limit;
+                    if(speed>kMaxSpeed) {
+                        const float factor=kMaxSpeed/speed;
+                        for(float& component:v.velocity)component*=factor;
+                    }
+                }
+            };
+            for(const auto& hand:holographicHands_) {
+                if(!hand.tracked)continue;
+                resolveHandContact(hand.joints[XR_HAND_JOINT_PALM_EXT],
+                                   palmRadius,hand.palmVelocity);
+                for(const auto& chain:fingerChains) {
+                    for(int segment=0;segment<3;++segment) {
+                        const int ai=chain[segment],bi=chain[segment+1];
+                        const XrVector3f a=hand.joints[ai],b=hand.joints[bi];
+                        const float abx=b.x-a.x,aby=b.y-a.y,abz=b.z-a.z;
+                        const float lengthSquared=abx*abx+aby*aby+abz*abz;
+                        if(lengthSquared<1e-7f)continue;
+                        const float t=std::clamp(
+                            ((v.position[0]-a.x)*abx+(v.position[1]-a.y)*aby+
+                             (v.position[2]-a.z)*abz)/lengthSquared,0.f,1.f);
+                        const XrVector3f nearest{a.x+t*abx,a.y+t*aby,a.z+t*abz};
+                        const float capsuleRadius=std::clamp(
+                            std::max(hand.radii[ai],hand.radii[bi]),0.009f,0.022f);
+                        resolveHandContact(nearest,capsuleRadius,hand.palmVelocity);
                     }
                 }
             }
@@ -2771,6 +2875,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(torusKnotPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,torusKnotPipeline_,nullptr);torusKnotPipeline_=VK_NULL_HANDLE;}
     if(spikeBloomPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,spikeBloomPipeline_,nullptr);spikeBloomPipeline_=VK_NULL_HANDLE;}
     if(jellyfishPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,jellyfishPipeline_,nullptr);jellyfishPipeline_=VK_NULL_HANDLE;}
+    if(tentacleCreaturePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,tentacleCreaturePipeline_,nullptr);tentacleCreaturePipeline_=VK_NULL_HANDLE;}
     if(earthwormPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,earthwormPipeline_,nullptr);earthwormPipeline_=VK_NULL_HANDLE;}
     if(cloudPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,cloudPipeline_,nullptr);cloudPipeline_=VK_NULL_HANDLE;}
     if(metaballsPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,metaballsPipeline_,nullptr);metaballsPipeline_=VK_NULL_HANDLE;}
@@ -2799,6 +2904,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
     if (solidWallPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,solidWallPipeline_,nullptr); solidWallPipeline_=VK_NULL_HANDLE; }
     if (meshWirePipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,meshWirePipeline_,nullptr); meshWirePipeline_=VK_NULL_HANDLE; }
+    if (handOutlinePipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,handOutlinePipeline_,nullptr); handOutlinePipeline_=VK_NULL_HANDLE; }
     if(meshDepthPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,meshDepthPipeline_,nullptr);meshDepthPipeline_=VK_NULL_HANDLE;}
     if(matrixRainPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,matrixRainPipeline_,nullptr);matrixRainPipeline_=VK_NULL_HANDLE;}
     if(heppGlowPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,heppGlowPipeline_,nullptr);heppGlowPipeline_=VK_NULL_HANDLE;}
@@ -2807,6 +2913,10 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(midnightRidePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,midnightRidePipeline_,nullptr);midnightRidePipeline_=VK_NULL_HANDLE;}
     if(seascapePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,seascapePipeline_,nullptr);seascapePipeline_=VK_NULL_HANDLE;}
     if(octgramsPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,octgramsPipeline_,nullptr);octgramsPipeline_=VK_NULL_HANDLE;}
+    if(rainbowSpiralPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,rainbowSpiralPipeline_,nullptr);rainbowSpiralPipeline_=VK_NULL_HANDLE;}
+    if(mobiusSpiralPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,mobiusSpiralPipeline_,nullptr);mobiusSpiralPipeline_=VK_NULL_HANDLE;}
+    if(thereminWavePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,thereminWavePipeline_,nullptr);thereminWavePipeline_=VK_NULL_HANDLE;}
+    if(geometricKaleidoscopePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,geometricKaleidoscopePipeline_,nullptr);geometricKaleidoscopePipeline_=VK_NULL_HANDLE;}
     if(mandelbrotZoomPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,mandelbrotZoomPipeline_,nullptr);mandelbrotZoomPipeline_=VK_NULL_HANDLE;}
     if(meshDepthBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,meshDepthBuffer_,nullptr);meshDepthBuffer_=VK_NULL_HANDLE;}
     if(meshDepthMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,meshDepthMemory_,nullptr);meshDepthMemory_=VK_NULL_HANDLE;}
