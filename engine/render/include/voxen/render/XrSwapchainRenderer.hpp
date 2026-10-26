@@ -334,6 +334,24 @@ private:
     };
     std::vector<PlasmaVoxen> voxens_;
     std::vector<PlasmaVoxen> editorVoxens_; // Suspended while gallery/immersion runs.
+    // Transient hand-fired Spike Bloom orbs and GPU-rendered impact pulses.
+    struct SpikeProjectile {
+        std::array<float,3> position{}, velocity{};
+        float age=0.f;
+        float radius=0.065f;
+    };
+    struct SpikeImpact {
+        std::array<float,3> position{};
+        float age=0.f;
+        float radius=0.15f;
+        bool explosion=false;
+    };
+    std::vector<SpikeProjectile> spikeProjectiles_;
+    std::vector<SpikeImpact> spikeImpacts_;
+    std::array<bool,2> handWasClosed_{};
+    std::array<float,2> handShotCooldown_{};
+    void advanceHandProjectiles(float dt);
+
 #ifdef VOXEN_WITH_IMGUI
     voxen::ui::CarouselState editorSettings_{};
 #endif
