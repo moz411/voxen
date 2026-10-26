@@ -75,6 +75,8 @@ if(ANDROID OR WIN32)
     voxen_embed_shader(galleryPortalFrag gallery_portal.frag)
     voxen_embed_shader(mechanicalCannonFrag mechanical_cannon.frag)
     voxen_embed_shader(imguiPanelFrag imgui_panel.frag)
+    voxen_embed_shader(panoramaVert panorama.vert)
+    voxen_embed_shader(panoramaFrag panorama.frag)
 endif()
 
 
@@ -149,6 +151,7 @@ add_library(voxen_engine STATIC
     xr/src/MetaSceneProvider.cpp
     render/src/VulkanContext.cpp
     render/src/XrSwapchainRenderer.cpp
+    $<$<BOOL:${VOXEN_WITH_GLB_IMPORT}>:${CMAKE_CURRENT_SOURCE_DIR}/render/src/PanoramaImage.cpp>
     ${VOXEN_SHADER_HEADERS}
 )
 

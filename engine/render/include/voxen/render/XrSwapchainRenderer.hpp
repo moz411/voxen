@@ -21,6 +21,8 @@
 #include <voxen/scene/PortalManager.hpp>
 #include <memory>
 #include <filesystem>
+#include <future>
+#include <voxen/render/PanoramaImage.hpp>
 #ifdef VOXEN_WITH_IMGUI
 #include <voxen/ui/CarouselUi.hpp>
 #include <voxen/ui/ImGuiSurface.hpp>
@@ -59,6 +61,16 @@ public:
     // Explicit prototype import: app-private assets/demo.glb.
     bool loadDemoGlb(const std::filesystem::path& file);
 #endif
+    bool consumePanoramaImportRequest() noexcept {
+#ifdef VOXEN_WITH_IMGUI
+        const bool requested=imguiCarousel_.panoramaImportRequest;
+        imguiCarousel_.panoramaImportRequest=false;
+        return requested;
+#else
+        return false;
+#endif
+    }
+    void rescanPanoramaAssets();
     bool saveCurrentScene();
     bool loadSavedScene(const voxen::gallery::SceneId& id);
     bool deleteSavedScene(const voxen::gallery::SceneId& id);
@@ -167,6 +179,12 @@ private:
     void createFramebuffers();
     void renderImage(EyeSwapchain& eye, uint32_t imageIndex, const XrView& view);
 
+    std::filesystem::path panoramaRoot_;
+    std::vector<std::string> panoramaNames_;
+    int panoramaDecodedSelection_=-1;
+    VkDescriptorSetLayout panoramaSetLayout_=VK_NULL_HANDLE;
+    VkPipelineLayout panoramaPipelineLayout_=VK_NULL_HANDLE;
+    VkPipeline panoramaPipeline_=VK_NULL_HANDLE;
     voxen::audio::AmbientMusic ambientMusic_{};
     voxen::audio::Mp3Library mp3Library_{};
     ::XrSession session_ = XR_NULL_HANDLE;
@@ -198,6 +216,14 @@ private:
     VkDescriptorPool glbTextureDescriptorPool_ = VK_NULL_HANDLE;
     struct GlbTexture { VkImage image=VK_NULL_HANDLE; VkDeviceMemory memory=VK_NULL_HANDLE; VkImageView view=VK_NULL_HANDLE; VkSampler sampler=VK_NULL_HANDLE; VkDescriptorSet descriptor=VK_NULL_HANDLE; };
     std::vector<GlbTexture> glbTextures_;
+    GlbTexture panoramaTexture_{};
+    VkDescriptorPool panoramaDescriptorPool_=VK_NULL_HANDLE;
+    bool loadPanoramaGpu(PanoramaImage&& decoded);
+    std::future<PanoramaImage> panoramaDecodeFuture_;
+    int panoramaDecodeIndex_=-1;
+    bool panoramaFadeActive_=false;
+    std::chrono::steady_clock::time_point panoramaFadeStart_{};
+    void releasePanoramaGpu() noexcept;
     std::filesystem::path pendingDemoGlb_;
     std::filesystem::path glbAssetRoot_;
     std::vector<std::filesystem::path> glbAssetPaths_;

@@ -1,6 +1,9 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
 #include <voxen/render/MandelbulbMesh.hpp>
 #ifdef VOXEN_WITH_GLB_IMPORT
+#include <voxen/render/PanoramaImage.hpp>
+#endif
+#ifdef VOXEN_WITH_GLB_IMPORT
 #include <voxen/scene/GlbMeshDecoder.hpp>
 #endif
 #ifdef VOXEN_WITH_IMGUI
@@ -64,8 +67,11 @@
 #include "galleryPortalFrag.spv.hpp"
 #include "mechanicalCannonFrag.spv.hpp"
 #include "imguiPanelFrag.spv.hpp"
+#include "panoramaVert.spv.hpp"
+#include "panoramaFrag.spv.hpp"
 
 #include <algorithm>
+#include <future>
 #include <cmath>
 #include <array>
 #include <cstring>
@@ -117,8 +123,44 @@ void XrSwapchainRenderer::rescanGlbAssets() {
 }
 #endif
 
+void XrSwapchainRenderer::rescanPanoramaAssets() {
+#ifdef VOXEN_WITH_IMGUI
+    const int oldIndex=imguiCarousel_.panoramaSelected;
+    const std::string oldName=(oldIndex>=0 && static_cast<std::size_t>(oldIndex)<panoramaNames_.size())
+        ? panoramaNames_[oldIndex] : std::string{};
+#endif
+    panoramaNames_.clear();
+    try {
+        if(panoramaRoot_.empty())return;
+        std::filesystem::create_directories(panoramaRoot_);
+        for(const auto& item:std::filesystem::directory_iterator(panoramaRoot_)) {
+            if(!item.is_regular_file() || item.is_symlink())continue;
+            auto ext=item.path().extension().string();
+            std::transform(ext.begin(),ext.end(),ext.begin(),
+                [](unsigned char c){return static_cast<char>(std::tolower(c));});
+            if(ext==".jpg" || ext==".jpeg" || ext==".png")
+                panoramaNames_.push_back(item.path().filename().string());
+        }
+        std::sort(panoramaNames_.begin(),panoramaNames_.end());
+#ifdef VOXEN_WITH_IMGUI
+        const auto found=std::find(panoramaNames_.begin(),panoramaNames_.end(),oldName);
+        imguiCarousel_.panoramaSelected=oldName.empty() || found==panoramaNames_.end()
+            ? -1 : static_cast<int>(found-panoramaNames_.begin());
+        panoramaDecodedSelection_=-2;
+#endif
+    } catch(const std::exception&) {
+        panoramaNames_.clear();
+    }
+}
+
 void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& root) {
     sceneRepository_ = std::make_unique<voxen::gallery::SceneRepository>(root);
+#ifdef __ANDROID__
+    panoramaRoot_="/sdcard/Android/data/org.voxen.xr/files/Backgrounds";
+#else
+    panoramaRoot_=root / "Backgrounds";
+#endif
+    rescanPanoramaAssets();
     portalManager_ = std::make_unique<voxen::gallery::PortalManager>(*sceneRepository_);
     // Seed a real repository scene so gallery placement and walk-in work unchanged.
     if(!sceneRepository_->loadSceneMetadata(mechanicalCannonSceneId_)) {
@@ -414,6 +456,12 @@ bool XrSwapchainRenderer::saveCurrentScene() {
         runtime.voxens.push_back(saved);
     }
 #ifdef VOXEN_WITH_IMGUI
+    const int panoramaIndex=imguiCarousel_.panoramaSelected;
+    if(panoramaIndex>=0 && static_cast<std::size_t>(panoramaIndex)<panoramaNames_.size())
+        runtime.panoramaFile=panoramaNames_[panoramaIndex];
+    runtime.panoramaYawDegrees=imguiCarousel_.panoramaYawDegrees;
+    runtime.panoramaHorizontalDegrees=imguiCarousel_.panoramaHorizontalDegrees;
+    runtime.panoramaVerticalDegrees=imguiCarousel_.panoramaVerticalDegrees;
     runtime.liquidRoom=imguiCarousel_.liquidRoom;
     runtime.liquidOpacity=imguiCarousel_.liquidOpacity;
     runtime.wallShaderMode=imguiCarousel_.wallShaderMode;
@@ -494,6 +542,16 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
 #ifdef VOXEN_WITH_IMGUI
+    rescanPanoramaAssets();
+    const auto match=std::find(panoramaNames_.begin(),panoramaNames_.end(),snapshot->panoramaFile);
+    imguiCarousel_.panoramaSelected=snapshot->panoramaFile.empty() ||
+        match==panoramaNames_.end() ? -1 : static_cast<int>(match-panoramaNames_.begin());
+    panoramaDecodedSelection_=-2; // force validation of restored selection next frame
+    imguiCarousel_.panoramaYawDegrees=snapshot->panoramaYawDegrees;
+    imguiCarousel_.panoramaHorizontalDegrees=snapshot->panoramaHorizontalDegrees;
+    imguiCarousel_.panoramaVerticalDegrees=snapshot->panoramaVerticalDegrees;
+    if(!snapshot->panoramaFile.empty() && match==panoramaNames_.end())
+        imguiCarousel_.panoramaStatus="Saved panorama missing: "+snapshot->panoramaFile;
     imguiCarousel_.liquidRoom=snapshot->liquidRoom;
     imguiCarousel_.liquidOpacity=snapshot->liquidOpacity;
     imguiCarousel_.wallShaderMode=snapshot->wallShaderMode;
@@ -503,8 +561,8 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     imguiCarousel_.musicTrack=snapshot->musicTrack;
     imguiCarousel_.musicFile=snapshot->musicFile;
     imguiCarousel_.musicVolume=snapshot->musicVolume;
-    // Deliberately do not auto-start playback on load.
-    imguiCarousel_.musicPlaying=false;
+    // Restore the scene's saved music choice, including autoplay on load.
+    imguiCarousel_.musicPlaying=snapshot->musicPlaying;
     imguiCarousel_.motionEnabled=snapshot->motionEnabled;
     imguiCarousel_.motionMode=snapshot->motionMode;
     imguiCarousel_.motionGravity=snapshot->motionGravity;
@@ -1055,6 +1113,31 @@ void XrSwapchainRenderer::createPipeline() {
     texLayout.pushConstantRangeCount=1;texLayout.pPushConstantRanges=&push;
     checkVk(vkCreatePipelineLayout(device_,&texLayout,nullptr,&glbTexturePipelineLayout_),"glb pipeline layout");
 #endif
+    // Panorama uses a sampled image and 48-byte per-eye orientation/FOV parameters.
+    // Descriptor allocation and texture upload are separate from pipeline creation.
+    {
+        VkDescriptorSetLayoutBinding sampler{};
+        sampler.binding=0;
+        sampler.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        sampler.descriptorCount=1;
+        sampler.stageFlags=VK_SHADER_STAGE_FRAGMENT_BIT;
+        VkDescriptorSetLayoutCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        ci.bindingCount=1;
+        ci.pBindings=&sampler;
+        checkVk(vkCreateDescriptorSetLayout(device_,&ci,nullptr,&panoramaSetLayout_),
+                "panorama descriptor layout");
+        VkPushConstantRange range{};
+        range.stageFlags=VK_SHADER_STAGE_FRAGMENT_BIT;
+        range.offset=0;
+        range.size=48;
+        VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        layout.setLayoutCount=1;
+        layout.pSetLayouts=&panoramaSetLayout_;
+        layout.pushConstantRangeCount=1;
+        layout.pPushConstantRanges=&range;
+        checkVk(vkCreatePipelineLayout(device_,&layout,nullptr,&panoramaPipelineLayout_),
+                "panorama pipeline layout");
+    }
     // Shared render pass and push constants.
     auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
                              const std::uint8_t* fb, std::size_t fsz,
@@ -1120,6 +1203,7 @@ void XrSwapchainRenderer::createPipeline() {
         || &out == &imguiPanelPipeline_
 #endif
         ) ? VK_FALSE : VK_TRUE;
+        if (&out == &panoramaPipeline_) ds.depthTestEnable=VK_FALSE;
         if (&out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
@@ -1143,6 +1227,7 @@ void XrSwapchainRenderer::createPipeline() {
 #endif
             ;
         if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
+        if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
         if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &seascapePipeline_ || &out == &octgramsPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
@@ -1179,11 +1264,13 @@ void XrSwapchainRenderer::createPipeline() {
 #ifdef VOXEN_WITH_GLB_IMPORT
         if(&out==&glbTexturedPipeline_)pi.layout=glbTexturePipelineLayout_;
 #endif
+        if(&out==&panoramaPipeline_)pi.layout=panoramaPipelineLayout_;
         pi.renderPass=renderPass_;
         checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &out), "vkCreateGraphicsPipelines");
         vkDestroyShaderModule(device_, fs, nullptr);
         vkDestroyShaderModule(device_, vs, nullptr);
     };
+    buildPipeline(panoramaVert,panoramaVertSize,panoramaFrag,panoramaFragSize,panoramaPipeline_);
     buildPipeline(organicSphereVert, organicSphereVertSize, organicSphereFrag, organicSphereFragSize, organicSpherePipeline_);
     buildPipeline(torusKnotVert, torusKnotVertSize, organicSphereFrag, organicSphereFragSize, torusKnotPipeline_);
     buildPipeline(spikeBloomVert, spikeBloomVertSize, organicSphereFrag, organicSphereFragSize, spikeBloomPipeline_);
@@ -1514,6 +1601,12 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     }
 
     VkClearValue clear{};
+#ifdef VOXEN_WITH_IMGUI
+    if(imguiCarousel_.panoramaSelected>=0) {
+        clear.color.float32[0]=1.f;clear.color.float32[1]=1.f;
+        clear.color.float32[2]=1.f;clear.color.float32[3]=1.f;
+    } else
+#endif
     if(mechanicalCannonPreview_) {
         clear.color.float32[0]=0.0F; clear.color.float32[1]=0.0F;
         clear.color.float32[2]=0.0F; clear.color.float32[3]=1.0F;
@@ -1535,6 +1628,38 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     VkViewport viewport{0,static_cast<float>(eye.height),static_cast<float>(eye.width),-static_cast<float>(eye.height),0,1};
     VkRect2D scissor{{0,0},{static_cast<uint32_t>(eye.width),static_cast<uint32_t>(eye.height)}};
     vkCmdSetViewport(commandBuffer_,0,1,&viewport); vkCmdSetScissor(commandBuffer_,0,1,&scissor);
+
+#if defined(VOXEN_WITH_GLB_IMPORT) && defined(VOXEN_WITH_IMGUI)
+    // Opaque background first, with no depth writes. Real scene objects draw over it.
+    if(panoramaTexture_.descriptor && panoramaPipeline_) {
+        struct PanoramaPush {
+            float orientation[4];
+            float tangents[4];
+            float controls[4];
+        } pc{};
+        const auto& q=xrView.pose.orientation;
+        pc.orientation[0]=q.x;pc.orientation[1]=q.y;
+        pc.orientation[2]=q.z;pc.orientation[3]=q.w;
+        pc.tangents[0]=std::tan(xrView.fov.angleLeft);
+        pc.tangents[1]=std::tan(xrView.fov.angleRight);
+        pc.tangents[2]=std::tan(xrView.fov.angleDown);
+        pc.tangents[3]=std::tan(xrView.fov.angleUp);
+        constexpr float radians=3.14159265358979323846f/180.f;
+        pc.controls[0]=imguiCarousel_.panoramaYawDegrees*radians;
+        pc.controls[1]=imguiCarousel_.panoramaHorizontalDegrees*radians;
+        pc.controls[2]=imguiCarousel_.panoramaVerticalDegrees*radians;
+        pc.controls[3]=panoramaFadeActive_
+            ? std::clamp(std::chrono::duration<float>(
+                std::chrono::steady_clock::now()-panoramaFadeStart_).count()/1.5f,0.f,1.f)
+            : 1.f;
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,panoramaPipeline_);
+        vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+            panoramaPipelineLayout_,0,1,&panoramaTexture_.descriptor,0,nullptr);
+        vkCmdPushConstants(commandBuffer_,panoramaPipelineLayout_,
+            VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+        vkCmdDraw(commandBuffer_,3,1,0,0);
+    }
+#endif
 
     const float seconds = std::chrono::duration<float>(
         std::chrono::steady_clock::now() - animationStart_).count();
@@ -1782,7 +1907,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             vkCmdDraw(commandBuffer_,36,1,0,0);
         }
-        if(organicSpherePipeline_!=VK_NULL_HANDLE) {
+    if(organicSpherePipeline_!=VK_NULL_HANDLE) {
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,organicSpherePipeline_);
             for(const auto& p:state.projectiles) {
                 const auto mvp=multiply(projView,modelMatrix(
@@ -2261,6 +2386,59 @@ void XrSwapchainRenderer::render(
             }
         }
 #endif
+        if(imguiCarousel_.panoramaRescanRequest) {
+            imguiCarousel_.panoramaRescanRequest=false;
+            rescanPanoramaAssets();
+        }
+        imguiCarousel_.panoramaFiles=panoramaNames_;
+#ifdef VOXEN_WITH_GLB_IMPORT
+        // Never decode/downscale on the XR render thread. A single worker
+        // decodes at a time; rapid selection changes discard stale results.
+        if(panoramaDecodeFuture_.valid() &&
+           panoramaDecodeFuture_.wait_for(std::chrono::seconds(0))==std::future_status::ready) {
+            try {
+                auto decoded=panoramaDecodeFuture_.get();
+                if(panoramaDecodeIndex_==imguiCarousel_.panoramaSelected &&
+                   panoramaDecodeIndex_>=0) {
+                    if(loadPanoramaGpu(std::move(decoded))) {
+                        panoramaFadeStart_=std::chrono::steady_clock::now();
+                        panoramaFadeActive_=true;
+                        imguiCarousel_.panoramaStatus="Panorama ready";
+                    } else imguiCarousel_.panoramaStatus="Panorama GPU upload failed";
+                }
+            } catch(const std::exception& error) {
+                if(panoramaDecodeIndex_==imguiCarousel_.panoramaSelected)
+                    imguiCarousel_.panoramaStatus=error.what();
+            }
+            panoramaDecodeIndex_=-1;
+        }
+#endif
+        if(imguiCarousel_.panoramaSelected!=panoramaDecodedSelection_) {
+            panoramaDecodedSelection_=imguiCarousel_.panoramaSelected;
+#ifdef VOXEN_WITH_GLB_IMPORT
+            panoramaFadeActive_=false;
+            if(device_)vkDeviceWaitIdle(device_);
+            releasePanoramaGpu();
+            imguiCarousel_.panoramaStatus=panoramaDecodedSelection_<0
+                ? std::string{} : "Loading panorama in background...";
+#endif
+        }
+#ifdef VOXEN_WITH_GLB_IMPORT
+        const int selected=imguiCarousel_.panoramaSelected;
+        if(selected>=0 && static_cast<std::size_t>(selected)<panoramaNames_.size() &&
+           !panoramaTexture_.descriptor && !panoramaDecodeFuture_.valid() &&
+           panoramaDecodeIndex_<0 &&
+           imguiCarousel_.panoramaStatus=="Loading panorama in background...") {
+            const auto file=panoramaRoot_/panoramaNames_[selected];
+            VkPhysicalDeviceProperties props{};
+            vkGetPhysicalDeviceProperties(physicalDevice_,&props);
+            const int limit=static_cast<int>(std::min(props.limits.maxImageDimension2D,8192u));
+            panoramaDecodeIndex_=selected;
+            panoramaDecodeFuture_=std::async(std::launch::async,[file,limit] {
+                return decodePanoramaImage(file,limit,16ull*1024ull*1024ull);
+            });
+        }
+#endif
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         imguiCarousel_.savedSceneIds=sceneIds_;
@@ -2538,6 +2716,13 @@ void XrSwapchainRenderer::render(
 }
 
 void XrSwapchainRenderer::shutdown() noexcept {
+#ifdef VOXEN_WITH_GLB_IMPORT
+    // Join the worker before destroying renderer state and scene storage.
+    if(panoramaDecodeFuture_.valid()) {
+        panoramaDecodeFuture_.wait();
+        try { (void)panoramaDecodeFuture_.get(); } catch(...) {}
+    }
+#endif
     mp3Library_.shutdown();
     ambientMusic_.stop();
     if (device_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
@@ -2567,6 +2752,12 @@ void XrSwapchainRenderer::shutdown() noexcept {
         eye.layouts.clear();
     }
 
+#ifdef VOXEN_WITH_GLB_IMPORT
+    releasePanoramaGpu();
+#endif
+    if(panoramaPipeline_) { vkDestroyPipeline(device_,panoramaPipeline_,nullptr); panoramaPipeline_=VK_NULL_HANDLE; }
+    if(panoramaPipelineLayout_) { vkDestroyPipelineLayout(device_,panoramaPipelineLayout_,nullptr); panoramaPipelineLayout_=VK_NULL_HANDLE; }
+    if(panoramaSetLayout_) { vkDestroyDescriptorSetLayout(device_,panoramaSetLayout_,nullptr); panoramaSetLayout_=VK_NULL_HANDLE; }
     if(organicSpherePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,organicSpherePipeline_,nullptr);organicSpherePipeline_=VK_NULL_HANDLE;}
     if(torusKnotPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,torusKnotPipeline_,nullptr);torusKnotPipeline_=VK_NULL_HANDLE;}
     if(spikeBloomPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,spikeBloomPipeline_,nullptr);spikeBloomPipeline_=VK_NULL_HANDLE;}

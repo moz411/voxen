@@ -69,6 +69,21 @@ void drawCarousel(CarouselState& state) {
 
 
         case 1:
+            ImGui::SeparatorText("PANORAMAS / LOCAL PHOTOS");
+            if(ImGui::Button("USE PASSTHROUGH SOBEL")) state.panoramaSelected=-1;
+            if (ImGui::Button("RESCAN PHOTOS")) state.panoramaRescanRequest=true;
+            ImGui::TextDisabled("ADB: /sdcard/Android/data/org.voxen.xr/files/Backgrounds");
+            ImGui::BeginChild("panorama-list",ImVec2(0,100),true);
+            for (int i=0;i<static_cast<int>(state.panoramaFiles.size());++i)
+                if(ImGui::Selectable(state.panoramaFiles[i].c_str(),state.panoramaSelected==i))
+                    state.panoramaSelected=i;
+            ImGui::EndChild();
+            if(!state.panoramaStatus.empty()) ImGui::TextWrapped("%s",state.panoramaStatus.c_str());
+            ImGui::SliderFloat("Panorama yaw",&state.panoramaYawDegrees,-180.f,180.f,"%.0f deg");
+            ImGui::SliderFloat("Horizontal coverage",&state.panoramaHorizontalDegrees,60.f,360.f,"%.0f deg");
+            ImGui::SliderFloat("Vertical coverage",&state.panoramaVerticalDegrees,30.f,180.f,"%.0f deg");
+
+            ImGui::Separator();
             ImGui::Checkbox("Wall effect",&state.liquidRoom);
             static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","SEASCAPE","OCTGRAMS"};
             ImGui::Checkbox("Different shader per wall",&state.cycleWallShaders);

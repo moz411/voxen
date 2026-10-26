@@ -10,12 +10,12 @@
 
     <application
         android:allowBackup="false"
-        android:hasCode="false"
+        android:hasCode="true"
         android:label="Voxen">
         <meta-data android:name="com.oculus.handtracking.version" android:value="V2.0" />
         <meta-data android:name="com.oculus.handtracking.frequency" android:value="HIGH" />
         <activity
-            android:name="android.app.NativeActivity"
+            android:name="org.voxen.xr.VoxenActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard"
             android:excludeFromRecents="true"
             android:exported="true"
