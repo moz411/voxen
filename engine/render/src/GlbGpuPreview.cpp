@@ -250,7 +250,13 @@ bool XrSwapchainRenderer::loadPanoramaGpu(const std::filesystem::path& file) {
     GlbTexture incoming{};
     VkDescriptorPool pool=VK_NULL_HANDLE;
     try {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenPanorama","Loading %s",file.filename().string().c_str());
+#endif
         auto decoded=decodePanoramaImage(file);
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenPanorama","Decoded %dx%d",decoded.width,decoded.height);
+#endif
         voxen::scene::gltf::EmbeddedImage image;
         image.width=decoded.width;
         image.height=decoded.height;
@@ -265,11 +271,17 @@ bool XrSwapchainRenderer::loadPanoramaGpu(const std::filesystem::path& file) {
                       pool,image,incoming.image,incoming.memory,incoming.view,
                       incoming.sampler,incoming.descriptor);
         checked(vkDeviceWaitIdle(device_),"Panorama replace GPU texture");
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenPanorama","GPU upload finished");
+#endif
         releasePanoramaGpu();
         panoramaTexture_=incoming;
         panoramaDescriptorPool_=pool;
         return true;
-    } catch(const std::exception&) {
+    } catch(const std::exception& e) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_ERROR,"VoxenPanorama","Load failed: %s",e.what());
+#endif
         if(incoming.sampler)vkDestroySampler(device_,incoming.sampler,nullptr);
         if(incoming.view)vkDestroyImageView(device_,incoming.view,nullptr);
         if(incoming.image)vkDestroyImage(device_,incoming.image,nullptr);
