@@ -43,6 +43,7 @@
 #include "voxenAttractorFrag.spv.hpp"
 #include "fractalVert.spv.hpp"
 #include "laserFrag.spv.hpp"
+#include "handOutlineFrag.spv.hpp"
 #include "liquidRoomFrag.spv.hpp"
 #include "solidWallFrag.spv.hpp"
 #include "mandelbulbLitVert.spv.hpp"
@@ -1207,7 +1208,7 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &organicSpherePipeline_ || &out == &torusKnotPipeline_ || &out == &spikeBloomPipeline_ || &out == &jellyfishPipeline_ || &out == &earthwormPipeline_ || &out == &cloudPipeline_ || &out == &metaballsPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &organicSpherePipeline_
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &organicSpherePipeline_ || &out == &torusKnotPipeline_ || &out == &spikeBloomPipeline_ || &out == &jellyfishPipeline_ || &out == &earthwormPipeline_ || &out == &cloudPipeline_ || &out == &metaballsPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &organicSpherePipeline_
 #ifdef VOXEN_WITH_IMGUI
         || &out == &imguiPanelPipeline_
 #endif
@@ -1239,7 +1240,7 @@ void XrSwapchainRenderer::createPipeline() {
         if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &seascapePipeline_ || &out == &octgramsPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &seascapePipeline_ || &out == &octgramsPipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -1298,6 +1299,7 @@ void XrSwapchainRenderer::createPipeline() {
 #endif
     buildPipeline(voxenAttractorVert, voxenAttractorVertSize, voxenAttractorFrag, voxenAttractorFragSize, voxenAttractorPipeline_);
     buildPipeline(cubeVert, cubeVertSize, laserFrag, laserFragSize, laserPipeline_);
+    buildPipeline(cubeVert, cubeVertSize, handOutlineFrag, handOutlineFragSize, handOutlinePipeline_);
     buildPipeline(fractalVert, fractalVertSize, liquidRoomFrag, liquidRoomFragSize, liquidRoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, solidWallFrag, solidWallFragSize, solidWallPipeline_);
     buildPipeline(meshWireVert, meshWireVertSize, meshWireFrag, meshWireFragSize, meshWirePipeline_);
@@ -1969,9 +1971,67 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
         }
     }
-    // Gallery hands are tracked for pinches and UI interaction, but no
-    // procedural fire or fingertip spheres are rendered.
-    // A skinned XR_FB_hand_tracking_mesh renderer will be added separately.
+    // Cheap optical skeleton: thin white translucent finger segments and palm.
+    // This is a visual approximation, not Meta's system hand mesh. No buffers
+    // allocated per frame, no gesture click actions, Gallery scene only.
+    if(immersiveSceneActive_ && !editingMode() &&
+       handOutlinePipeline_!=VK_NULL_HANDLE) {
+        constexpr std::array<std::array<int,5>,5> chains{{
+            {{XR_HAND_JOINT_WRIST_EXT,XR_HAND_JOINT_THUMB_METACARPAL_EXT,
+              XR_HAND_JOINT_THUMB_PROXIMAL_EXT,XR_HAND_JOINT_THUMB_DISTAL_EXT,
+              XR_HAND_JOINT_THUMB_TIP_EXT}},
+            {{XR_HAND_JOINT_WRIST_EXT,XR_HAND_JOINT_INDEX_METACARPAL_EXT,
+              XR_HAND_JOINT_INDEX_PROXIMAL_EXT,XR_HAND_JOINT_INDEX_DISTAL_EXT,
+              XR_HAND_JOINT_INDEX_TIP_EXT}},
+            {{XR_HAND_JOINT_WRIST_EXT,XR_HAND_JOINT_MIDDLE_METACARPAL_EXT,
+              XR_HAND_JOINT_MIDDLE_PROXIMAL_EXT,XR_HAND_JOINT_MIDDLE_DISTAL_EXT,
+              XR_HAND_JOINT_MIDDLE_TIP_EXT}},
+            {{XR_HAND_JOINT_WRIST_EXT,XR_HAND_JOINT_RING_METACARPAL_EXT,
+              XR_HAND_JOINT_RING_PROXIMAL_EXT,XR_HAND_JOINT_RING_DISTAL_EXT,
+              XR_HAND_JOINT_RING_TIP_EXT}},
+            {{XR_HAND_JOINT_WRIST_EXT,XR_HAND_JOINT_LITTLE_METACARPAL_EXT,
+              XR_HAND_JOINT_LITTLE_PROXIMAL_EXT,XR_HAND_JOINT_LITTLE_DISTAL_EXT,
+              XR_HAND_JOINT_LITTLE_TIP_EXT}}
+        }};
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,handOutlinePipeline_);
+        auto drawSegment=[&](const XrVector3f& a,const XrVector3f& b,float thickness) {
+            const float dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z;
+            const float len=std::sqrt(dx*dx+dy*dy+dz*dz);
+            if(len<0.002f || len>0.20f)return;
+            const float ux=dx/len,uy=dy/len,uz=dz/len;
+            const float rx=std::fabs(uy)<0.95f?0.f:1.f;
+            const float ry=std::fabs(uy)<0.95f?1.f:0.f;
+            const float sx=ry*uz,sy=-rx*uz,sz=rx*uy-ry*ux;
+            const float sl=std::sqrt(sx*sx+sy*sy+sz*sz);
+            if(sl<1e-5f)return;
+            const float nx=sx/sl,ny=sy/sl,nz=sz/sl;
+            const float tx=uy*nz-uz*ny,ty=uz*nx-ux*nz,tz=ux*ny-uy*nx;
+            Mat4 model=modelMatrix((a.x+b.x)*0.5f,(a.y+b.y)*0.5f,1.f,
+                                   (a.z+b.z)*0.5f,0.f);
+            model.m[0]=nx*thickness;model.m[1]=ny*thickness;model.m[2]=nz*thickness;
+            model.m[4]=ux*len;model.m[5]=uy*len;model.m[6]=uz*len;
+            model.m[8]=tx*thickness;model.m[9]=ty*thickness;model.m[10]=tz*thickness;
+            ProceduralPushConstants pc{multiply(projView,model),{0.f,0.f,0.f,0.f}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,36,1,0,0);
+        };
+        for(const auto& hand:holographicHands_) {
+            if(!hand.tracked)continue;
+            for(const auto& chain:chains) {
+                for(int i=0;i<4;++i)
+                    drawSegment(hand.joints[chain[i]],hand.joints[chain[i+1]],0.012f);
+            }
+            // Connect knuckles into a visible translucent palm outline.
+            constexpr std::array<int,5> knuckles{{
+                XR_HAND_JOINT_THUMB_METACARPAL_EXT,XR_HAND_JOINT_INDEX_METACARPAL_EXT,
+                XR_HAND_JOINT_MIDDLE_METACARPAL_EXT,XR_HAND_JOINT_RING_METACARPAL_EXT,
+                XR_HAND_JOINT_LITTLE_METACARPAL_EXT
+            }};
+            for(int i=0;i<4;++i)
+                drawSegment(hand.joints[knuckles[i]],hand.joints[knuckles[i+1]],0.014f);
+        }
+    }
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE && voxenSpheresPipeline_!=VK_NULL_HANDLE &&
        voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE && torusKnotPipeline_!=VK_NULL_HANDLE && spikeBloomPipeline_!=VK_NULL_HANDLE && jellyfishPipeline_!=VK_NULL_HANDLE && earthwormPipeline_!=VK_NULL_HANDLE && cloudPipeline_!=VK_NULL_HANDLE && metaballsPipeline_!=VK_NULL_HANDLE){
         auto paintPlasma=[&](const PlasmaVoxen& v){
@@ -2828,6 +2888,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
     if (solidWallPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,solidWallPipeline_,nullptr); solidWallPipeline_=VK_NULL_HANDLE; }
     if (meshWirePipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,meshWirePipeline_,nullptr); meshWirePipeline_=VK_NULL_HANDLE; }
+    if (handOutlinePipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,handOutlinePipeline_,nullptr); handOutlinePipeline_=VK_NULL_HANDLE; }
     if(meshDepthPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,meshDepthPipeline_,nullptr);meshDepthPipeline_=VK_NULL_HANDLE;}
     if(matrixRainPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,matrixRainPipeline_,nullptr);matrixRainPipeline_=VK_NULL_HANDLE;}
     if(heppGlowPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,heppGlowPipeline_,nullptr);heppGlowPipeline_=VK_NULL_HANDLE;}
