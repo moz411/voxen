@@ -179,6 +179,7 @@ private:
 
     std::filesystem::path panoramaRoot_;
     std::vector<std::string> panoramaNames_;
+    int panoramaDecodedSelection_=-1;
     voxen::audio::AmbientMusic ambientMusic_{};
     voxen::audio::Mp3Library mp3Library_{};
     ::XrSession session_ = XR_NULL_HANDLE;
