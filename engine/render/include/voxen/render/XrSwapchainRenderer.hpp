@@ -276,6 +276,7 @@ private:
     VkPipeline rainbowSpiralPipeline_ = VK_NULL_HANDLE;
     VkPipeline mobiusSpiralPipeline_ = VK_NULL_HANDLE;
     VkPipeline thereminWavePipeline_ = VK_NULL_HANDLE;
+    VkPipeline geometricKaleidoscopePipeline_ = VK_NULL_HANDLE;
     VkPipeline mandelbrotZoomPipeline_ = VK_NULL_HANDLE;
     VkBuffer meshWireBuffer_ = VK_NULL_HANDLE;
     VkBuffer meshDepthBuffer_ = VK_NULL_HANDLE;
