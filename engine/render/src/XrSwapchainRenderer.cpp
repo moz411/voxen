@@ -464,6 +464,8 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
     immersiveSceneActive_=false;
+    if(victoryExitAt_.time_since_epoch().count()!=0 && immersivePortalId_)
+        suppressedPortalId_=immersivePortalId_;
     victoryExitAt_={};
     spikeProjectiles_.clear();
     spikeImpacts_.clear();
@@ -477,8 +479,6 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     imguiCarousel_.panoramaSelected=-1;
     panoramaFadeActive_=false;
 #endif
-    if(victoryExitAt_.time_since_epoch().count()!=0 && immersivePortalId_)
-        suppressedPortalId_=immersivePortalId_;
     immersivePortalId_.reset();
     galleryExitSince_={};
     galleryEntryArmed_=false; // do not re-enter until physically leaving the ring
