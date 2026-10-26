@@ -68,6 +68,7 @@
 #include "rainbowSpiralFrag.spv.hpp"
 #include "mobiusSpiralFrag.spv.hpp"
 #include "thereminWaveFrag.spv.hpp"
+#include "geometricKaleidoscopeFrag.spv.hpp"
 #include "mandelbrotZoomFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "galleryPortalFrag.spv.hpp"
@@ -1245,7 +1246,7 @@ void XrSwapchainRenderer::createPipeline() {
         if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &seascapePipeline_ || &out == &octgramsPipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &seascapePipeline_ || &out == &octgramsPipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -1320,6 +1321,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, rainbowSpiralFrag, rainbowSpiralFragSize, rainbowSpiralPipeline_);
     buildPipeline(fractalVert, fractalVertSize, mobiusSpiralFrag, mobiusSpiralFragSize, mobiusSpiralPipeline_);
     buildPipeline(fractalVert, fractalVertSize, thereminWaveFrag, thereminWaveFragSize, thereminWavePipeline_);
+    buildPipeline(fractalVert, fractalVertSize, geometricKaleidoscopeFrag, geometricKaleidoscopeFragSize, geometricKaleidoscopePipeline_);
     buildPipeline(fractalVert, fractalVertSize, mandelbrotZoomFrag, mandelbrotZoomFragSize, mandelbrotZoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
     buildPipeline(fractalVert, fractalVertSize, galleryPortalFrag, galleryPortalFragSize, galleryPortalPipeline_);
@@ -1767,7 +1769,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
     if (liquidEnabled && (wallShaderMode!=0 || liquidOpacity>0.001f) &&
-        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && midnightRidePipeline_ != VK_NULL_HANDLE && seascapePipeline_ != VK_NULL_HANDLE && octgramsPipeline_ != VK_NULL_HANDLE && rainbowSpiralPipeline_ != VK_NULL_HANDLE && mobiusSpiralPipeline_ != VK_NULL_HANDLE && thereminWavePipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE) {
+        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && midnightRidePipeline_ != VK_NULL_HANDLE && seascapePipeline_ != VK_NULL_HANDLE && octgramsPipeline_ != VK_NULL_HANDLE && rainbowSpiralPipeline_ != VK_NULL_HANDLE && mobiusSpiralPipeline_ != VK_NULL_HANDLE && thereminWavePipeline_ != VK_NULL_HANDLE && geometricKaleidoscopePipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE) {
         // Stable slots are based on scene anchor IDs, not eye-specific
         // distance ordering. Both eyes therefore show the same effect per wall.
         std::vector<uint64_t> shaderIds;
@@ -1778,7 +1780,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         std::sort(shaderIds.begin(),shaderIds.end());
         shaderIds.erase(std::unique(shaderIds.begin(),shaderIds.end()),shaderIds.end());
         const int cycleStep=static_cast<int>(std::floor(seconds / wallCycleSeconds));
-        constexpr int demoModes[]={0,2,3,4,5,6,7,8,9,10,11,12}; // omit solid diagnostic
+        constexpr int demoModes[]={0,2,3,4,5,6,7,8,9,10,11,12,13}; // omit solid diagnostic
         auto choosePipeline=[&](int mode)->VkPipeline {
             switch(mode){
                 case 1:return solidWallPipeline_;
@@ -1793,6 +1795,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 case 10:return rainbowSpiralPipeline_;
                 case 11:return mobiusSpiralPipeline_;
                 case 12:return thereminWavePipeline_;
+                case 13:return geometricKaleidoscopePipeline_;
                 default:return liquidRoomPipeline_;
             }
         };
@@ -1847,7 +1850,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             if(cycleWallShaders){
                 auto it=std::lower_bound(shaderIds.begin(),shaderIds.end(),surface->id);
                 const auto rank=static_cast<int>(it-shaderIds.begin());
-                activeMode=demoModes[(rank+cycleStep)%12];
+                activeMode=demoModes[(rank+cycleStep)%13];
             }
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,choosePipeline(activeMode));
             const Mat4 wallMvp=multiply(projView,surfaceModel(*surface));
@@ -2913,6 +2916,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(rainbowSpiralPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,rainbowSpiralPipeline_,nullptr);rainbowSpiralPipeline_=VK_NULL_HANDLE;}
     if(mobiusSpiralPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,mobiusSpiralPipeline_,nullptr);mobiusSpiralPipeline_=VK_NULL_HANDLE;}
     if(thereminWavePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,thereminWavePipeline_,nullptr);thereminWavePipeline_=VK_NULL_HANDLE;}
+    if(geometricKaleidoscopePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,geometricKaleidoscopePipeline_,nullptr);geometricKaleidoscopePipeline_=VK_NULL_HANDLE;}
     if(mandelbrotZoomPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,mandelbrotZoomPipeline_,nullptr);mandelbrotZoomPipeline_=VK_NULL_HANDLE;}
     if(meshDepthBuffer_!=VK_NULL_HANDLE){vkDestroyBuffer(device_,meshDepthBuffer_,nullptr);meshDepthBuffer_=VK_NULL_HANDLE;}
     if(meshDepthMemory_!=VK_NULL_HANDLE){vkFreeMemory(device_,meshDepthMemory_,nullptr);meshDepthMemory_=VK_NULL_HANDLE;}
