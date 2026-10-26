@@ -427,6 +427,9 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
     panelAimed_=false;
 #endif
     immersiveSceneActive_=true;
+    victoryExitAt_={};
+    spikeProjectiles_.clear();
+    spikeImpacts_.clear();
     return true;
 }
 
@@ -443,6 +446,9 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
     immersiveSceneActive_=false;
+    victoryExitAt_={};
+    spikeProjectiles_.clear();
+    spikeImpacts_.clear();
     mechanicalCannonPreview_=false;
 #ifdef VOXEN_WITH_IMGUI
     imguiCarousel_.liquidRoom=false;
@@ -2325,8 +2331,19 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
             if(d2>radius*radius)continue;
             const bool lastSize=v.scale<=0.065f;
             spikeImpacts_.push_back({v.position,0.f,std::max(0.12f,v.scale*1.3f),lastSize});
-            if(lastSize)voxens_.erase(it);
-            else {
+            if(lastSize) {
+                voxens_.erase(it);
+                // Only a projectile's last kill triggers automatic scene exit.
+                // Keep the final explosion visible before returning to Gallery.
+                if(voxens_.empty() && victoryExitAt_.time_since_epoch().count()==0) {
+                    victoryExitAt_=std::chrono::steady_clock::now()+
+                        std::chrono::milliseconds(850);
+#ifdef __ANDROID__
+                    __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
+                        "VICTORY last Voxen destroyed, gallery exit in 850ms");
+#endif
+                }
+            } else {
                 it->scale=std::max(0.06f,it->scale*0.72f);
                 it->lodLevel=-1;
             }
@@ -2905,6 +2922,10 @@ void XrSwapchainRenderer::render(
         0.5f*(views[0].pose.position.y+views[1].pose.position.y),
         0.5f*(views[0].pose.position.z+views[1].pose.position.z)
     };
+    // Final impact blooms for 0.5s; the short hold is the victory transition.
+    // Reuse the normal leave path to unload scene audio/objects and restore Sobel.
+    if(immersiveSceneActive_ && victoryExitAt_.time_since_epoch().count()!=0 &&
+       std::chrono::steady_clock::now()>=victoryExitAt_)leaveImmersiveScene();
     updateGalleryWalkIn(center);
     for(auto& v:voxens_){
         if(v.preset!=2)continue;
