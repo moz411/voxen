@@ -2151,8 +2151,9 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
         const float radius=std::max(0.025f,v.scale*0.5f);
         // Hand collision proxies: one palm sphere and three capsules per finger.
         // All tests run on the CPU physics step; no hand mesh GPU readback.
-        // Never infer collisions from untracked hands.
-        if(!carouselVisible()) {
+        // Only interact with hands inside a scene entered from Gallery.
+        // Gallery overview and Edit mode never activate hand collisions.
+        if(immersiveSceneActive_ && !editingMode()) {
             constexpr float palmRadius=0.085f;
             constexpr std::array<std::array<int,4>,5> fingerChains{{
                 {{XR_HAND_JOINT_THUMB_METACARPAL_EXT,XR_HAND_JOINT_THUMB_PROXIMAL_EXT,
