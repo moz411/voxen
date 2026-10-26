@@ -16,14 +16,14 @@ Branch: `feature/panorama-backgrounds`.
 - Passing polled paths from the JNI bridge into the renderer's validated texture loader.
 - Vulkan texture upload and GPU lifetime management (CPU decode/validation implemented).
 - Connect staged panorama shaders to the Vulkan pipeline and per-eye matrices; implement improved sky/ground reconstruction and edge handling.
-- Scene serialization and gallery restoration of selected panorama.
+- GPU-backed activation and testing of restored panorama (v4 scene serialization/restoration of filename and angles implemented).
 - Headset test and build verification.
 
 ## Verification needed
 - Android Gradle/NDK compilation, immersive SAF activity transition, import and rescan on a Quest 3.
 - Selecting a filename now attempts bounded CPU JPEG/PNG decode and displays dimensions or an error; it does not activate the image yet.
-- Panorama vertex/fragment GLSL shaders are added to the CMake shader compilation list, but no graphics pipeline or texture descriptors are bound yet.
-- UI yaw and horizontal/vertical coverage controls are available but not yet connected to a GPU draw.
+- Panorama vertex/fragment GLSL shaders are compiled via CMake; Vulkan pipeline and sampler descriptor layout creation/destruction are implemented. Texture allocation, descriptor sets, per-eye uniforms and draw are not yet implemented.
+- UI yaw and horizontal/vertical coverage controls persist with the selected filename in VOXEN_RUNTIME v4; v1-v3 remain readable. They are not yet connected to a GPU draw.
 
 ## Implementation caveat
 Launching Android's 2D system picker from an immersive OpenXR session may require
