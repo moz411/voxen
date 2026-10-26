@@ -1853,9 +1853,6 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             vkCmdDraw(commandBuffer_,36,1,0,0);
         }
-        if(panoramaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,panoramaPipeline_,nullptr);panoramaPipeline_=VK_NULL_HANDLE;}
-    if(panoramaPipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,panoramaPipelineLayout_,nullptr);panoramaPipelineLayout_=VK_NULL_HANDLE;}
-    if(panoramaSetLayout_!=VK_NULL_HANDLE){vkDestroyDescriptorSetLayout(device_,panoramaSetLayout_,nullptr);panoramaSetLayout_=VK_NULL_HANDLE;}
     if(organicSpherePipeline_!=VK_NULL_HANDLE) {
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,organicSpherePipeline_);
             for(const auto& p:state.projectiles) {
@@ -2664,6 +2661,9 @@ void XrSwapchainRenderer::shutdown() noexcept {
         eye.layouts.clear();
     }
 
+    if(panoramaPipeline_) { vkDestroyPipeline(device_,panoramaPipeline_,nullptr); panoramaPipeline_=VK_NULL_HANDLE; }
+    if(panoramaPipelineLayout_) { vkDestroyPipelineLayout(device_,panoramaPipelineLayout_,nullptr); panoramaPipelineLayout_=VK_NULL_HANDLE; }
+    if(panoramaSetLayout_) { vkDestroyDescriptorSetLayout(device_,panoramaSetLayout_,nullptr); panoramaSetLayout_=VK_NULL_HANDLE; }
     if(organicSpherePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,organicSpherePipeline_,nullptr);organicSpherePipeline_=VK_NULL_HANDLE;}
     if(torusKnotPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,torusKnotPipeline_,nullptr);torusKnotPipeline_=VK_NULL_HANDLE;}
     if(spikeBloomPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,spikeBloomPipeline_,nullptr);spikeBloomPipeline_=VK_NULL_HANDLE;}
