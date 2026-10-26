@@ -22,8 +22,8 @@ void drawCarousel(CarouselState& state) {
         case 0:
             ImGui::TextUnformatted("VOXENS / PROCEDURAL PRESETS");
             ImGui::Separator();
-            static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH","EARTHWORM","CLOUD","METABALLS"};
-            if(ImGui::Combo("Voxen preset",&state.voxenPreset,presets,11))state.voxenPaintEnabled=true;
+            static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH","EARTHWORM","CLOUD","METABALLS","TENTACLE CREATURE"};
+            if(ImGui::Combo("Voxen preset",&state.voxenPreset,presets,12))state.voxenPaintEnabled=true;
             ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : state.voxenPreset==4 ? "Animated deforming 3D sphere" : state.voxenPreset==5 ? "Twisting torus knot" : state.voxenPreset==6 ? "Spiky bloom" : state.voxenPreset==7 ? "Jellyfish bell" : "Animated 12-segment earthworm");
             if(state.voxenPreset==2){
                 ImGui::Checkbox("Experimental 3D lighting",&state.mandelbulbLighting);
