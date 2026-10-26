@@ -313,6 +313,7 @@ private:
     VkPipeline torusKnotPipeline_ = VK_NULL_HANDLE;
     VkPipeline spikeBloomPipeline_ = VK_NULL_HANDLE;
     VkPipeline jellyfishPipeline_ = VK_NULL_HANDLE;
+    VkPipeline tentacleCreaturePipeline_ = VK_NULL_HANDLE;
     VkPipeline earthwormPipeline_ = VK_NULL_HANDLE;
     VkPipeline cloudPipeline_ = VK_NULL_HANDLE;
     VkPipeline metaballsPipeline_ = VK_NULL_HANDLE;
