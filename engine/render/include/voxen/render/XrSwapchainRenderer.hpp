@@ -21,6 +21,8 @@
 #include <voxen/scene/PortalManager.hpp>
 #include <memory>
 #include <filesystem>
+#include <future>
+#include <voxen/render/PanoramaImage.hpp>
 #ifdef VOXEN_WITH_IMGUI
 #include <voxen/ui/CarouselUi.hpp>
 #include <voxen/ui/ImGuiSurface.hpp>
@@ -216,7 +218,11 @@ private:
     std::vector<GlbTexture> glbTextures_;
     GlbTexture panoramaTexture_{};
     VkDescriptorPool panoramaDescriptorPool_=VK_NULL_HANDLE;
-    bool loadPanoramaGpu(const std::filesystem::path& file);
+    bool loadPanoramaGpu(PanoramaImage&& decoded);
+    std::future<PanoramaImage> panoramaDecodeFuture_;
+    int panoramaDecodeIndex_=-1;
+    bool panoramaFadeActive_=false;
+    std::chrono::steady_clock::time_point panoramaFadeStart_{};
     void releasePanoramaGpu() noexcept;
     std::filesystem::path pendingDemoGlb_;
     std::filesystem::path glbAssetRoot_;
