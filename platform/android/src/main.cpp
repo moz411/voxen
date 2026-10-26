@@ -21,6 +21,22 @@ void logError(const char* message) {
 // Android's permission prompt is asynchronous. Never assume that a
 // manifest declaration implies the user granted Meta spatial data access.
 // Poll the Android SAF import queue without holding references to Activity JNI objects.
+void openPanoramaPicker(android_app* app) {
+    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) return;
+    JNIEnv* env=nullptr;
+    JavaVM* vm=app->activity->vm;
+    const bool attached=vm->GetEnv(reinterpret_cast<void**>(&env),JNI_VERSION_1_6)!=JNI_OK;
+    if(attached && vm->AttachCurrentThread(&env,nullptr)!=JNI_OK)return;
+    jclass cls=env->GetObjectClass(app->activity->clazz);
+    if(cls) {
+        jmethodID method=env->GetMethodID(cls,"openPanoramaPicker","()V");
+        if(method && !env->ExceptionCheck())
+            env->CallVoidMethod(app->activity->clazz,method);
+        env->DeleteLocalRef(cls);
+    }
+    if(env->ExceptionCheck()) {env->ExceptionDescribe();env->ExceptionClear();}
+    if(attached)vm->DetachCurrentThread();
+}
 void pollPanoramaImports(android_app* app) {
     if (!app || !app->activity || !app->activity->vm || !app->activity->clazz) return;
     JNIEnv* env = nullptr;
@@ -188,6 +204,7 @@ void android_main(android_app* app) {
 
             running = session.pollEvents();
             pollPanoramaImports(app);
+            if(renderer.consumePanoramaImportRequest())openPanoramaPicker(app);
             // Poll the permission state after Android handles the system dialog.
             // Re-request spatial discovery once the user grants access.
             if(!sceneGranted && (++permissionPollCounter % 120u)==0u &&
