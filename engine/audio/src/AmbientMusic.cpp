@@ -45,6 +45,22 @@ aaudio_data_callback_result_t AmbientMusic::callback(AAudioStream*,void* userdat
     const int track=self.track_.load(std::memory_order_relaxed);
     const float gain=self.playing_.load(std::memory_order_relaxed)?
         std::clamp(self.volume_.load(std::memory_order_relaxed),0.f,1.f)*0.24f:0.f;
+    // Consume at most a few events/callback; no allocations or blocking.
+    auto spawn=[&](int type,uint32_t count) {
+        for(uint32_t j=0;j<std::min(count,6u);++j) {
+            for(auto& e:self.effects_) {
+                if(e.remaining>0)continue;
+                e.type=type;
+                const float seconds=type==0?0.095f:(type==1?0.16f:0.48f);
+                e.total=e.remaining=std::max(1,int(seconds*self.sampleRate_));
+                e.phase=0.f;
+                break;
+            }
+        }
+    };
+    spawn(0,self.shots_.exchange(0,std::memory_order_relaxed));
+    spawn(1,self.hits_.exchange(0,std::memory_order_relaxed));
+    spawn(2,self.explosions_.exchange(0,std::memory_order_relaxed));
     constexpr double tau=6.283185307179586;
     const double step=1.0/std::max(1,self.sampleRate_);
     for(int32_t i=0;i<numFrames;i++){
@@ -72,7 +88,26 @@ aaudio_data_callback_result_t AmbientMusic::callback(AAudioStream*,void* userdat
                 float(0.3*chirp*std::sin(tau*(950.+150.*std::sin(cycle*60.))*t))+
                 float(0.12*std::sin(tau*174.6*t));
         }
-        const float sample=std::clamp(sound*gain,-0.8f,0.8f);
+        float effect=0.f;
+        for(auto& e:self.effects_) {
+            if(e.remaining<=0)continue;
+            const float progress=1.f-float(e.remaining)/float(e.total);
+            const float duration=float(e.total)*float(step);
+            const float envelope=(1.f-progress)*(1.f-progress);
+            // Distinct procedural timbres: rising laser, metallic hit, noisy boom.
+            const float freq=e.type==0?(640.f+930.f*progress):
+                e.type==1?(440.f-270.f*progress):(145.f-112.f*progress);
+            e.phase+=float(tau)*freq*float(step);
+            if(e.phase>float(tau))e.phase-=float(tau);
+            const float tonal=std::sin(e.phase);
+            const float click=std::sin(e.phase*2.77f);
+            const float value=e.type==0?(0.78f*tonal+0.22f*click):
+                e.type==1?(0.46f*tonal+0.54f*n):
+                           (0.40f*tonal+0.60f*n);
+            effect+=value*envelope*(e.type==2?0.21f:0.13f);
+            --e.remaining;
+        }
+        const float sample=std::clamp(sound*gain+effect,-0.85f,0.85f);
         out[2*i]=sample;
         out[2*i+1]=sample;
         self.phase_+=step;

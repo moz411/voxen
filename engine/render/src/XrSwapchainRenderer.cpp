@@ -445,6 +445,8 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
     panelAimed_=false;
 #endif
     immersiveSceneActive_=true;
+    galleryRevealStarted_={};
+    transitionWhiteCoverage_=0.f;
     victoryExitAt_={};
     spikeProjectiles_.clear();
     spikeImpacts_.clear();
@@ -466,6 +468,8 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     immersiveSceneActive_=false;
     if(victoryExitAt_.time_since_epoch().count()!=0 && immersivePortalId_)
         suppressedPortalId_=immersivePortalId_;
+    if(victoryExitAt_.time_since_epoch().count()!=0)
+        galleryRevealStarted_=std::chrono::steady_clock::now();
     victoryExitAt_={};
     spikeProjectiles_.clear();
     spikeImpacts_.clear();
@@ -2228,6 +2232,28 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,36,1,0,0);
     }
 #endif
+    // Stereo-consistent white wipe. Use attachment clears within the existing
+    // render pass (no extra shader/pipeline or GPU allocation). White coverage
+    // grows bottom-to-top, then recedes top-to-bottom in the Gallery.
+    // Clear alpha=1 to mask passthrough while the white layer is present.
+    if(transitionWhiteCoverage_>0.f) {
+        const auto fullHeight=static_cast<uint32_t>(eye.height);
+        const uint32_t covered=std::min(fullHeight,
+            static_cast<uint32_t>(std::ceil(transitionWhiteCoverage_*float(fullHeight))));
+        VkClearAttachment attachment{};
+        attachment.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
+        attachment.colorAttachment=0;
+        attachment.clearValue.color.float32[0]=1.f;
+        attachment.clearValue.color.float32[1]=1.f;
+        attachment.clearValue.color.float32[2]=1.f;
+        attachment.clearValue.color.float32[3]=1.f;
+        VkClearRect rectangle{};
+        rectangle.rect.offset={0,static_cast<int32_t>(fullHeight-covered)};
+        rectangle.rect.extent={static_cast<uint32_t>(eye.width),covered};
+        rectangle.baseArrayLayer=0;
+        rectangle.layerCount=1;
+        vkCmdClearAttachments(commandBuffer_,1,&attachment,1,&rectangle);
+    }
     vkCmdEndRenderPass(commandBuffer_);
     if (gpuTimestampPool_ != VK_NULL_HANDLE)
         vkCmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpuTimestampPool_, 1);
@@ -2345,6 +2371,7 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
         p.velocity={shotX*5.5f,shotY*5.5f,shotZ*5.5f};
         p.radius=0.045f;
         spikeProjectiles_.push_back(p);
+        ambientMusic_.triggerEffect(0);
         handShotCooldown_[i]=0.90f;
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
@@ -2383,16 +2410,17 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
             if(d2>radius*radius)continue;
             const bool lastSize=v.scale<=0.1801f;
             spikeImpacts_.push_back({v.position,0.f,std::max(0.12f,v.scale*1.3f),lastSize});
+            ambientMusic_.triggerEffect(lastSize?2:1);
             if(lastSize) {
                 voxens_.erase(it);
                 // Only a projectile's last kill triggers automatic scene exit.
                 // Keep the final explosion visible before returning to Gallery.
                 if(voxens_.empty() && victoryExitAt_.time_since_epoch().count()==0) {
                     victoryExitAt_=std::chrono::steady_clock::now()+
-                        std::chrono::milliseconds(850);
+                        std::chrono::milliseconds(1150);
 #ifdef __ANDROID__
                     __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
-                        "VICTORY last Voxen destroyed, gallery exit in 850ms");
+                        "VICTORY last Voxen destroyed, white wipe then gallery in 1150ms");
 #endif
                 }
             } else {
@@ -3004,6 +3032,20 @@ void XrSwapchainRenderer::render(
         0.5f*(views[0].pose.position.z+views[1].pose.position.z)
     };
     viewerPosition_={center.x,center.y,center.z};
+    // Compute the spatial white wipe once per stereo frame. 550 ms of final
+    // explosion, followed by a 600 ms white sweep; reverse it over Gallery.
+    transitionWhiteCoverage_=0.f;
+    const auto transitionNow=std::chrono::steady_clock::now();
+    if(immersiveSceneActive_ && victoryExitAt_.time_since_epoch().count()!=0) {
+        const float remaining=std::chrono::duration<float>(
+            victoryExitAt_-transitionNow).count();
+        transitionWhiteCoverage_=std::clamp(1.f-remaining/0.60f,0.f,1.f);
+    } else if(galleryRevealStarted_.time_since_epoch().count()!=0) {
+        const float elapsed=std::chrono::duration<float>(
+            transitionNow-galleryRevealStarted_).count();
+        if(elapsed>=0.65f)galleryRevealStarted_={};
+        else transitionWhiteCoverage_=1.f-std::clamp(elapsed/0.65f,0.f,1.f);
+    }
     // Final impact blooms for 0.5s; the short hold is the victory transition.
     // Reuse the normal leave path to unload scene audio/objects and restore Sobel.
     if(immersiveSceneActive_ && victoryExitAt_.time_since_epoch().count()!=0 &&

@@ -349,6 +349,8 @@ private:
     std::vector<SpikeProjectile> spikeProjectiles_;
     std::vector<SpikeImpact> spikeImpacts_;
     std::chrono::steady_clock::time_point victoryExitAt_{};
+    std::chrono::steady_clock::time_point galleryRevealStarted_{};
+    float transitionWhiteCoverage_=0.f; // identical for both eyes per frame
     std::array<bool,2> handWasClosed_{};
     std::array<float,2> thumbPeakExtension_{};
     std::array<bool,2> indexExtensionArmed_{};
