@@ -2248,6 +2248,7 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
         spikeProjectiles_.clear();
         spikeImpacts_.clear();
         handWasClosed_.fill(false);
+        indexExtensionArmed_.fill(false);
         thumbPeakExtension_.fill(0.f);
         handShotCooldown_.fill(0.f);
         return;
@@ -2259,7 +2260,7 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
     for(size_t i=0;i<2;++i) {
         handShotCooldown_[i]=std::max(0.f,handShotCooldown_[i]-dt);
         const auto& hand=holographicHands_[i];
-        if(!hand.tracked){handWasClosed_[i]=false;continue;}
+        if(!hand.tracked){handWasClosed_[i]=false;indexExtensionArmed_[i]=false;continue;}
         const auto& palm=hand.joints[XR_HAND_JOINT_PALM_EXT];
         // Finger gun: index straight, other fingers curled; thumb bends to fire.
         // Use per-joint distances rather than absolute positions in world space.
@@ -2288,7 +2289,12 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
         const bool thumbLowered=thumbExtension<=0.060f ||
             (thumbPeakExtension_[i]>=0.068f &&
              thumbPeakExtension_[i]-thumbExtension>=0.010f);
-        if(handWasClosed_[i] && pointing && fingersCurled && thumbLowered &&
+        // Index flick: arm with a bent index, then shoot when extended.
+        // Hysteresis between bent/extended measurements avoids tracking jitter.
+        if(indexReach<0.062f || indexPalm<0.083f)indexExtensionArmed_[i]=true;
+        const bool indexFlick=indexExtensionArmed_[i] && pointing;
+        const bool thumbShot=handWasClosed_[i] && pointing && fingersCurled && thumbLowered;
+        if((indexFlick || thumbShot) &&
            handShotCooldown_[i]<=0.f && spikeProjectiles_.size()<32) {
             float dx=tip.x-base.x,dy=tip.y-base.y,dz=tip.z-base.z;
             const float norm=std::sqrt(dx*dx+dy*dy+dz*dz);
@@ -2301,10 +2307,11 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
                 spikeProjectiles_.push_back(p);
                 handShotCooldown_[i]=0.28f;
                 handWasClosed_[i]=false;
+                indexExtensionArmed_[i]=false;
                 thumbPeakExtension_[i]=0.f;
 #ifdef __ANDROID__
                 __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
-                    "FINGER_GUN FIRED hand=%zu total=%zu",i,spikeProjectiles_.size());
+                    "FIRED hand=%zu mode=%s total=%zu",i,indexFlick?"index":"thumb",spikeProjectiles_.size());
 #endif
             }
         }
