@@ -353,6 +353,9 @@ private:
     std::array<float,2> thumbPeakExtension_{};
     std::array<bool,2> indexExtensionArmed_{};
     std::array<float,2> handShotCooldown_{};
+    std::array<bool,2> palmFiring_{};
+    std::array<float,3> viewerPosition_{};
+    float orbitPhase_=0.f;
     void advanceHandProjectiles(float dt);
 
 #ifdef VOXEN_WITH_IMGUI
