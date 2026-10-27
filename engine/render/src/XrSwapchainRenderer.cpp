@@ -2296,9 +2296,18 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
         const bool thumbShot=handWasClosed_[i] && pointing && fingersCurled && thumbLowered;
         if((indexFlick || thumbShot) &&
            handShotCooldown_[i]<=0.f && spikeProjectiles_.size()<32) {
-            float dx=tip.x-base.x,dy=tip.y-base.y,dz=tip.z-base.z;
-            const float norm=std::sqrt(dx*dx+dy*dy+dz*dz);
-            if(norm>0.04f) {
+            // Aim along the hand/forearm axis, not the index phalanx.
+            // XR_EXT_hand_tracking supplies a wrist joint but no elbow joint:
+            // wrist -> middle metacarpal is a stable approximation.
+            const auto& wrist=hand.joints[XR_HAND_JOINT_WRIST_EXT];
+            const auto& knuckle=hand.joints[XR_HAND_JOINT_MIDDLE_METACARPAL_EXT];
+            float dx=knuckle.x-wrist.x,dy=knuckle.y-wrist.y,dz=knuckle.z-wrist.z;
+            float norm=std::sqrt(dx*dx+dy*dy+dz*dz);
+            if(norm<0.035f) {
+                dx=palm.x-wrist.x;dy=palm.y-wrist.y;dz=palm.z-wrist.z;
+                norm=std::sqrt(dx*dx+dy*dy+dz*dz);
+            }
+            if(norm>0.025f) {
                 dx/=norm;dy/=norm;dz/=norm;
                 SpikeProjectile p{};
                 p.position={tip.x+dx*0.035f,tip.y+dy*0.035f,tip.z+dz*0.035f};
