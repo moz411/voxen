@@ -33,6 +33,9 @@ struct SavedRuntime {
     float wallCycleSeconds = 30.f;
     bool motionEnabled = false;
     int motionMode = 0;
+    float orbitRadius = 1.5f;
+    float orbitSpeed = 0.8f;
+    bool orbitRandomAxis = false;
     bool motionGravity = false;
     float motionBounce = .82f;
 };
@@ -51,7 +54,9 @@ inline bool valid(const SavedRuntime& r) {
     if (r.sceneKind<0 || r.sceneKind>1 || r.voxens.size()>256 || r.musicSource<0 || r.musicSource>1 ||
         r.musicTrack<0 || r.musicTrack>2 || r.musicFile<0 ||
         !std::isfinite(r.musicVolume) || r.musicVolume<0 || r.musicVolume>1 ||
-        r.motionMode<0 || r.motionMode>1 ||
+        r.motionMode<0 || r.motionMode>2 ||
+        !std::isfinite(r.orbitRadius) || r.orbitRadius<0.4f || r.orbitRadius>5.f ||
+        !std::isfinite(r.orbitSpeed) || r.orbitSpeed<0.1f || r.orbitSpeed>3.f ||
         !std::isfinite(r.liquidOpacity) || r.liquidOpacity<0 || r.liquidOpacity>1 ||
         r.wallShaderMode<0 || r.wallShaderMode>9 ||
         !std::isfinite(r.wallCycleSeconds) || r.wallCycleSeconds<1 || r.wallCycleSeconds>300 ||
@@ -70,14 +75,15 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
     if (!valid(r)) return {};
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<float>::max_digits10);
-    out << "VOXEN_RUNTIME 4\n" << r.voxens.size() << '\n';
+    out << "VOXEN_RUNTIME 5\n" << r.voxens.size() << '\n';
     out << r.sceneKind << '\n';
     out << (r.panoramaFile.empty() ? "-" : r.panoramaFile) << ' '
         << r.panoramaYawDegrees << ' ' << r.panoramaHorizontalDegrees << ' '
         << r.panoramaVerticalDegrees << '\n';
     out << r.musicSource << ' ' << r.musicTrack << ' ' << r.musicFile << ' '
         << r.musicVolume << ' ' << r.musicPlaying << ' ' << r.motionEnabled << ' '
-        << r.motionMode << ' ' << r.motionGravity << ' ' << r.motionBounce << '\n';
+        << r.motionMode << ' ' << r.motionGravity << ' ' << r.motionBounce << ' '
+        << r.orbitRadius << ' ' << r.orbitSpeed << ' ' << r.orbitRandomAxis << '\n';
     out << r.liquidRoom << ' ' << r.liquidOpacity << ' ' << r.wallShaderMode << ' '
         << r.cycleWallShaders << ' ' << r.wallCycleSeconds << '\n';
     for(const auto& v:r.voxens) {
@@ -93,7 +99,7 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
     if(data.size()>65536) return std::nullopt;
     std::istringstream in(data);
     std::string magic; int version=0; std::size_t count=0;
-    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version!=1 && version!=2 && version!=3 && version!=4) || count>256)
+    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version!=1 && version!=2 && version!=3 && version!=4 && version!=5) || count>256)
         return std::nullopt;
     SavedRuntime r;
     if(version>=3 && !(in>>r.sceneKind))return std::nullopt;
@@ -105,6 +111,7 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
     if(!(in>>r.musicSource>>r.musicTrack>>r.musicFile>>r.musicVolume
          >>r.musicPlaying>>r.motionEnabled>>r.motionMode>>r.motionGravity>>r.motionBounce))
         return std::nullopt;
+    if(version>=5 && !(in>>r.orbitRadius>>r.orbitSpeed>>r.orbitRandomAxis))return std::nullopt;
     if(version>=2 && !(in>>r.liquidRoom>>r.liquidOpacity>>r.wallShaderMode
                        >>r.cycleWallShaders>>r.wallCycleSeconds))return std::nullopt;
     for(std::size_t i=0;i<count;++i) {
