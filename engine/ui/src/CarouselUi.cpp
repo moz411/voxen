@@ -47,8 +47,14 @@ void drawCarousel(CarouselState& state) {
             ImGui::Separator();
             ImGui::TextUnformatted("FREE FLOAT / PHYSICS");
             ImGui::Checkbox("Enable motion",&state.motionEnabled);
-            static constexpr const char* motionModes[]={"FREE FLOAT","SWARM / BOIDS"};
-            ImGui::Combo("Motion mode",&state.motionMode,motionModes,2);
+            static constexpr const char* motionModes[]={"FREE FLOAT","SWARM / BOIDS","ROTATION"};
+            ImGui::Combo("Motion mode",&state.motionMode,motionModes,3);
+            if(state.motionMode==2){
+                ImGui::SliderFloat("Orbit radius (m)",&state.orbitRadius,0.4f,5.f,"%.2f");
+                ImGui::SliderFloat("Angular speed (rad/s)",&state.orbitSpeed,0.1f,3.f,"%.2f");
+                ImGui::Checkbox("Random orbital axis",&state.orbitRandomAxis);
+                ImGui::TextDisabled("Orbits follow the headset; fixed axis = vertical");
+            }
             if(state.motionMode==1){
                 ImGui::SliderFloat("Swarm radius (m)",&state.swarmRadius,0.25f,2.5f,"%.2f");
                 ImGui::SliderFloat("Swarm strength",&state.swarmStrength,0.1f,4.f,"%.2f");
