@@ -2345,6 +2345,7 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
         p.velocity={shotX*5.5f,shotY*5.5f,shotZ*5.5f};
         p.radius=0.045f;
         spikeProjectiles_.push_back(p);
+        ambientMusic_.triggerEffect(0);
         handShotCooldown_[i]=0.90f;
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
@@ -2383,6 +2384,7 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
             if(d2>radius*radius)continue;
             const bool lastSize=v.scale<=0.1801f;
             spikeImpacts_.push_back({v.position,0.f,std::max(0.12f,v.scale*1.3f),lastSize});
+            ambientMusic_.triggerEffect(lastSize?2:1);
             if(lastSize) {
                 voxens_.erase(it);
                 // Only a projectile's last kill triggers automatic scene exit.
