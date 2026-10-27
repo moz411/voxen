@@ -351,6 +351,7 @@ private:
     std::chrono::steady_clock::time_point victoryExitAt_{};
     std::array<bool,2> handWasClosed_{};
     std::array<float,2> thumbPeakExtension_{};
+    std::array<bool,2> indexExtensionArmed_{};
     std::array<float,2> handShotCooldown_{};
     void advanceHandProjectiles(float dt);
 
