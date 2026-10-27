@@ -516,6 +516,9 @@ bool XrSwapchainRenderer::saveCurrentScene() {
     runtime.musicPlaying=imguiCarousel_.musicPlaying;
     runtime.motionEnabled=imguiCarousel_.motionEnabled;
     runtime.motionMode=imguiCarousel_.motionMode;
+    runtime.orbitRadius=imguiCarousel_.orbitRadius;
+    runtime.orbitSpeed=imguiCarousel_.orbitSpeed;
+    runtime.orbitRandomAxis=imguiCarousel_.orbitRandomAxis;
     runtime.motionGravity=imguiCarousel_.motionGravity;
     runtime.motionBounce=imguiCarousel_.motionBounce;
 #endif
@@ -607,6 +610,9 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     imguiCarousel_.musicPlaying=snapshot->musicPlaying;
     imguiCarousel_.motionEnabled=snapshot->motionEnabled;
     imguiCarousel_.motionMode=snapshot->motionMode;
+    imguiCarousel_.orbitRadius=snapshot->orbitRadius;
+    imguiCarousel_.orbitSpeed=snapshot->orbitSpeed;
+    imguiCarousel_.orbitRandomAxis=snapshot->orbitRandomAxis;
     imguiCarousel_.motionGravity=snapshot->motionGravity;
     imguiCarousel_.motionBounce=snapshot->motionBounce;
 #endif
@@ -2113,7 +2119,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         if(immersiveSceneActive_ && !editingMode()) {
             for(const auto& hand:holographicHands_) {
                 if(!hand.tracked)continue;
-                const auto& tip=hand.joints[XR_HAND_JOINT_INDEX_TIP_EXT];
+                const auto& tip=hand.joints[XR_HAND_JOINT_PALM_EXT];
                 PlasmaVoxen loaded{};
                 loaded.preset=6;
                 loaded.position={tip.x,tip.y,tip.z};
@@ -2250,91 +2256,59 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
         handWasClosed_.fill(false);
         indexExtensionArmed_.fill(false);
         thumbPeakExtension_.fill(0.f);
+        palmFiring_.fill(false);
         handShotCooldown_.fill(0.f);
         return;
     }
-    auto distance=[](const XrVector3f& a,const XrVector3f& b) {
-        const float x=a.x-b.x,y=a.y-b.y,z=a.z-b.z;
-        return std::sqrt(x*x+y*y+z*z);
-    };
+    // Palm cannon: open hand, palm normal facing away from the headset.
+    // The index/little knuckle and wrist/middle-knuckle vectors define the palm plane.
     for(size_t i=0;i<2;++i) {
-        handShotCooldown_[i]=std::max(0.f,handShotCooldown_[i]-dt);
         const auto& hand=holographicHands_[i];
-        if(!hand.tracked){handWasClosed_[i]=false;indexExtensionArmed_[i]=false;continue;}
+        if(!hand.tracked) { palmFiring_[i]=false;handShotCooldown_[i]=0.f;continue; }
         const auto& palm=hand.joints[XR_HAND_JOINT_PALM_EXT];
-        // Finger gun: index straight, other fingers curled; thumb bends to fire.
-        // Use per-joint distances rather than absolute positions in world space.
-        const auto& tip=hand.joints[XR_HAND_JOINT_INDEX_TIP_EXT];
-        const auto& base=hand.joints[XR_HAND_JOINT_INDEX_PROXIMAL_EXT];
+        const auto& index=hand.joints[XR_HAND_JOINT_INDEX_METACARPAL_EXT];
+        const auto& little=hand.joints[XR_HAND_JOINT_LITTLE_METACARPAL_EXT];
+        const auto& wrist=hand.joints[XR_HAND_JOINT_WRIST_EXT];
+        const auto& middle=hand.joints[XR_HAND_JOINT_MIDDLE_METACARPAL_EXT];
+        const auto& indexTip=hand.joints[XR_HAND_JOINT_INDEX_TIP_EXT];
         const auto& middleTip=hand.joints[XR_HAND_JOINT_MIDDLE_TIP_EXT];
         const auto& ringTip=hand.joints[XR_HAND_JOINT_RING_TIP_EXT];
-        const auto& thumbTip=hand.joints[XR_HAND_JOINT_THUMB_TIP_EXT];
-        const float indexReach=distance(tip,base);
-        const float indexPalm=distance(tip,palm);
-        const bool pointing=indexReach>0.065f && indexPalm>0.105f;
-        const bool fingersCurled=distance(middleTip,palm)<0.115f &&
-                                 distance(ringTip,palm)<0.12f;
-        const float thumbExtension=distance(thumbTip,base);
-        // Real Quest measurements: 0.050..0.077 m, rather than 0.085 m.
-        // Capture the user's recent raised-thumb peak and detect a drop.
-        // Decay peak slowly so a held pose cannot stay armed indefinitely.
-        if(!pointing || !fingersCurled) {
-            handWasClosed_[i]=false;
-            thumbPeakExtension_[i]=0.f;
-        } else {
-            thumbPeakExtension_[i]=std::max(thumbExtension,
-                thumbPeakExtension_[i]-dt*0.012f);
-            if(thumbExtension>=0.069f)handWasClosed_[i]=true;
-        }
-        const bool thumbLowered=thumbExtension<=0.060f ||
-            (thumbPeakExtension_[i]>=0.068f &&
-             thumbPeakExtension_[i]-thumbExtension>=0.010f);
-        // Index flick: arm with a bent index, then shoot when extended.
-        // Hysteresis between bent/extended measurements avoids tracking jitter.
-        if(indexReach<0.062f || indexPalm<0.083f)indexExtensionArmed_[i]=true;
-        const bool indexFlick=indexExtensionArmed_[i] && pointing;
-        const bool thumbShot=handWasClosed_[i] && pointing && fingersCurled && thumbLowered;
-        if((indexFlick || thumbShot) &&
-           handShotCooldown_[i]<=0.f && spikeProjectiles_.size()<32) {
-            // Aim along the hand/forearm axis, not the index phalanx.
-            // XR_EXT_hand_tracking supplies a wrist joint but no elbow joint:
-            // wrist -> middle metacarpal is a stable approximation.
-            const auto& wrist=hand.joints[XR_HAND_JOINT_WRIST_EXT];
-            const auto& knuckle=hand.joints[XR_HAND_JOINT_MIDDLE_METACARPAL_EXT];
-            float dx=knuckle.x-wrist.x,dy=knuckle.y-wrist.y,dz=knuckle.z-wrist.z;
-            float norm=std::sqrt(dx*dx+dy*dy+dz*dz);
-            if(norm<0.035f) {
-                dx=palm.x-wrist.x;dy=palm.y-wrist.y;dz=palm.z-wrist.z;
-                norm=std::sqrt(dx*dx+dy*dy+dz*dz);
-            }
-            if(norm>0.025f) {
-                dx/=norm;dy/=norm;dz/=norm;
-                SpikeProjectile p{};
-                p.position={tip.x+dx*0.035f,tip.y+dy*0.035f,tip.z+dz*0.035f};
-                p.velocity={dx*5.5f,dy*5.5f,dz*5.5f};
-                p.radius=0.045f;
-                spikeProjectiles_.push_back(p);
-                handShotCooldown_[i]=0.28f;
-                handWasClosed_[i]=false;
-                indexExtensionArmed_[i]=false;
-                thumbPeakExtension_[i]=0.f;
+        const auto& littleTip=hand.joints[XR_HAND_JOINT_LITTLE_TIP_EXT];
+        auto dist=[](const XrVector3f& a,const XrVector3f& b){
+            const float x=a.x-b.x,y=a.y-b.y,z=a.z-b.z;
+            return std::sqrt(x*x+y*y+z*z);
+        };
+        const bool open=dist(indexTip,palm)>0.10f && dist(middleTip,palm)>0.11f &&
+                        dist(ringTip,palm)>0.095f && dist(littleTip,palm)>0.085f;
+        const float ax=little.x-index.x,ay=little.y-index.y,az=little.z-index.z;
+        const float bx=middle.x-wrist.x,by=middle.y-wrist.y,bz=middle.z-wrist.z;
+        float nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx;
+        // Cross-product orientation reverses between left and right hand.
+        const float side=i==0?1.f:-1.f;
+        nx*=side;ny*=side;nz*=side;
+        const float length=std::sqrt(nx*nx+ny*ny+nz*nz);
+        if(length<0.0004f){palmFiring_[i]=false;continue;}
+        nx/=length;ny/=length;nz/=length;
+        float awayX=palm.x-viewerPosition_[0],awayY=palm.y-viewerPosition_[1],
+              awayZ=palm.z-viewerPosition_[2];
+        const float awayLength=std::sqrt(awayX*awayX+awayY*awayY+awayZ*awayZ);
+        const float facing=awayLength>0.1f?(nx*awayX+ny*awayY+nz*awayZ)/awayLength:0.f;
+        // Hysteresis prevents flutter around the facing threshold.
+        const bool firing=open && facing>(palmFiring_[i]?0.22f:0.48f);
+        palmFiring_[i]=firing;
+        if(!firing) {handShotCooldown_[i]=0.f;continue;}
+        handShotCooldown_[i]-=dt;
+        if(handShotCooldown_[i]>0.f || spikeProjectiles_.size()>=32)continue;
+        SpikeProjectile p{};
+        p.position={palm.x+nx*0.075f,palm.y+ny*0.075f,palm.z+nz*0.075f};
+        p.velocity={nx*5.5f,ny*5.5f,nz*5.5f};
+        p.radius=0.045f;
+        spikeProjectiles_.push_back(p);
+        handShotCooldown_[i]=0.30f;
 #ifdef __ANDROID__
-                __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
-                    "FIRED hand=%zu mode=%s total=%zu",i,indexFlick?"index":"thumb",spikeProjectiles_.size());
-#endif
-            }
-        }
-#ifdef __ANDROID__
-        static auto lastGestureLog=std::chrono::steady_clock::now();
-        const auto gestureNow=std::chrono::steady_clock::now();
-        if(i==0 && gestureNow-lastGestureLog>std::chrono::seconds(2)) {
-            lastGestureLog=gestureNow;
-            __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
-                "finger-gun tracked=%d/%d index=%.3f thumb=%.3f pointing=%d curled=%d armed=%d",
-                holographicHands_[0].tracked?1:0,holographicHands_[1].tracked?1:0,
-                indexReach,thumbExtension,pointing?1:0,fingersCurled?1:0,
-                handWasClosed_[i]?1:0);
-        }
+        __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
+            "PALM_FIRED hand=%zu facing=%.2f total=%zu",
+            i,facing,spikeProjectiles_.size());
 #endif
     }
     for(auto& e:spikeImpacts_)e.age+=dt;
@@ -2397,6 +2371,35 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
 void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float bounce,
     int mode, float swarmRadius, float swarmStrength, float swarmSeparation, bool collideRoomMesh) {
     constexpr float kMaxSpeed=4.f;
+#ifdef VOXEN_WITH_IMGUI
+    if(mode==2) {
+        // Orbital motion follows the current headset position, no room collisions.
+        const float radius=std::clamp(imguiCarousel_.orbitRadius,0.4f,5.f);
+        const float angularSpeed=std::clamp(imguiCarousel_.orbitSpeed,0.1f,3.f);
+        orbitPhase_+=dt*angularSpeed;
+        for(size_t i=0;i<voxens_.size();++i) {
+            const float phase=orbitPhase_+6.2831853f*float(i)/float(std::max(size_t(1),voxens_.size()));
+            const float co=std::cos(phase),si=std::sin(phase);
+            auto& v=voxens_[i];
+            if(imguiCarousel_.orbitRandomAxis) {
+                // Deterministic per-object tilted plane (constant over time).
+                const float tilt=0.35f+0.95f*std::sin(float(i+1)*2.399963f);
+                const float az=float(i+1)*2.399963f;
+                const float ct=std::cos(tilt),st=std::sin(tilt);
+                const float ca=std::cos(az),sa=std::sin(az);
+                v.position={viewerPosition_[0]+radius*(co*ca-si*sa*ct),
+                            viewerPosition_[1]+radius*si*st,
+                            viewerPosition_[2]+radius*(co*sa+si*ca*ct)};
+            } else {
+                v.position={viewerPosition_[0]+radius*co,
+                            viewerPosition_[1],
+                            viewerPosition_[2]+radius*si};
+            }
+            v.velocity={0.f,0.f,0.f};
+        }
+        return;
+    }
+#endif
     if(mode==1 && voxens_.size()>1){
         // Snapshot neighbor state: steering is independent of iteration order.
         std::vector<std::array<float,3>> acceleration(voxens_.size());
@@ -2959,6 +2962,7 @@ void XrSwapchainRenderer::render(
         0.5f*(views[0].pose.position.y+views[1].pose.position.y),
         0.5f*(views[0].pose.position.z+views[1].pose.position.z)
     };
+    viewerPosition_={center.x,center.y,center.z};
     // Final impact blooms for 0.5s; the short hold is the victory transition.
     // Reuse the normal leave path to unload scene audio/objects and restore Sobel.
     if(immersiveSceneActive_ && victoryExitAt_.time_since_epoch().count()!=0 &&
