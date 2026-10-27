@@ -2302,7 +2302,15 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
         const float facingOff=fingersDown?0.12f:0.22f;
         const bool firing=open && facing>(palmFiring_[i]?facingOff:facingOn);
         palmFiring_[i]=firing;
-        if(!firing) {handShotCooldown_[i]=0.f;continue;}
+        // Independent index-pointing mode: extended index, other fingers folded.
+        const auto& indexBase=hand.joints[XR_HAND_JOINT_INDEX_PROXIMAL_EXT];
+        const bool pointing=dist(indexTip,indexBase)>0.073f &&
+                            dist(indexTip,palm)>0.105f;
+        const bool otherFingersFolded=dist(middleTip,palm)<0.12f &&
+                                      dist(ringTip,palm)<0.125f &&
+                                      dist(littleTip,palm)<0.12f;
+        const bool indexFire=pointing && otherFingersFolded;
+        if(!firing && !indexFire) {handShotCooldown_[i]=0.f;continue;}
         handShotCooldown_[i]-=dt;
         if(handShotCooldown_[i]>0.f || spikeProjectiles_.size()>=32)continue;
         // With fingers pointing up, add +45 degrees to launch elevation,
@@ -2321,16 +2329,27 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
                 shotZ=(nz/horizontal)*std::cos(elevation);
             }
         }
+        if(indexFire && !firing) {
+            // In pointing mode, the index controls both origin and trajectory.
+            shotX=indexTip.x-indexBase.x;
+            shotY=indexTip.y-indexBase.y;
+            shotZ=indexTip.z-indexBase.z;
+            const float length=std::sqrt(shotX*shotX+shotY*shotY+shotZ*shotZ);
+            if(length<0.035f)continue;
+            shotX/=length;shotY/=length;shotZ/=length;
+        }
         SpikeProjectile p{};
-        p.position={palm.x+shotX*0.075f,palm.y+shotY*0.075f,palm.z+shotZ*0.075f};
+        p.position=(indexFire && !firing)
+            ? std::array<float,3>{indexTip.x+shotX*0.04f,indexTip.y+shotY*0.04f,indexTip.z+shotZ*0.04f}
+            : std::array<float,3>{palm.x+shotX*0.075f,palm.y+shotY*0.075f,palm.z+shotZ*0.075f};
         p.velocity={shotX*5.5f,shotY*5.5f,shotZ*5.5f};
         p.radius=0.045f;
         spikeProjectiles_.push_back(p);
-        handShotCooldown_[i]=0.60f;
+        handShotCooldown_[i]=0.90f;
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
-            "PALM_FIRED hand=%zu facing=%.2f fingers=%s elevation=%.2f total=%zu",
-            i,facing,fingersUp?"up":(fingersDown?"down":"level"),shotY,spikeProjectiles_.size());
+            "FIRED hand=%zu mode=%s facing=%.2f elevation=%.2f total=%zu",
+            i,(indexFire&&!firing)?"index":"palm",facing,shotY,spikeProjectiles_.size());
 #endif
     }
     for(auto& e:spikeImpacts_)e.age+=dt;
