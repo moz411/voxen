@@ -349,6 +349,23 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
     // Enter/exit using the headset's actual 3D position relative to a sphere.
     // Hysteresis prevents repeated scene loads at the boundary.
     const auto portals=portalManager_->visible();
+    if(suppressedPortalId_ && !immersiveSceneActive_) {
+        const auto it=std::find_if(portals.begin(),portals.end(),
+            [&](const voxen::gallery::VisiblePortal& p){return p.id==*suppressedPortalId_;});
+        if(it==portals.end())suppressedPortalId_.reset();
+        else {
+            const auto& pos=it->localPose.positionMeters;
+            const float x=headPosition.x-pos[0],y=headPosition.y-pos[1],z=headPosition.z-pos[2];
+            const float rearmRadius=0.42f*std::clamp(it->scale,0.1f,4.f);
+            if(x*x+y*y+z*z>rearmRadius*rearmRadius) {
+                suppressedPortalId_.reset();
+                galleryEntryCandidate_.reset();
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_INFO,"VoxenGallery","Completed sphere re-enabled after moving away");
+#endif
+            }
+        }
+    }
     if(immersiveSceneActive_) {
         if(!immersivePortalId_)return; // explicit editing session
         const auto it=std::find_if(portals.begin(),portals.end(),
@@ -373,6 +390,7 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
     const voxen::gallery::VisiblePortal* inside=nullptr;
     float bestDistance2=100000.f;
     for(const auto& portal:portals) {
+        if(suppressedPortalId_ && portal.id==*suppressedPortalId_)continue;
         const auto& p=portal.localPose.positionMeters;
         const float dx=headPosition.x-p[0],dy=headPosition.y-p[1],dz=headPosition.z-p[2];
         const float d2=dx*dx+dy*dy+dz*dz;
@@ -427,6 +445,9 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
     panelAimed_=false;
 #endif
     immersiveSceneActive_=true;
+    victoryExitAt_={};
+    spikeProjectiles_.clear();
+    spikeImpacts_.clear();
     return true;
 }
 
@@ -443,6 +464,11 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
     immersiveSceneActive_=false;
+    if(victoryExitAt_.time_since_epoch().count()!=0 && immersivePortalId_)
+        suppressedPortalId_=immersivePortalId_;
+    victoryExitAt_={};
+    spikeProjectiles_.clear();
+    spikeImpacts_.clear();
     mechanicalCannonPreview_=false;
 #ifdef VOXEN_WITH_IMGUI
     imguiCarousel_.liquidRoom=false;
@@ -490,6 +516,9 @@ bool XrSwapchainRenderer::saveCurrentScene() {
     runtime.musicPlaying=imguiCarousel_.musicPlaying;
     runtime.motionEnabled=imguiCarousel_.motionEnabled;
     runtime.motionMode=imguiCarousel_.motionMode;
+    runtime.orbitRadius=imguiCarousel_.orbitRadius;
+    runtime.orbitSpeed=imguiCarousel_.orbitSpeed;
+    runtime.orbitRandomAxis=imguiCarousel_.orbitRandomAxis;
     runtime.motionGravity=imguiCarousel_.motionGravity;
     runtime.motionBounce=imguiCarousel_.motionBounce;
 #endif
@@ -550,7 +579,7 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     for(const auto& v:snapshot->voxens) {
         PlasmaVoxen item;
         item.preset=v.preset; item.position=v.position; item.velocity=v.velocity;
-        item.scale=v.scale; item.hue=v.hue; item.density=v.density;
+        item.scale=std::max(0.18f,v.scale); item.hue=v.hue; item.density=v.density;
         item.speed=v.speed; item.material=v.material;
         restored.push_back(item);
     }
@@ -581,6 +610,9 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     imguiCarousel_.musicPlaying=snapshot->musicPlaying;
     imguiCarousel_.motionEnabled=snapshot->motionEnabled;
     imguiCarousel_.motionMode=snapshot->motionMode;
+    imguiCarousel_.orbitRadius=snapshot->orbitRadius;
+    imguiCarousel_.orbitSpeed=snapshot->orbitSpeed;
+    imguiCarousel_.orbitRandomAxis=snapshot->orbitRandomAxis;
     imguiCarousel_.motionGravity=snapshot->motionGravity;
     imguiCarousel_.motionBounce=snapshot->motionBounce;
 #endif
@@ -1545,7 +1577,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         if(std::fabs(x)<0.30f)editorScaleStickLatched_=false;
         if(!editorScaleStickLatched_ && std::fabs(x)>0.72f) {
             imguiCarousel_.voxenScale=std::clamp(
-                imguiCarousel_.voxenScale*(x>0.f?1.20f:1.f/1.20f),0.06f,0.60f);
+                imguiCarousel_.voxenScale*(x>0.f?1.20f:1.f/1.20f),0.18f,0.60f);
             editorScaleStickLatched_=true;
         }
     } else {
@@ -1572,7 +1604,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         v.position={pose.position.x+0.25f*dir[0],
                     pose.position.y+0.25f*dir[1],
                     pose.position.z+0.25f*dir[2]};
-        v.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.60f);
+        v.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
         v.hue=imguiCarousel_.voxenHue;
         v.density=imguiCarousel_.voxenDensity;
         v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,11) :
@@ -1954,6 +1986,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         const auto count=std::min<std::size_t>(portals.size(),64);
         for(std::size_t i=0;i<count;++i) {
             const auto& p=portals[i];
+            if(suppressedPortalId_ && p.id==*suppressedPortalId_)continue;
             const auto& xyz=(galleryDragging_ && selectedPortalId_ && p.id==*selectedPortalId_)
                 ? galleryDraggedPose_.positionMeters : p.localPose.positionMeters;
             const float radius=0.125f*std::clamp(p.scale,0.1f,4.f);
@@ -2081,6 +2114,42 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             }
         };
         for(const auto& v:voxens_)paintPlasma(v);
+        // Reuse the existing procedural GPU Spike Bloom pipeline (preset 6).
+        // Loaded miniature spike ball follows each tracked index tip.
+        if(immersiveSceneActive_ && !editingMode()) {
+            for(const auto& hand:holographicHands_) {
+                if(!hand.tracked)continue;
+                const auto& tip=hand.joints[XR_HAND_JOINT_PALM_EXT];
+                PlasmaVoxen loaded{};
+                loaded.preset=6;
+                loaded.position={tip.x,tip.y,tip.z};
+                loaded.scale=0.065f;
+                loaded.hue=0.08f;
+                loaded.speed=1.5f;
+                paintPlasma(loaded);
+            }
+        }
+        for(const auto& p:spikeProjectiles_) {
+            PlasmaVoxen orb{};
+            orb.preset=6;
+            orb.position=p.position;
+            orb.scale=p.radius*2.f;
+            orb.hue=0.08f;
+            orb.speed=2.0f;
+            paintPlasma(orb);
+        }
+        for(const auto& e:spikeImpacts_) {
+            PlasmaVoxen flash{};
+            flash.preset=6;
+            flash.position=e.position;
+            const float duration=e.explosion?0.5f:0.2f;
+            const float phase=std::clamp(e.age/duration,0.f,1.f);
+            flash.scale=e.radius*(e.explosion?1.f+3.f*phase:1.f+phase);
+            flash.hue=0.13f;
+            flash.speed=4.f;
+            flash.density=std::max(0.3f,1.f-phase);
+            paintPlasma(flash);
+        }
 #ifdef VOXEN_WITH_IMGUI
         // Only one right-hand tool preview can be active at once.
         // Live selected Voxen preview, not part of the saved scene.
@@ -2099,7 +2168,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             preview.position={pose.position.x+0.25f*dx,
                               pose.position.y+0.25f*dy,
                               pose.position.z+0.25f*dz};
-            preview.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.60f);
+            preview.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
             preview.hue=imguiCarousel_.voxenHue;
             preview.density=imguiCarousel_.voxenDensity;
             preview.speed=imguiCarousel_.voxenSpeed;
@@ -2176,11 +2245,202 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     }
 }
 
+// Hands shoot procedural Spike Bloom orbs after a fist opens with a forward thrust.
+// Projectiles intentionally ignore the room mesh, walls, ceiling and floor.
+void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
+    dt=std::clamp(dt,0.f,0.05f);
+    const bool active=immersiveSceneActive_ && !editingMode();
+    if(!active) {
+        spikeProjectiles_.clear();
+        spikeImpacts_.clear();
+        handWasClosed_.fill(false);
+        indexExtensionArmed_.fill(false);
+        thumbPeakExtension_.fill(0.f);
+        palmFiring_.fill(false);
+        handShotCooldown_.fill(0.f);
+        return;
+    }
+    // Palm cannon: open hand, palm normal facing away from the headset.
+    // The index/little knuckle and wrist/middle-knuckle vectors define the palm plane.
+    for(size_t i=0;i<2;++i) {
+        const auto& hand=holographicHands_[i];
+        if(!hand.tracked) { palmFiring_[i]=false;handShotCooldown_[i]=0.f;continue; }
+        const auto& palm=hand.joints[XR_HAND_JOINT_PALM_EXT];
+        const auto& index=hand.joints[XR_HAND_JOINT_INDEX_METACARPAL_EXT];
+        const auto& little=hand.joints[XR_HAND_JOINT_LITTLE_METACARPAL_EXT];
+        const auto& wrist=hand.joints[XR_HAND_JOINT_WRIST_EXT];
+        const auto& middle=hand.joints[XR_HAND_JOINT_MIDDLE_METACARPAL_EXT];
+        const auto& indexTip=hand.joints[XR_HAND_JOINT_INDEX_TIP_EXT];
+        const auto& middleTip=hand.joints[XR_HAND_JOINT_MIDDLE_TIP_EXT];
+        const auto& ringTip=hand.joints[XR_HAND_JOINT_RING_TIP_EXT];
+        const auto& littleTip=hand.joints[XR_HAND_JOINT_LITTLE_TIP_EXT];
+        auto dist=[](const XrVector3f& a,const XrVector3f& b){
+            const float x=a.x-b.x,y=a.y-b.y,z=a.z-b.z;
+            return std::sqrt(x*x+y*y+z*z);
+        };
+        const bool open=dist(indexTip,palm)>0.10f && dist(middleTip,palm)>0.11f &&
+                        dist(ringTip,palm)>0.095f && dist(littleTip,palm)>0.085f;
+        const float ax=little.x-index.x,ay=little.y-index.y,az=little.z-index.z;
+        const float bx=middle.x-wrist.x,by=middle.y-wrist.y,bz=middle.z-wrist.z;
+        float nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx;
+        // Cross-product orientation reverses between left and right hand.
+        const float side=i==0?1.f:-1.f;
+        nx*=side;ny*=side;nz*=side;
+        const float length=std::sqrt(nx*nx+ny*ny+nz*nz);
+        if(length<0.0004f){palmFiring_[i]=false;continue;}
+        nx/=length;ny/=length;nz/=length;
+        float awayX=palm.x-viewerPosition_[0],awayY=palm.y-viewerPosition_[1],
+              awayZ=palm.z-viewerPosition_[2];
+        const float awayLength=std::sqrt(awayX*awayX+awayY*awayY+awayZ*awayZ);
+        const float facing=awayLength>0.1f?(nx*awayX+ny*awayY+nz*awayZ)/awayLength:0.f;
+        // Upward and downward fingers are both accepted. Palm facing still
+        // needs to point outward; lower threshold for fingers-down posture.
+        const float fingerY=middleTip.y-wrist.y;
+        const bool fingersUp=fingerY>0.055f;
+        const bool fingersDown=fingerY< -0.055f;
+        const float facingOn=fingersDown?0.28f:0.48f;
+        const float facingOff=fingersDown?0.12f:0.22f;
+        const bool firing=open && facing>(palmFiring_[i]?facingOff:facingOn);
+        palmFiring_[i]=firing;
+        // Independent index-pointing mode: extended index, other fingers folded.
+        const auto& indexBase=hand.joints[XR_HAND_JOINT_INDEX_PROXIMAL_EXT];
+        const bool pointing=dist(indexTip,indexBase)>0.073f &&
+                            dist(indexTip,palm)>0.105f;
+        const bool otherFingersFolded=dist(middleTip,palm)<0.12f &&
+                                      dist(ringTip,palm)<0.125f &&
+                                      dist(littleTip,palm)<0.12f;
+        const bool indexFire=pointing && otherFingersFolded;
+        if(!firing && !indexFire) {handShotCooldown_[i]=0.f;continue;}
+        handShotCooldown_[i]-=dt;
+        if(handShotCooldown_[i]>0.f || spikeProjectiles_.size()>=32)continue;
+        // With fingers pointing up, add +45 degrees to launch elevation,
+        // retaining the current horizontal azimuth. Fingers down use the
+        // unmodified outward palm normal.
+        float shotX=nx,shotY=ny,shotZ=nz;
+        if(fingersUp) {
+            const float horizontal=std::sqrt(nx*nx+nz*nz);
+            if(horizontal>1e-4f) {
+                constexpr float kPiOver4=0.7853981634f;
+                const float elevation=std::clamp(
+                    std::atan2(ny,horizontal)+kPiOver4,
+                    -1.483529864f,1.483529864f);
+                shotX=(nx/horizontal)*std::cos(elevation);
+                shotY=std::sin(elevation);
+                shotZ=(nz/horizontal)*std::cos(elevation);
+            }
+        }
+        if(indexFire && !firing) {
+            // In pointing mode, the index controls both origin and trajectory.
+            shotX=indexTip.x-indexBase.x;
+            shotY=indexTip.y-indexBase.y;
+            shotZ=indexTip.z-indexBase.z;
+            const float length=std::sqrt(shotX*shotX+shotY*shotY+shotZ*shotZ);
+            if(length<0.035f)continue;
+            shotX/=length;shotY/=length;shotZ/=length;
+        }
+        SpikeProjectile p{};
+        p.position=(indexFire && !firing)
+            ? std::array<float,3>{indexTip.x+shotX*0.04f,indexTip.y+shotY*0.04f,indexTip.z+shotZ*0.04f}
+            : std::array<float,3>{palm.x+shotX*0.075f,palm.y+shotY*0.075f,palm.z+shotZ*0.075f};
+        p.velocity={shotX*5.5f,shotY*5.5f,shotZ*5.5f};
+        p.radius=0.045f;
+        spikeProjectiles_.push_back(p);
+        handShotCooldown_[i]=0.90f;
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
+            "FIRED hand=%zu mode=%s facing=%.2f elevation=%.2f total=%zu",
+            i,(indexFire&&!firing)?"index":"palm",facing,shotY,spikeProjectiles_.size());
+#endif
+    }
+    for(auto& e:spikeImpacts_)e.age+=dt;
+    spikeImpacts_.erase(std::remove_if(spikeImpacts_.begin(),spikeImpacts_.end(),
+        [](const SpikeImpact& e){return e.age>(e.explosion?0.5f:0.20f);}),spikeImpacts_.end());
+    // Segment/sphere sweep avoids tunneling through small moving Voxens.
+    for(auto& p:spikeProjectiles_) {
+        if(p.age>=2.5f)continue;
+        const auto start=p.position;
+        std::array<float,3> displacement{};
+        for(int k=0;k<3;++k) {
+            displacement[k]=p.velocity[k]*dt;
+            p.position[k]+=displacement[k];
+        }
+        p.age+=dt;
+        const float len2=displacement[0]*displacement[0]+displacement[1]*displacement[1]+displacement[2]*displacement[2];
+        for(auto it=voxens_.begin();it!=voxens_.end();++it) {
+            const auto& v=*it;
+            float t=0.f;
+            if(len2>1e-8f) {
+                float dot=0.f;
+                for(int k=0;k<3;++k)dot+=(v.position[k]-start[k])*displacement[k];
+                t=std::clamp(dot/len2,0.f,1.f);
+            }
+            float d2=0.f;
+            for(int k=0;k<3;++k) {
+                const float delta=v.position[k]-(start[k]+t*displacement[k]);
+                d2+=delta*delta;
+            }
+            const float radius=p.radius+0.5f*v.scale;
+            if(d2>radius*radius)continue;
+            const bool lastSize=v.scale<=0.1801f;
+            spikeImpacts_.push_back({v.position,0.f,std::max(0.12f,v.scale*1.3f),lastSize});
+            if(lastSize) {
+                voxens_.erase(it);
+                // Only a projectile's last kill triggers automatic scene exit.
+                // Keep the final explosion visible before returning to Gallery.
+                if(voxens_.empty() && victoryExitAt_.time_since_epoch().count()==0) {
+                    victoryExitAt_=std::chrono::steady_clock::now()+
+                        std::chrono::milliseconds(850);
+#ifdef __ANDROID__
+                    __android_log_print(ANDROID_LOG_INFO,"VoxenBlast",
+                        "VICTORY last Voxen destroyed, gallery exit in 850ms");
+#endif
+                }
+            } else {
+                it->scale=std::max(0.18f,it->scale*0.72f);
+                it->lodLevel=-1;
+            }
+            p.age=3.f; // One orb damages exactly one Voxen.
+            break;
+        }
+    }
+    spikeProjectiles_.erase(std::remove_if(spikeProjectiles_.begin(),spikeProjectiles_.end(),
+        [](const SpikeProjectile& p){return p.age>=2.5f;}),spikeProjectiles_.end());
+}
+
 // Fixed-step, world-space sphere proxy physics. One update per stereo frame.
 // The procedural surface deformation stays entirely in the Vulkan shaders.
 void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float bounce,
     int mode, float swarmRadius, float swarmStrength, float swarmSeparation, bool collideRoomMesh) {
     constexpr float kMaxSpeed=4.f;
+#ifdef VOXEN_WITH_IMGUI
+    if(mode==2) {
+        // Orbital motion follows the current headset position, no room collisions.
+        const float radius=std::clamp(imguiCarousel_.orbitRadius,0.4f,5.f);
+        const float angularSpeed=std::clamp(imguiCarousel_.orbitSpeed,0.1f,3.f);
+        orbitPhase_+=dt*angularSpeed;
+        for(size_t i=0;i<voxens_.size();++i) {
+            const float phase=orbitPhase_+6.2831853f*float(i)/float(std::max(size_t(1),voxens_.size()));
+            const float co=std::cos(phase),si=std::sin(phase);
+            auto& v=voxens_[i];
+            if(imguiCarousel_.orbitRandomAxis) {
+                // Deterministic per-object tilted plane (constant over time).
+                const float tilt=0.35f+0.95f*std::sin(float(i+1)*2.399963f);
+                const float az=float(i+1)*2.399963f;
+                const float ct=std::cos(tilt),st=std::sin(tilt);
+                const float ca=std::cos(az),sa=std::sin(az);
+                v.position={viewerPosition_[0]+radius*(co*ca-si*sa*ct),
+                            viewerPosition_[1]+radius*si*st,
+                            viewerPosition_[2]+radius*(co*sa+si*ca*ct)};
+            } else {
+                v.position={viewerPosition_[0]+radius*co,
+                            viewerPosition_[1],
+                            viewerPosition_[2]+radius*si};
+            }
+            v.velocity={0.f,0.f,0.f};
+        }
+        return;
+    }
+#endif
     if(mode==1 && voxens_.size()>1){
         // Snapshot neighbor state: steering is independent of iteration order.
         std::vector<std::array<float,3>> acceleration(voxens_.size());
@@ -2722,6 +2982,7 @@ void XrSwapchainRenderer::render(
     const float physicsDt=lastPhysicsFrame_.time_since_epoch().count()==0 ? 0.f :
         std::clamp(std::chrono::duration<float>(physicsNow-lastPhysicsFrame_).count(),0.f,0.1f);
     lastPhysicsFrame_=physicsNow;
+    advanceHandProjectiles(physicsDt);
     if(imguiCarousel_.motionEnabled){
         physicsAccumulator_=std::min(physicsAccumulator_+physicsDt,0.1f);
         constexpr float step=1.f/60.f;
@@ -2742,6 +3003,11 @@ void XrSwapchainRenderer::render(
         0.5f*(views[0].pose.position.y+views[1].pose.position.y),
         0.5f*(views[0].pose.position.z+views[1].pose.position.z)
     };
+    viewerPosition_={center.x,center.y,center.z};
+    // Final impact blooms for 0.5s; the short hold is the victory transition.
+    // Reuse the normal leave path to unload scene audio/objects and restore Sobel.
+    if(immersiveSceneActive_ && victoryExitAt_.time_since_epoch().count()!=0 &&
+       std::chrono::steady_clock::now()>=victoryExitAt_)leaveImmersiveScene();
     updateGalleryWalkIn(center);
     for(auto& v:voxens_){
         if(v.preset!=2)continue;

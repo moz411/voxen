@@ -334,6 +334,30 @@ private:
     };
     std::vector<PlasmaVoxen> voxens_;
     std::vector<PlasmaVoxen> editorVoxens_; // Suspended while gallery/immersion runs.
+    // Transient hand-fired Spike Bloom orbs and GPU-rendered impact pulses.
+    struct SpikeProjectile {
+        std::array<float,3> position{}, velocity{};
+        float age=0.f;
+        float radius=0.065f;
+    };
+    struct SpikeImpact {
+        std::array<float,3> position{};
+        float age=0.f;
+        float radius=0.15f;
+        bool explosion=false;
+    };
+    std::vector<SpikeProjectile> spikeProjectiles_;
+    std::vector<SpikeImpact> spikeImpacts_;
+    std::chrono::steady_clock::time_point victoryExitAt_{};
+    std::array<bool,2> handWasClosed_{};
+    std::array<float,2> thumbPeakExtension_{};
+    std::array<bool,2> indexExtensionArmed_{};
+    std::array<float,2> handShotCooldown_{};
+    std::array<bool,2> palmFiring_{};
+    std::array<float,3> viewerPosition_{};
+    float orbitPhase_=0.f;
+    void advanceHandProjectiles(float dt);
+
 #ifdef VOXEN_WITH_IMGUI
     voxen::ui::CarouselState editorSettings_{};
 #endif
@@ -343,6 +367,8 @@ private:
     bool immersiveSceneActive_ = false;
     std::optional<voxen::gallery::InstanceId> galleryEntryCandidate_;
     std::optional<voxen::gallery::InstanceId> immersivePortalId_;
+    // Temporarily hide the completed scene's portal until the headset moves away.
+    std::optional<voxen::gallery::InstanceId> suppressedPortalId_;
     std::chrono::steady_clock::time_point galleryExitSince_{};
     std::chrono::steady_clock::time_point galleryEntrySince_{};
     bool galleryEntryArmed_ = true;
