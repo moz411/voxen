@@ -40,7 +40,7 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextDisabled("RIGHT TRIGGER: place one Voxen");
             ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
             if(!state.voxenPaintEnabled)ImGui::TextDisabled("No Voxen selected for painting");
-            ImGui::SliderFloat("Size (m)",&state.voxenScale,0.06f,0.60f,"%.2f");
+            ImGui::SliderFloat("Size (m)",&state.voxenScale,0.18f,0.60f,"%.2f");
             ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
             ImGui::SliderFloat(state.voxenPreset>=4 ? "Deformation" : "Density",&state.voxenDensity,0.3f,2.f);
             ImGui::SliderFloat("Speed",&state.voxenSpeed,0.1f,3.f);
