@@ -579,7 +579,7 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     for(const auto& v:snapshot->voxens) {
         PlasmaVoxen item;
         item.preset=v.preset; item.position=v.position; item.velocity=v.velocity;
-        item.scale=v.scale; item.hue=v.hue; item.density=v.density;
+        item.scale=std::max(0.18f,v.scale); item.hue=v.hue; item.density=v.density;
         item.speed=v.speed; item.material=v.material;
         restored.push_back(item);
     }
@@ -1577,7 +1577,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         if(std::fabs(x)<0.30f)editorScaleStickLatched_=false;
         if(!editorScaleStickLatched_ && std::fabs(x)>0.72f) {
             imguiCarousel_.voxenScale=std::clamp(
-                imguiCarousel_.voxenScale*(x>0.f?1.20f:1.f/1.20f),0.06f,0.60f);
+                imguiCarousel_.voxenScale*(x>0.f?1.20f:1.f/1.20f),0.18f,0.60f);
             editorScaleStickLatched_=true;
         }
     } else {
@@ -1604,7 +1604,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         v.position={pose.position.x+0.25f*dir[0],
                     pose.position.y+0.25f*dir[1],
                     pose.position.z+0.25f*dir[2]};
-        v.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.60f);
+        v.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
         v.hue=imguiCarousel_.voxenHue;
         v.density=imguiCarousel_.voxenDensity;
         v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,11) :
@@ -2168,7 +2168,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             preview.position={pose.position.x+0.25f*dx,
                               pose.position.y+0.25f*dy,
                               pose.position.z+0.25f*dz};
-            preview.scale=std::clamp(imguiCarousel_.voxenScale,0.06f,0.60f);
+            preview.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
             preview.hue=imguiCarousel_.voxenHue;
             preview.density=imguiCarousel_.voxenDensity;
             preview.speed=imguiCarousel_.voxenSpeed;
@@ -2340,7 +2340,7 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
             }
             const float radius=p.radius+0.5f*v.scale;
             if(d2>radius*radius)continue;
-            const bool lastSize=v.scale<=0.065f;
+            const bool lastSize=v.scale<=0.1801f;
             spikeImpacts_.push_back({v.position,0.f,std::max(0.12f,v.scale*1.3f),lastSize});
             if(lastSize) {
                 voxens_.erase(it);
@@ -2355,7 +2355,7 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
 #endif
                 }
             } else {
-                it->scale=std::max(0.06f,it->scale*0.72f);
+                it->scale=std::max(0.18f,it->scale*0.72f);
                 it->lodLevel=-1;
             }
             p.age=3.f; // One orb damages exactly one Voxen.
