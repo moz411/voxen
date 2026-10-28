@@ -1565,7 +1565,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         float axis=thumbsticks[0].x;
         if(std::fabs(axis)<0.3f)nativeMenuStickLatched_=false;
         if(!nativeMenuStickLatched_ && std::fabs(axis)>0.70f){
-            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:4))%5;
+            nativeMenuPage_=(nativeMenuPage_+(axis>0?1:3))%4;
             nativeMenuStickLatched_=true;
         }
     }
@@ -2796,6 +2796,7 @@ void XrSwapchainRenderer::render(
         io.AddMouseButtonEvent(0,aiming && uiTrigger_[1]);
         panelAimed_=aiming;
         if (!aiming) panelHitDistance_=0.0f;
+        if(nativeMenuPage_>=4)nativeMenuPage_=0; // Remap legacy GLB page to Voxens.
         imguiCarousel_.page=nativeMenuPage_;
         imguiCarousel_.gpuMs=lastGpuMs_;
         imguiCarousel_.gpuAvailable=gpuTimingAvailable() && completedGpuSamples_>0;
