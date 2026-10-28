@@ -1622,13 +1622,20 @@ void XrSwapchainRenderer::updateControllerInteraction(
         const float x=thumbsticks[1].x;
         if(std::fabs(x)<0.3f)glbStickLatched_=false;
         if(!glbStickLatched_ && std::fabs(x)>0.72f) {
+            const float oldScale=glbScale_;
             glbScale_=std::clamp(glbScale_*(x>0.f?1.2f:1.f/1.2f),0.01f,2.f);
+            glbCollisionRadius_=std::clamp(glbCollisionRadius_*glbScale_/oldScale,.06f,1.2f);
             glbStickLatched_=true;
         }
         if(galleryTriggerEdge && !panelAimed_) {
             glbPreview_=false;
             glbPlaced_=true;
             glbInGallery_=!editingMode() && !immersiveSceneActive_;
+            glbOrbitPhase_=0.f;
+            if(!glbInGallery_) {
+                const float speed=std::clamp(imguiCarousel_.motionSpeed,.05f,1.5f);
+                glbVelocity_={forward[0]*speed,forward[1]*speed,forward[2]*speed};
+            }else glbVelocity_={0.f,0.f,0.f};
 #ifdef VOXEN_WITH_IMGUI
             imguiCarousel_.glbStatus="GLB placed; select a file to preview again";
 #endif
@@ -3204,6 +3211,8 @@ void XrSwapchainRenderer::render(
                         glbInGallery_=gallery;
                         glbPlaced_=true;
                         glbPreview_=false;
+                        glbOrbitPhase_=0.f;
+                        glbVelocity_={0.f,0.f,0.f};
                         glbLoadedSelection_=i;
                         imguiCarousel_.glbStatus=gallery?"GLB placed on tracked gallery floor":"GLB placed in scene";
                     } else imguiCarousel_.glbStatus="GLB decode / Vulkan upload failed";
