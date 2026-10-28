@@ -265,6 +265,7 @@ private:
     VkPipeline voxenPhyllotaxisPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenStickmanEchoPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenCacodemonPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxenGoldeenPipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
     VkPipeline meshWirePipeline_ = VK_NULL_HANDLE;
