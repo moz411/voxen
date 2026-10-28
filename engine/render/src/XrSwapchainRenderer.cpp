@@ -2501,7 +2501,11 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
                 voxens_.erase(it);
                 // Only a projectile's last kill triggers automatic scene exit.
                 // Keep the final explosion visible before returning to Gallery.
-                if(voxens_.empty() && victoryExitAt_.time_since_epoch().count()==0) {
+                if(voxens_.empty()
+#ifdef VOXEN_WITH_GLB_IMPORT
+                   && !glbPlaced_
+#endif
+                   && victoryExitAt_.time_since_epoch().count()==0) {
                     victoryExitAt_=std::chrono::steady_clock::now()+
                         std::chrono::milliseconds(1150);
 #ifdef __ANDROID__
@@ -2516,6 +2520,36 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
             p.age=3.f; // One orb damages exactly one Voxen.
             break;
         }
+#ifdef VOXEN_WITH_GLB_IMPORT
+        // The same swept projectile collision is used for imported GLB objects.
+        if(p.age<2.5f && glbPlaced_ && !glbPreview_ && !glbInGallery_) {
+            float closest=0.f;
+            if(len2>1e-8f){
+                float dot=0.f;
+                for(int k=0;k<3;++k)dot+=(glbPlacement_[k]-start[k])*displacement[k];
+                closest=std::clamp(dot/len2,0.f,1.f);
+            }
+            float dist2=0.f;
+            for(int k=0;k<3;++k){
+                const float delta=glbPlacement_[k]-(start[k]+closest*displacement[k]);
+                dist2+=delta*delta;
+            }
+            const float radius=p.radius+glbCollisionRadius_;
+            if(dist2<=radius*radius){
+                spikeImpacts_.push_back({glbPlacement_,0.f,std::max(.12f,glbCollisionRadius_*2.f),true});
+                ambientMusic_.triggerEffect(2);
+                glbPlaced_=false;
+                glbVelocity_={0.f,0.f,0.f};
+                p.age=3.f;
+#ifdef VOXEN_WITH_IMGUI
+                imguiCarousel_.glbStatus="GLB destroyed by projectile";
+#endif
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_INFO,"VoxenBlast","GLB destroyed by projectile");
+#endif
+            }
+        }
+#endif
     }
     spikeProjectiles_.erase(std::remove_if(spikeProjectiles_.begin(),spikeProjectiles_.end(),
         [](const SpikeProjectile& p){return p.age>=2.5f;}),spikeProjectiles_.end());
