@@ -16,6 +16,25 @@ int main() {
     assert(loaded->voxens[0].velocity==v.velocity);
     assert(loaded->voxens[0].material==2);
     assert(loaded->musicSource==1 && loaded->motionEnabled);
+    // Regression: newer shaders, materials and procedural presets must serialize.
+    SavedRuntime recent;
+    recent.wallShaderMode=22; // TAN GLITCH
+    SavedVoxen modern;
+    modern.preset=19; // RUBIK CUBE
+    modern.material=11; // ASCII MORPH
+    recent.voxens.push_back(modern);
+    auto recentBytes=encodeRuntime(recent);
+    assert(!recentBytes.empty());
+    auto recentLoaded=decodeRuntime(recentBytes);
+    assert(recentLoaded && recentLoaded->wallShaderMode==22);
+    assert(recentLoaded->voxens.size()==1);
+    assert(recentLoaded->voxens[0].preset==19);
+    assert(recentLoaded->voxens[0].material==11);
+    recent.wallShaderMode=23; // Future unknown background
+    assert(encodeRuntime(recent).empty());
+    recent.wallShaderMode=22;
+    recent.voxens[0].preset=20; // Future unknown Voxen
+    assert(encodeRuntime(recent).empty());
     SavedRuntime cannon;
     cannon.sceneKind=1;
     auto cannonBytes=encodeRuntime(cannon);
