@@ -283,6 +283,7 @@ private:
     VkPipeline universeWithinPipeline_ = VK_NULL_HANDLE;
     VkPipeline cyberCityPipeline_ = VK_NULL_HANDLE;
     VkPipeline voronoiFallPipeline_ = VK_NULL_HANDLE;
+    VkPipeline tanGlitchPipeline_ = VK_NULL_HANDLE;
     VkPipeline heppGlowPipeline_ = VK_NULL_HANDLE;
     VkPipeline phiFieldPipeline_ = VK_NULL_HANDLE;
     VkPipeline soundDemoPipeline_ = VK_NULL_HANDLE;
