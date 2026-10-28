@@ -40,6 +40,15 @@
 #include "voxenPlasmaFrag.spv.hpp"
 #include "voxenSpheresFrag.spv.hpp"
 #include "voxenMandelbulbFrag.spv.hpp"
+#include "voxenFractalPyramidFrag.spv.hpp"
+#include "voxenPhyllotaxisFrag.spv.hpp"
+#include "voxenStickmanEchoFrag.spv.hpp"
+#include "voxenCacodemonFrag.spv.hpp"
+#include "voxenGoldeenFrag.spv.hpp"
+#include "voxenPbrSmileFrag.spv.hpp"
+#include "voxenCubeCloudFrag.spv.hpp"
+#include "voxenRubikCubeFrag.spv.hpp"
+#include "voxenFlatCubeVert.spv.hpp"
 #include "voxenVolumeVert.spv.hpp"
 #include "voxenAttractorVert.spv.hpp"
 #include "voxenAttractorFrag.spv.hpp"
@@ -59,12 +68,18 @@
 #include "meshDepthVert.spv.hpp"
 #include "meshDepthFrag.spv.hpp"
 #include "matrixRainFrag.spv.hpp"
+#include "chromaticEdgesFrag.spv.hpp"
+#include "cosmicPaletteFrag.spv.hpp"
+#include "synthwaveSunsetFrag.spv.hpp"
+#include "oceanWavesFrag.spv.hpp"
+#include "universeWithinFrag.spv.hpp"
+#include "cyberCityFrag.spv.hpp"
+#include "voronoiFallFrag.spv.hpp"
+#include "tanGlitchFrag.spv.hpp"
 #include "heppGlowFrag.spv.hpp"
 #include "phiFieldFrag.spv.hpp"
 #include "soundDemoFrag.spv.hpp"
 #include "midnightRideFrag.spv.hpp"
-#include "seascapeFrag.spv.hpp"
-#include "octgramsFrag.spv.hpp"
 #include "rainbowSpiralFrag.spv.hpp"
 #include "mobiusSpiralFrag.spv.hpp"
 #include "thereminWaveFrag.spv.hpp"
@@ -1282,7 +1297,7 @@ void XrSwapchainRenderer::createPipeline() {
         if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &seascapePipeline_ || &out == &octgramsPipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -1333,6 +1348,14 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(metaballsVert, metaballsVertSize, organicSphereFrag, organicSphereFragSize, metaballsPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
+    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenFractalPyramidFrag, voxenFractalPyramidFragSize, voxenFractalPyramidPipeline_);
+    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenPhyllotaxisFrag, voxenPhyllotaxisFragSize, voxenPhyllotaxisPipeline_);
+    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenStickmanEchoFrag, voxenStickmanEchoFragSize, voxenStickmanEchoPipeline_);
+    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenCacodemonFrag, voxenCacodemonFragSize, voxenCacodemonPipeline_);
+    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenGoldeenFrag, voxenGoldeenFragSize, voxenGoldeenPipeline_);
+    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenPbrSmileFrag, voxenPbrSmileFragSize, voxenPbrSmilePipeline_);
+    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenCubeCloudFrag, voxenCubeCloudFragSize, voxenCubeCloudPipeline_);
+    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenRubikCubeFrag, voxenRubikCubeFragSize, voxenRubikCubePipeline_);
     buildPipeline(meshWireVert, meshWireVertSize, laserFrag, laserFragSize, voxenMandelbulbPipeline_);
     buildPipeline(mandelbulbLitVert, mandelbulbLitVertSize, mandelbulbLitFrag, mandelbulbLitFragSize, voxenMandelbulbLitPipeline_);
 #ifdef VOXEN_WITH_GLB_IMPORT
@@ -1348,12 +1371,18 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(meshWireVert, meshWireVertSize, meshWireFrag, meshWireFragSize, meshWirePipeline_);
     buildPipeline(meshDepthVert, meshDepthVertSize, meshDepthFrag, meshDepthFragSize, meshDepthPipeline_);
     buildPipeline(fractalVert, fractalVertSize, matrixRainFrag, matrixRainFragSize, matrixRainPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, chromaticEdgesFrag, chromaticEdgesFragSize, chromaticEdgesPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, cosmicPaletteFrag, cosmicPaletteFragSize, cosmicPalettePipeline_);
+    buildPipeline(fractalVert, fractalVertSize, synthwaveSunsetFrag, synthwaveSunsetFragSize, synthwaveSunsetPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, oceanWavesFrag, oceanWavesFragSize, oceanWavesPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, universeWithinFrag, universeWithinFragSize, universeWithinPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, cyberCityFrag, cyberCityFragSize, cyberCityPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, voronoiFallFrag, voronoiFallFragSize, voronoiFallPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, tanGlitchFrag, tanGlitchFragSize, tanGlitchPipeline_);
     buildPipeline(fractalVert, fractalVertSize, heppGlowFrag, heppGlowFragSize, heppGlowPipeline_);
     buildPipeline(fractalVert, fractalVertSize, phiFieldFrag, phiFieldFragSize, phiFieldPipeline_);
     buildPipeline(fractalVert, fractalVertSize, soundDemoFrag, soundDemoFragSize, soundDemoPipeline_);
     buildPipeline(fractalVert, fractalVertSize, midnightRideFrag, midnightRideFragSize, midnightRidePipeline_);
-    buildPipeline(fractalVert, fractalVertSize, seascapeFrag, seascapeFragSize, seascapePipeline_);
-    buildPipeline(fractalVert, fractalVertSize, octgramsFrag, octgramsFragSize, octgramsPipeline_);
     buildPipeline(fractalVert, fractalVertSize, rainbowSpiralFrag, rainbowSpiralFragSize, rainbowSpiralPipeline_);
     buildPipeline(fractalVert, fractalVertSize, mobiusSpiralFrag, mobiusSpiralFragSize, mobiusSpiralPipeline_);
     buildPipeline(fractalVert, fractalVertSize, thereminWaveFrag, thereminWaveFragSize, thereminWavePipeline_);
@@ -1575,7 +1604,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         const float y=thumbsticks[1].y;
         if(std::fabs(y)<0.30f)editorPresetStickLatched_=false;
         if(!editorPresetStickLatched_ && std::fabs(y)>0.72f) {
-            imguiCarousel_.voxenPreset=(imguiCarousel_.voxenPreset+(y>0.f?1:11))%12;
+            imguiCarousel_.voxenPreset=(imguiCarousel_.voxenPreset+(y>0.f?1:19))%20;
             editorPresetStickLatched_=true;
         }
         if(std::fabs(x)<0.30f)editorScaleStickLatched_=false;
@@ -1805,7 +1834,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
     if (liquidEnabled && (wallShaderMode!=0 || liquidOpacity>0.001f) &&
-        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && midnightRidePipeline_ != VK_NULL_HANDLE && seascapePipeline_ != VK_NULL_HANDLE && octgramsPipeline_ != VK_NULL_HANDLE && rainbowSpiralPipeline_ != VK_NULL_HANDLE && mobiusSpiralPipeline_ != VK_NULL_HANDLE && thereminWavePipeline_ != VK_NULL_HANDLE && geometricKaleidoscopePipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE) {
+        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && midnightRidePipeline_ != VK_NULL_HANDLE && rainbowSpiralPipeline_ != VK_NULL_HANDLE && mobiusSpiralPipeline_ != VK_NULL_HANDLE && thereminWavePipeline_ != VK_NULL_HANDLE && geometricKaleidoscopePipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE && chromaticEdgesPipeline_ != VK_NULL_HANDLE && cosmicPalettePipeline_ != VK_NULL_HANDLE && synthwaveSunsetPipeline_ != VK_NULL_HANDLE && oceanWavesPipeline_ != VK_NULL_HANDLE && universeWithinPipeline_ != VK_NULL_HANDLE && cyberCityPipeline_ != VK_NULL_HANDLE && voronoiFallPipeline_ != VK_NULL_HANDLE && tanGlitchPipeline_ != VK_NULL_HANDLE) {
         // Stable slots are based on scene anchor IDs, not eye-specific
         // distance ordering. Both eyes therefore show the same effect per wall.
         std::vector<uint64_t> shaderIds;
@@ -1816,7 +1845,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         std::sort(shaderIds.begin(),shaderIds.end());
         shaderIds.erase(std::unique(shaderIds.begin(),shaderIds.end()),shaderIds.end());
         const int cycleStep=static_cast<int>(std::floor(seconds / wallCycleSeconds));
-        constexpr int demoModes[]={0,2,3,4,5,6,7,8,9,10,11,12,13}; // omit solid diagnostic
+        constexpr int demoModes[]={0,2,3,4,5,6,7,10,11,12,13,14,15,16,17,19,20,21,22}; // omit solid diagnostic
         auto choosePipeline=[&](int mode)->VkPipeline {
             switch(mode){
                 case 1:return solidWallPipeline_;
@@ -1826,12 +1855,18 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 case 5:return mandelbrotZoomPipeline_;
                 case 6:return soundDemoPipeline_;
                 case 7:return midnightRidePipeline_;
-                case 8:return seascapePipeline_;
-                case 9:return octgramsPipeline_;
                 case 10:return rainbowSpiralPipeline_;
                 case 11:return mobiusSpiralPipeline_;
                 case 12:return thereminWavePipeline_;
                 case 13:return geometricKaleidoscopePipeline_;
+                case 14:return chromaticEdgesPipeline_;
+                case 15:return cosmicPalettePipeline_;
+                case 16:return synthwaveSunsetPipeline_;
+                case 17:return oceanWavesPipeline_;
+                case 19:return universeWithinPipeline_;
+                case 20:return cyberCityPipeline_;
+                case 21:return voronoiFallPipeline_;
+                case 22:return tanGlitchPipeline_;
                 default:return liquidRoomPipeline_;
             }
         };
@@ -1886,7 +1921,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             if(cycleWallShaders){
                 auto it=std::lower_bound(shaderIds.begin(),shaderIds.end(),surface->id);
                 const auto rank=static_cast<int>(it-shaderIds.begin());
-                activeMode=demoModes[(rank+cycleStep)%13];
+                activeMode=demoModes[(rank+cycleStep)%19];
             }
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,choosePipeline(activeMode));
             const Mat4 wallMvp=multiply(projView,surfaceModel(*surface));
@@ -2085,7 +2120,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         }
     }
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE && voxenSpheresPipeline_!=VK_NULL_HANDLE &&
-       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE && torusKnotPipeline_!=VK_NULL_HANDLE && spikeBloomPipeline_!=VK_NULL_HANDLE && jellyfishPipeline_!=VK_NULL_HANDLE && tentacleCreaturePipeline_!=VK_NULL_HANDLE && earthwormPipeline_!=VK_NULL_HANDLE && cloudPipeline_!=VK_NULL_HANDLE && metaballsPipeline_!=VK_NULL_HANDLE){
+       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && voxenFractalPyramidPipeline_!=VK_NULL_HANDLE && voxenPhyllotaxisPipeline_!=VK_NULL_HANDLE && voxenStickmanEchoPipeline_!=VK_NULL_HANDLE && voxenCacodemonPipeline_!=VK_NULL_HANDLE && voxenGoldeenPipeline_!=VK_NULL_HANDLE && voxenPbrSmilePipeline_!=VK_NULL_HANDLE && voxenCubeCloudPipeline_!=VK_NULL_HANDLE && voxenRubikCubePipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE && torusKnotPipeline_!=VK_NULL_HANDLE && spikeBloomPipeline_!=VK_NULL_HANDLE && jellyfishPipeline_!=VK_NULL_HANDLE && tentacleCreaturePipeline_!=VK_NULL_HANDLE && earthwormPipeline_!=VK_NULL_HANDLE && cloudPipeline_!=VK_NULL_HANDLE && metaballsPipeline_!=VK_NULL_HANDLE){
         auto paintPlasma=[&](const PlasmaVoxen& v){
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 v.preset==1 ? voxenSpheresPipeline_ :
@@ -2096,7 +2131,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 voxenMandelbulbPipeline_) :
                 v.preset==3 ? voxenAttractorPipeline_ : v.preset==4 ? organicSpherePipeline_ :
                 v.preset==5 ? torusKnotPipeline_ : v.preset==6 ? spikeBloomPipeline_ :
-                v.preset==7 ? jellyfishPipeline_ : v.preset==8 ? earthwormPipeline_ : v.preset==9 ? cloudPipeline_ : v.preset==10 ? metaballsPipeline_ : v.preset==11 ? tentacleCreaturePipeline_ : voxenPlasmaPipeline_);
+                v.preset==7 ? jellyfishPipeline_ : v.preset==8 ? earthwormPipeline_ : v.preset==9 ? cloudPipeline_ : v.preset==10 ? metaballsPipeline_ : v.preset==11 ? tentacleCreaturePipeline_ : v.preset==12 ? voxenFractalPyramidPipeline_ : v.preset==13 ? voxenPhyllotaxisPipeline_ : v.preset==14 ? voxenStickmanEchoPipeline_ : v.preset==15 ? voxenCacodemonPipeline_ : v.preset==16 ? voxenGoldeenPipeline_ : v.preset==17 ? voxenPbrSmilePipeline_ : v.preset==18 ? voxenCubeCloudPipeline_ : v.preset==19 ? voxenRubikCubePipeline_ : voxenPlasmaPipeline_);
             const Mat4 mvp=multiply(projView,modelMatrix(
                 v.position[0],v.position[1],v.scale,v.position[2],0.f));
             // For Mandelbulbs, pack material into the otherwise unchanged float slot.
@@ -2114,7 +2149,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                     vkCmdDrawIndexed(commandBuffer_,lod.indexCount,1,0,0,0);
                 }
             }else{
-                vkCmdDraw(commandBuffer_,v.preset==11 ? (24*16*6+8*12*6*6) : (v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 : (v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6))))),1,0,0);
+                vkCmdDraw(commandBuffer_,(v.preset==12 || v.preset==13 || v.preset==14 || v.preset==15 || v.preset==16 || v.preset==17 || v.preset==18 || v.preset==19) ? 36 : (v.preset==11 ? (24*16*6+8*12*6*6) : (v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 : (v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6)))))),1,0,0);
             }
         };
         for(const auto& v:voxens_)paintPlasma(v);
@@ -3207,6 +3242,14 @@ void XrSwapchainRenderer::shutdown() noexcept {
         lod={};
     }
     if(voxenAttractorPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenAttractorPipeline_,nullptr);voxenAttractorPipeline_=VK_NULL_HANDLE;}
+    if(voxenFractalPyramidPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenFractalPyramidPipeline_,nullptr);voxenFractalPyramidPipeline_=VK_NULL_HANDLE;}
+    if(voxenPhyllotaxisPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPhyllotaxisPipeline_,nullptr);voxenPhyllotaxisPipeline_=VK_NULL_HANDLE;}
+    if(voxenStickmanEchoPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenStickmanEchoPipeline_,nullptr);voxenStickmanEchoPipeline_=VK_NULL_HANDLE;}
+    if(voxenCacodemonPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenCacodemonPipeline_,nullptr);voxenCacodemonPipeline_=VK_NULL_HANDLE;}
+    if(voxenGoldeenPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenGoldeenPipeline_,nullptr);voxenGoldeenPipeline_=VK_NULL_HANDLE;}
+    if(voxenPbrSmilePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPbrSmilePipeline_,nullptr);voxenPbrSmilePipeline_=VK_NULL_HANDLE;}
+    if(voxenCubeCloudPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenCubeCloudPipeline_,nullptr);voxenCubeCloudPipeline_=VK_NULL_HANDLE;}
+    if(voxenRubikCubePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenRubikCubePipeline_,nullptr);voxenRubikCubePipeline_=VK_NULL_HANDLE;}
     voxens_.clear();
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
     if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
@@ -3215,12 +3258,18 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (handOutlinePipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,handOutlinePipeline_,nullptr); handOutlinePipeline_=VK_NULL_HANDLE; }
     if(meshDepthPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,meshDepthPipeline_,nullptr);meshDepthPipeline_=VK_NULL_HANDLE;}
     if(matrixRainPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,matrixRainPipeline_,nullptr);matrixRainPipeline_=VK_NULL_HANDLE;}
+    if(chromaticEdgesPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,chromaticEdgesPipeline_,nullptr);chromaticEdgesPipeline_=VK_NULL_HANDLE;}
+    if(cosmicPalettePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,cosmicPalettePipeline_,nullptr);cosmicPalettePipeline_=VK_NULL_HANDLE;}
+    if(synthwaveSunsetPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,synthwaveSunsetPipeline_,nullptr);synthwaveSunsetPipeline_=VK_NULL_HANDLE;}
+    if(oceanWavesPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,oceanWavesPipeline_,nullptr);oceanWavesPipeline_=VK_NULL_HANDLE;}
+    if(universeWithinPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,universeWithinPipeline_,nullptr);universeWithinPipeline_=VK_NULL_HANDLE;}
+    if(cyberCityPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,cyberCityPipeline_,nullptr);cyberCityPipeline_=VK_NULL_HANDLE;}
+    if(voronoiFallPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voronoiFallPipeline_,nullptr);voronoiFallPipeline_=VK_NULL_HANDLE;}
+    if(tanGlitchPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,tanGlitchPipeline_,nullptr);tanGlitchPipeline_=VK_NULL_HANDLE;}
     if(heppGlowPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,heppGlowPipeline_,nullptr);heppGlowPipeline_=VK_NULL_HANDLE;}
     if(phiFieldPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,phiFieldPipeline_,nullptr);phiFieldPipeline_=VK_NULL_HANDLE;}
     if(soundDemoPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,soundDemoPipeline_,nullptr);soundDemoPipeline_=VK_NULL_HANDLE;}
     if(midnightRidePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,midnightRidePipeline_,nullptr);midnightRidePipeline_=VK_NULL_HANDLE;}
-    if(seascapePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,seascapePipeline_,nullptr);seascapePipeline_=VK_NULL_HANDLE;}
-    if(octgramsPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,octgramsPipeline_,nullptr);octgramsPipeline_=VK_NULL_HANDLE;}
     if(rainbowSpiralPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,rainbowSpiralPipeline_,nullptr);rainbowSpiralPipeline_=VK_NULL_HANDLE;}
     if(mobiusSpiralPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,mobiusSpiralPipeline_,nullptr);mobiusSpiralPipeline_=VK_NULL_HANDLE;}
     if(thereminWavePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,thereminWavePipeline_,nullptr);thereminWavePipeline_=VK_NULL_HANDLE;}
