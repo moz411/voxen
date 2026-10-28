@@ -221,6 +221,23 @@ bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
         glbPrimitives_=std::move(incoming);
         glbAsset_=std::move(model);
         glbAnimationEpoch_=0.f;
+        glbVelocity_={0.f,0.f,0.f};
+        glbOrbitPhase_=0.f;
+        // Bounding sphere from decoded geometry transformed by each node.
+        // Conservative root-local proxy; independent of animated child poses.
+        float maxRadius=.15f;
+        for(const auto& node:glbAsset_.nodes)
+            for(auto primitiveId:node.primitives) {
+                const auto& primitive=glbAsset_.primitives.at(primitiveId);
+                const auto& m=node.worldMatrix;
+                for(const auto& v:primitive.vertices) {
+                    const float x=m[0]*v.position[0]+m[4]*v.position[1]+m[8]*v.position[2]+m[12];
+                    const float y=m[1]*v.position[0]+m[5]*v.position[1]+m[9]*v.position[2]+m[13];
+                    const float z=m[2]*v.position[0]+m[6]*v.position[1]+m[10]*v.position[2]+m[14];
+                    maxRadius=std::max(maxRadius,std::sqrt(x*x+y*y+z*z));
+                }
+            }
+        glbCollisionRadius_=std::clamp(maxRadius*glbScale_,.06f,1.2f);
         glbTextures_=std::move(incomingTextures);
         glbTextureDescriptorPool_=incomingPool;
         return !glbPrimitives_.empty();
