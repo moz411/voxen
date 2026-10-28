@@ -64,7 +64,7 @@ void main(){
  color+=vec3(.95,.85,.75)*glint*eyeMask*.8;
  // Frowning open mouth, sharp teeth and breathing blue/orange charge.
  vec2 mouthP=p-vec2(0.,-.285);
- float mouth=sdEllipse(mouthP,vec2(.29,.12+.035*sin(t*2.));
+ float mouth=sdEllipse(mouthP,vec2(.29,.12+.035*sin(t*2.)));
  float mouthMask=1.-smoothstep(-.007,.009,mouth);
  color=mix(color,vec3(.035,.002,.014),mouthMask);
  for(int k=0;k<9;k++){
