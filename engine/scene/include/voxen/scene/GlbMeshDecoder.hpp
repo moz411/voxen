@@ -28,7 +28,23 @@ struct Node {
     std::string name;
     int parent=-1;
     std::array<float,16> worldMatrix{};
+    std::array<float,3> translation{0,0,0};
+    std::array<float,4> rotation{0,0,0,1};
+    std::array<float,3> scale{1,1,1};
     std::vector<std::uint32_t> primitives;
+};
+enum class AnimationPath { Translation, Rotation, Scale };
+struct AnimationChannel {
+    int node=-1;
+    AnimationPath path=AnimationPath::Translation;
+    bool step=false;
+    std::vector<float> times;
+    std::vector<std::array<float,4>> values;
+};
+struct AnimationClip {
+    std::string name;
+    float duration=0.f;
+    std::vector<AnimationChannel> channels;
 };
 struct EmbeddedImage {
     std::vector<std::uint8_t> encoded;
@@ -39,6 +55,7 @@ struct EmbeddedImage {
 struct MeshAsset {
     std::vector<Primitive> primitives;
     std::vector<Node> nodes;
+    std::vector<AnimationClip> animations;
     std::vector<EmbeddedImage> images;
 };
 struct Limits {
