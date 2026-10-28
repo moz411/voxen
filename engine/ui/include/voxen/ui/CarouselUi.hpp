@@ -32,6 +32,7 @@ struct CarouselState {
     std::vector<std::string> savedSceneIds;
     std::vector<std::string> savedSceneLabels;
     std::string sceneStatus;
+    int voxenCatalogueSelection=0; // 0-19 procedural; 20+ imported GLBs
     int glbSelected=0;
     int glbAnimationClip=-1;
     float glbAnimationSpeed=1.f;
