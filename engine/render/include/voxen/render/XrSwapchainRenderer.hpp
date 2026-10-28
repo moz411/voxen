@@ -237,6 +237,10 @@ private:
     bool glbPlaced_=false;
     bool glbPreview_=false;
     float glbScale_=0.1f;
+    std::array<float,3> glbVelocity_{0.f,0.f,0.f};
+    float glbOrbitPhase_=0.f;
+    float glbCollisionRadius_=0.15f;
+    void advanceGlbPhysics(float dt,bool gravity,float bounce,int mode,bool collideRoomMesh);
     int glbLoadedSelection_=-1;
     bool glbStickLatched_=false;
     bool galleryDeletePending_=false;
