@@ -2114,7 +2114,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                     vkCmdDrawIndexed(commandBuffer_,lod.indexCount,1,0,0,0);
                 }
             }else{
-                vkCmdDraw(commandBuffer_,(v.preset==11 || v.preset==13 || v.preset==14) ? (24*16*6+8*12*6*6) : (v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 : (v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : ((v.preset==3 || v.preset==12) ? 24*18*2 : 6))))),1,0,0);
+                vkCmdDraw(commandBuffer_,(v.preset==11 || v.preset==13 || v.preset==14) ? (24*16*6+8*12*6*6) : (v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 : (v.preset==7 ? 24*16*6 : ((v.preset==3 || v.preset==12) ? 24*18*2 : (v.preset>=4 ? 48*32*6 : 6))))),1,0,0);
             }
         };
         for(const auto& v:voxens_)paintPlasma(v);
