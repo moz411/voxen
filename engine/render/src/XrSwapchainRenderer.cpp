@@ -2093,7 +2093,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         }
     }
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE && voxenSpheresPipeline_!=VK_NULL_HANDLE &&
-       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE && torusKnotPipeline_!=VK_NULL_HANDLE && spikeBloomPipeline_!=VK_NULL_HANDLE && jellyfishPipeline_!=VK_NULL_HANDLE && tentacleCreaturePipeline_!=VK_NULL_HANDLE && earthwormPipeline_!=VK_NULL_HANDLE && cloudPipeline_!=VK_NULL_HANDLE && metaballsPipeline_!=VK_NULL_HANDLE){
+       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && voxenFractalPyramidPipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE && torusKnotPipeline_!=VK_NULL_HANDLE && spikeBloomPipeline_!=VK_NULL_HANDLE && jellyfishPipeline_!=VK_NULL_HANDLE && tentacleCreaturePipeline_!=VK_NULL_HANDLE && earthwormPipeline_!=VK_NULL_HANDLE && cloudPipeline_!=VK_NULL_HANDLE && metaballsPipeline_!=VK_NULL_HANDLE){
         auto paintPlasma=[&](const PlasmaVoxen& v){
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 v.preset==1 ? voxenSpheresPipeline_ :
@@ -3224,6 +3224,8 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (handOutlinePipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,handOutlinePipeline_,nullptr); handOutlinePipeline_=VK_NULL_HANDLE; }
     if(meshDepthPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,meshDepthPipeline_,nullptr);meshDepthPipeline_=VK_NULL_HANDLE;}
     if(matrixRainPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,matrixRainPipeline_,nullptr);matrixRainPipeline_=VK_NULL_HANDLE;}
+    if(chromaticEdgesPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,chromaticEdgesPipeline_,nullptr);chromaticEdgesPipeline_=VK_NULL_HANDLE;}
+    if(cosmicPalettePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,cosmicPalettePipeline_,nullptr);cosmicPalettePipeline_=VK_NULL_HANDLE;}
     if(heppGlowPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,heppGlowPipeline_,nullptr);heppGlowPipeline_=VK_NULL_HANDLE;}
     if(phiFieldPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,phiFieldPipeline_,nullptr);phiFieldPipeline_=VK_NULL_HANDLE;}
     if(soundDemoPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,soundDemoPipeline_,nullptr);soundDemoPipeline_=VK_NULL_HANDLE;}
