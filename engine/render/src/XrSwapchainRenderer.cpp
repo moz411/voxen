@@ -76,6 +76,8 @@
 #include "imguiPanelFrag.spv.hpp"
 #include "panoramaVert.spv.hpp"
 #include "panoramaFrag.spv.hpp"
+#include "wallPhotoVert.spv.hpp"
+#include "wallPhotoFrag.spv.hpp"
 
 #include <algorithm>
 #include <future>
@@ -1190,6 +1192,19 @@ void XrSwapchainRenderer::createPipeline() {
         checkVk(vkCreatePipelineLayout(device_,&layout,nullptr,&panoramaPipelineLayout_),
                 "panorama pipeline layout");
     }
+    // Photo wall quad shares panorama sampler, with geometry push constants.
+    {
+        VkPushConstantRange range{};
+        range.stageFlags=VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT;
+        range.size=sizeof(ProceduralPushConstants);
+        VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        layout.setLayoutCount=1;
+        layout.pSetLayouts=&panoramaSetLayout_;
+        layout.pushConstantRangeCount=1;
+        layout.pPushConstantRanges=&range;
+        checkVk(vkCreatePipelineLayout(device_,&layout,nullptr,&wallPhotoPipelineLayout_),
+            "wall photo pipeline layout");
+    }
     // Shared render pass and push constants.
     auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
                              const std::uint8_t* fb, std::size_t fsz,
@@ -1279,7 +1294,7 @@ void XrSwapchainRenderer::createPipeline() {
 #endif
             ;
         if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
-        if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
+        if(&out==&panoramaPipeline_ || &out==&wallPhotoPipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
         if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &seascapePipeline_ || &out == &octgramsPipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
@@ -1317,12 +1332,14 @@ void XrSwapchainRenderer::createPipeline() {
         if(&out==&glbTexturedPipeline_)pi.layout=glbTexturePipelineLayout_;
 #endif
         if(&out==&panoramaPipeline_)pi.layout=panoramaPipelineLayout_;
+        if(&out==&wallPhotoPipeline_)pi.layout=wallPhotoPipelineLayout_;
         pi.renderPass=renderPass_;
         checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &out), "vkCreateGraphicsPipelines");
         vkDestroyShaderModule(device_, fs, nullptr);
         vkDestroyShaderModule(device_, vs, nullptr);
     };
     buildPipeline(panoramaVert,panoramaVertSize,panoramaFrag,panoramaFragSize,panoramaPipeline_);
+    buildPipeline(wallPhotoVert,wallPhotoVertSize,wallPhotoFrag,wallPhotoFragSize,wallPhotoPipeline_);
     buildPipeline(organicSphereVert, organicSphereVertSize, organicSphereFrag, organicSphereFragSize, organicSpherePipeline_);
     buildPipeline(torusKnotVert, torusKnotVertSize, organicSphereFrag, organicSphereFragSize, torusKnotPipeline_);
     buildPipeline(spikeBloomVert, spikeBloomVertSize, organicSphereFrag, organicSphereFragSize, spikeBloomPipeline_);
@@ -1689,7 +1706,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 
 #if defined(VOXEN_WITH_GLB_IMPORT) && defined(VOXEN_WITH_IMGUI)
     // Opaque background first, with no depth writes. Real scene objects draw over it.
-    if(imguiCarousel_.panoramaSelected>=0 && panoramaTexture_.descriptor && panoramaPipeline_) {
+    if(imguiCarousel_.panoramaProjection!=1 && imguiCarousel_.panoramaSelected>=0 && panoramaTexture_.descriptor && panoramaPipeline_) {
         struct PanoramaPush {
             float orientation[4];
             float tangents[4];
@@ -1804,6 +1821,45 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(depthConstants),&depthConstants);
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
+#if defined(VOXEN_WITH_GLB_IMPORT) && defined(VOXEN_WITH_IMGUI)
+    if(imguiCarousel_.panoramaProjection!=0 && imguiCarousel_.panoramaSelected>=0 &&
+       panoramaTexture_.descriptor && wallPhotoPipeline_!=VK_NULL_HANDLE) {
+        // Draw the tracked Meta wall photo under the animated wall effects.
+        // Same quad transform as the overlay, no depth writes: effects remain visible.
+        std::vector<const voxen::scene::EnvironmentSurface*> walls;
+        for(const auto& surface:environmentSurfaces_.surfaces()){
+            if(surface.tracked && surface.classification==voxen::scene::SurfaceClass::Wall &&
+               surface.halfExtents[0]>0.05f && surface.halfExtents[1]>0.05f)
+                walls.push_back(&surface);
+        }
+        const auto& eyePos=xrView.pose.position;
+        std::sort(walls.begin(),walls.end(),[&](const auto* a,const auto* b){
+            const auto dist=[&](const auto* p){float x=p->center[0]-eyePos.x;
+                float y=p->center[1]-eyePos.y,z=p->center[2]-eyePos.z;
+                return x*x+y*y+z*z;};
+            const float da=dist(a),db=dist(b);
+            return da==db ? a->id<b->id : da<db;
+        });
+        const size_t count=std::min(walls.size(),static_cast<size_t>(std::clamp(maxLiquidWalls,1,8)));
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,wallPhotoPipeline_);
+        vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+            wallPhotoPipelineLayout_,0,1,&panoramaTexture_.descriptor,0,nullptr);
+        for(size_t i=0;i<count;++i) {
+            const auto& wall=*walls[i];
+            const Mat4 mvp=multiply(projView,surfaceModel(wall));
+            // Image aspect defaults to 2:1 for panoramas; configurable UV crop.
+            const float wallAspect=wall.halfExtents[0]/wall.halfExtents[1];
+            ProceduralPushConstants photo{mvp,{wallAspect,2.0f,
+                float(imguiCarousel_.wallPhotoMapping),
+                panoramaFadeActive_ ? std::clamp(std::chrono::duration<float>(
+                    std::chrono::steady_clock::now()-panoramaFadeStart_).count()/1.5f,0.f,1.f):1.f}};
+            vkCmdPushConstants(commandBuffer_,wallPhotoPipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,sizeof(photo),&photo);
+            vkCmdDraw(commandBuffer_,6,1,0,0);
+        }
+    }
+#endif
     if (liquidEnabled && (wallShaderMode!=0 || liquidOpacity>0.001f) &&
         liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && midnightRidePipeline_ != VK_NULL_HANDLE && seascapePipeline_ != VK_NULL_HANDLE && octgramsPipeline_ != VK_NULL_HANDLE && rainbowSpiralPipeline_ != VK_NULL_HANDLE && mobiusSpiralPipeline_ != VK_NULL_HANDLE && thereminWavePipeline_ != VK_NULL_HANDLE && geometricKaleidoscopePipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE) {
         // Stable slots are based on scene anchor IDs, not eye-specific
@@ -3156,6 +3212,14 @@ void XrSwapchainRenderer::shutdown() noexcept {
 #endif
     if (device_ != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(device_);
+        if(wallPhotoPipeline_!=VK_NULL_HANDLE) {
+            vkDestroyPipeline(device_,wallPhotoPipeline_,nullptr);
+            wallPhotoPipeline_=VK_NULL_HANDLE;
+        }
+        if(wallPhotoPipelineLayout_!=VK_NULL_HANDLE) {
+            vkDestroyPipelineLayout(device_,wallPhotoPipelineLayout_,nullptr);
+            wallPhotoPipelineLayout_=VK_NULL_HANDLE;
+        }
     }
 
     for (auto& eye : eyes_) {

@@ -185,6 +185,8 @@ private:
     VkDescriptorSetLayout panoramaSetLayout_=VK_NULL_HANDLE;
     VkPipelineLayout panoramaPipelineLayout_=VK_NULL_HANDLE;
     VkPipeline panoramaPipeline_=VK_NULL_HANDLE;
+    VkPipeline wallPhotoPipeline_=VK_NULL_HANDLE;
+    VkPipelineLayout wallPhotoPipelineLayout_=VK_NULL_HANDLE;
     voxen::audio::AmbientMusic ambientMusic_{};
     voxen::audio::Mp3Library mp3Library_{};
     ::XrSession session_ = XR_NULL_HANDLE;
