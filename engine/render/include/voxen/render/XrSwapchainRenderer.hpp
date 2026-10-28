@@ -268,6 +268,7 @@ private:
     VkPipeline handOutlinePipeline_ = VK_NULL_HANDLE;
     VkPipeline meshDepthPipeline_ = VK_NULL_HANDLE;
     VkPipeline matrixRainPipeline_ = VK_NULL_HANDLE;
+    VkPipeline chromaticEdgesPipeline_ = VK_NULL_HANDLE;
     VkPipeline heppGlowPipeline_ = VK_NULL_HANDLE;
     VkPipeline phiFieldPipeline_ = VK_NULL_HANDLE;
     VkPipeline soundDemoPipeline_ = VK_NULL_HANDLE;
