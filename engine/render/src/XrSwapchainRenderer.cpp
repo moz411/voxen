@@ -2584,6 +2584,33 @@ void XrSwapchainRenderer::advanceGlbPhysics(float dt,bool gravity,float bounce,i
         glbVelocity_={0.f,0.f,0.f};
         return;
     }
+    // Swarm mode shares the existing Voxen flock as a moving attractor.
+    // A single imported GLB steers towards the nearby group and avoids overlap.
+    if(mode==1 && !voxens_.empty()){
+        std::array<float,3> cohesion{0.f,0.f,0.f};
+        int nearby=0;
+        for(const auto& v:voxens_){
+            float dist2=0.f;
+            for(int k=0;k<3;++k){
+                const float d=v.position[k]-glbPlacement_[k];
+                dist2+=d*d;
+            }
+#ifdef VOXEN_WITH_IMGUI
+            const float neighborhood=std::max(.25f,imguiCarousel_.swarmRadius);
+#else
+            const float neighborhood=1.f;
+#endif
+            if(dist2>neighborhood*neighborhood)continue;
+            ++nearby;
+            for(int k=0;k<3;++k){
+                cohesion[k]+=v.position[k]-glbPlacement_[k];
+                if(dist2>1e-5f && dist2<.36f)
+                    glbVelocity_[k]-=(v.position[k]-glbPlacement_[k])*dt/std::max(dist2,.03f);
+            }
+        }
+        if(nearby>0)for(int k=0;k<3;++k)
+            glbVelocity_[k]+=std::clamp(cohesion[k]/float(nearby),-1.f,1.f)*dt;
+    }
     if(gravity)glbVelocity_[1]-=9.81f*dt;
     for(int k=0;k<3;++k){
         glbVelocity_[k]=std::clamp(glbVelocity_[k],-4.f,4.f);
@@ -2593,6 +2620,30 @@ void XrSwapchainRenderer::advanceGlbPhysics(float dt,bool gravity,float bounce,i
         glbPlacement_[1]=trackedFloorY_+r;
         if(glbVelocity_[1]<0.f)glbVelocity_[1]=-glbVelocity_[1]*bounce;
         if(gravity && std::fabs(glbVelocity_[1])<.07f)glbVelocity_[1]=0.f;
+    }
+    // Sphere proxy collisions against classic Voxens.
+    for(auto& v:voxens_){
+        std::array<float,3> delta{};
+        float d2=0.f;
+        for(int k=0;k<3;++k){
+            delta[k]=glbPlacement_[k]-v.position[k];
+            d2+=delta[k]*delta[k];
+        }
+        const float combined=r+std::max(.025f,v.scale*.5f);
+        if(d2>=combined*combined || d2<1e-10f)continue;
+        const float dist=std::sqrt(d2);
+        for(int k=0;k<3;++k)delta[k]/=dist;
+        const float overlap=combined-dist;
+        for(int k=0;k<3;++k){
+            glbPlacement_[k]+=.5f*overlap*delta[k];
+            v.position[k]-=.5f*overlap*delta[k];
+        }
+        float rel=0.f;
+        for(int k=0;k<3;++k)rel+=(glbVelocity_[k]-v.velocity[k])*delta[k];
+        if(rel<0.f)for(int k=0;k<3;++k){
+            glbVelocity_[k]-=.5f*(1.f+bounce)*rel*delta[k];
+            v.velocity[k]+=.5f*(1.f+bounce)*rel*delta[k];
+        }
     }
     if(!collideRoomMesh || roomCollisionTriangles_.empty())return;
     // Exact sphere/triangle closest-point contact, candidate grid shared with Voxens.
