@@ -58,11 +58,11 @@ inline bool valid(const SavedRuntime& r) {
         !std::isfinite(r.orbitRadius) || r.orbitRadius<0.4f || r.orbitRadius>5.f ||
         !std::isfinite(r.orbitSpeed) || r.orbitSpeed<0.1f || r.orbitSpeed>3.f ||
         !std::isfinite(r.liquidOpacity) || r.liquidOpacity<0 || r.liquidOpacity>1 ||
-        r.wallShaderMode<0 || r.wallShaderMode>22 ||
+        r.wallShaderMode<0 ||
         !std::isfinite(r.wallCycleSeconds) || r.wallCycleSeconds<1 || r.wallCycleSeconds>300 ||
         !std::isfinite(r.motionBounce) || r.motionBounce<0 || r.motionBounce>1) return false;
     for (const auto& v:r.voxens) {
-        if (v.preset<0 || v.preset>19 || v.material<0 || v.material>11 ||
+        if (v.preset<0 || v.material<0 ||
             !std::isfinite(v.scale) || v.scale<=0 || v.scale>10 ||
             !std::isfinite(v.hue) || !std::isfinite(v.density) || !std::isfinite(v.speed) ||
             v.hue<0 || v.hue>1 || v.density<=0 || v.density>10 || v.speed<=0 || v.speed>10) return false;
