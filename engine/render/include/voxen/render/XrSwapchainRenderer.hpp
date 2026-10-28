@@ -14,6 +14,9 @@
 #include <voxen/audio/Mp3Library.hpp>
 #include <voxen/scene/EnvironmentSurface.hpp>
 #include <voxen/scene/RuntimeSnapshot.hpp>
+#ifdef VOXEN_WITH_GLB_IMPORT
+#include <voxen/scene/GlbMeshDecoder.hpp>
+#endif
 #include <voxen/scene/MechanicalCannon.hpp>
 #include <voxen/scene/SceneRepository.hpp>
 #include <unordered_map>
@@ -244,11 +247,14 @@ private:
         VkBuffer indexBuffer=VK_NULL_HANDLE;
         VkDeviceMemory indexMemory=VK_NULL_HANDLE;
         uint32_t indexCount=0;
+        int nodeIndex=-1;
         std::array<float,4> baseColor{1.f,1.f,1.f,1.f};
         int textureIndex=-1;
         std::array<float,16> worldMatrix{};
     };
     std::vector<GlbGpuPrimitive> glbPrimitives_;
+    voxen::scene::gltf::MeshAsset glbAsset_;
+    float glbAnimationEpoch_=0.f;
     void releaseGlbGpu() noexcept;
 #endif
     struct MandelbulbLod {
