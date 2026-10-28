@@ -104,8 +104,8 @@ struct CarouselState {
     float gpuMs = 0.0f;
     bool gpuAvailable = false;
 };
-inline constexpr std::array<std::string_view, 5> pages = {
-    "VOXENS","BACKGROUNDS","MUSIC","SCENES","GLB"
+inline constexpr std::array<std::string_view, 4> pages = {
+    "VOXENS","BACKGROUNDS","MUSIC","SCENES"
 };
 // Caller owns ImGui frame lifecycle. Draws controls into ImDrawData; no XR
 // input/passthrough assumptions are hidden in this unit.
