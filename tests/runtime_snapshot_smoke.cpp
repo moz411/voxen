@@ -30,10 +30,16 @@ int main() {
     assert(recentLoaded->voxens.size()==1);
     assert(recentLoaded->voxens[0].preset==19);
     assert(recentLoaded->voxens[0].material==11);
-    recent.wallShaderMode=23; // Future unknown background
-    assert(encodeRuntime(recent).empty());
-    recent.wallShaderMode=22;
-    recent.voxens[0].preset=20; // Future unknown Voxen
+    recent.wallShaderMode=1234; // Future background ID must be preserved.
+    recent.voxens[0].preset=5678; // Future Voxen ID.
+    recent.voxens[0].material=999; // Future material ID.
+    auto futureBytes=encodeRuntime(recent);
+    assert(!futureBytes.empty());
+    auto futureLoaded=decodeRuntime(futureBytes);
+    assert(futureLoaded && futureLoaded->wallShaderMode==1234);
+    assert(futureLoaded->voxens[0].preset==5678);
+    assert(futureLoaded->voxens[0].material==999);
+    recent.voxens[0].preset=-1;
     assert(encodeRuntime(recent).empty());
     SavedRuntime cannon;
     cannon.sceneKind=1;
