@@ -48,6 +48,9 @@
 #include "voxenPbrSmileFrag.spv.hpp"
 #include "voxenCubeCloudFrag.spv.hpp"
 #include "voxenRubikCubeFrag.spv.hpp"
+#ifdef VOXEN_WITH_GLB_IMPORT
+#include <voxen/scene/GlbAnimation.hpp>
+#endif
 #include "voxenFlatCubeVert.spv.hpp"
 #include "voxenVolumeVert.spv.hpp"
 #include "voxenAttractorVert.spv.hpp"
@@ -1796,10 +1799,23 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         original=original && imguiCarousel_.glbMaterialMode==0;
 #endif
 
+        int activeClip=-1;
+        float clipSpeed=1.f;
+        bool clipPlaying=true;
+#ifdef VOXEN_WITH_IMGUI
+        activeClip=imguiCarousel_.glbAnimationClip;
+        clipSpeed=imguiCarousel_.glbAnimationSpeed;
+        clipPlaying=imguiCarousel_.glbAnimationPlaying;
+#endif
+        if(glbAnimationEpoch_==0.f)glbAnimationEpoch_=seconds;
+        const auto matrices=voxen::scene::gltf::sampleAnimation(glbAsset_,activeClip,
+            clipPlaying?(seconds-glbAnimationEpoch_)*clipSpeed:0.f);
         for(const auto& part:glbPrimitives_) {
             if(part.indexCount==0)continue;
             Mat4 node{};
-            std::copy(part.worldMatrix.begin(),part.worldMatrix.end(),node.m);
+            if(part.nodeIndex>=0 && static_cast<size_t>(part.nodeIndex)<matrices.size())
+                std::copy(matrices[part.nodeIndex].begin(),matrices[part.nodeIndex].end(),node.m);
+            else std::copy(part.worldMatrix.begin(),part.worldMatrix.end(),node.m);
             const auto root=modelMatrix(glbPlacement_[0],glbPlacement_[1],glbScale_,glbPlacement_[2]);
             const bool textured=original && glbTexturedPipeline_!=VK_NULL_HANDLE &&
                 part.textureIndex>=0 && static_cast<size_t>(part.textureIndex)<glbTextures_.size() &&
@@ -2806,11 +2822,16 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.musicReady=ambientMusic_.ready();
 #ifdef VOXEN_WITH_GLB_IMPORT
         imguiCarousel_.glbFiles=glbAssetNames_;
+        imguiCarousel_.glbAnimationNames.clear();
+        for(const auto& animation:glbAsset_.animations)
+            imguiCarousel_.glbAnimationNames.push_back(animation.name);
         if(imguiCarousel_.glbPreviewRequest && !glbAssetPaths_.empty() && imguiCarousel_.glbSelected>=0 &&
            static_cast<size_t>(imguiCarousel_.glbSelected)<glbAssetPaths_.size()) {
             imguiCarousel_.glbPreviewRequest=false;
             if(loadDemoGlb(glbAssetPaths_[imguiCarousel_.glbSelected])) {
                 glbLoadedSelection_=imguiCarousel_.glbSelected;
+                imguiCarousel_.glbAnimationClip=glbAsset_.animations.empty()?-1:0;
+                imguiCarousel_.glbAnimationPlaying=true;
                 glbScale_=0.1f;
                 glbPreview_=true;
                 glbPlaced_=false;
