@@ -23,22 +23,60 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextUnformatted("VOXENS / PROCEDURAL PRESETS");
             ImGui::Separator();
             static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH","EARTHWORM","CLOUD","METABALLS","TENTACLE CREATURE","FRACTAL PYRAMID","PHYLLOTAXIS SPIRAL","STICKMAN ECHO","CACODEMON","GOLDEEN","PBR SMILE","PULSING CUBE CLOUD","RUBIK CUBE"};
-            if(ImGui::Combo("Voxen preset",&state.voxenPreset,presets,20))state.voxenPaintEnabled=true;
+            // Single catalogue: original procedural presets, then imported GLBs.
+            // Keep the classic preset indices unchanged for saved scenes.
+            std::vector<std::string> catalogue;
+            catalogue.reserve(20+state.glbFiles.size());
+            for(const char* name:presets)catalogue.emplace_back(name);
+            for(const auto& name:state.glbFiles)catalogue.emplace_back(name);
+            state.voxenCatalogueSelection=std::clamp(state.voxenCatalogueSelection,0,
+                static_cast<int>(catalogue.size())-1);
+            const char* selectedName=catalogue[state.voxenCatalogueSelection].c_str();
+            if(ImGui::BeginCombo("Voxen",selectedName)) {
+                for(int i=0;i<static_cast<int>(catalogue.size());++i) {
+                    const bool selected=state.voxenCatalogueSelection==i;
+                    if(ImGui::Selectable(catalogue[i].c_str(),selected)) {
+                        state.voxenCatalogueSelection=i;
+                        if(i<20) {
+                            state.voxenPreset=i;
+                            state.voxenPaintEnabled=true;
+                        }else {
+                            state.glbSelected=i-20;
+                            state.voxenPaintEnabled=false;
+                            state.glbPreviewRequest=true;
+                            state.glbAnimationClip=0;
+                            state.glbAnimationPlaying=true;
+                        }
+                    }
+                    if(selected)ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            const bool imported=state.voxenCatalogueSelection>=20;
+            if(imported) {
+                ImGui::TextDisabled("Imported GLB - right trigger to place");
+                ImGui::TextDisabled("Right stick left/right: resize");
+                if(!state.glbAnimationNames.empty()) {
+                    ImGui::TextDisabled("Embedded animation plays automatically");
+                }
+                if(!state.glbStatus.empty())ImGui::TextWrapped("%s",state.glbStatus.c_str());
+                if(ImGui::Button("RESCAN GLB"))state.glbRescan=true;
+            }
             ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : state.voxenPreset==4 ? "Animated deforming 3D sphere" : state.voxenPreset==5 ? "Twisting torus knot" : state.voxenPreset==6 ? "Spiky bloom" : state.voxenPreset==7 ? "Jellyfish bell" : state.voxenPreset==19 ? "Rotating Rubik cube with animated face turns" : state.voxenPreset==18 ? "Pulsating cube cloud with rotating lattice" : state.voxenPreset==17 ? "Smiling golden PBR creature with glossy eyes" : state.voxenPreset==16 ? "Animated goldfish with flowing fins and bubbles" : state.voxenPreset==15 ? "Floating one-eyed demon with charging fireball" : state.voxenPreset==14 ? "Animated stick figure with neon motion trails" : state.voxenPreset==13 ? "100-sphere evolving phyllotaxis spiral" : state.voxenPreset==12 ? "Animated fractal pyramid raymarch" : "Animated 12-segment earthworm");
-            if(state.voxenPreset==2){
+            if(!imported && state.voxenPreset==2){
                 ImGui::Checkbox("Experimental 3D lighting",&state.mandelbulbLighting);
                 if(state.mandelbulbLighting){
                     static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS"};
                     ImGui::Combo("Mandelbulb material",&state.mandelbulbMaterial,materials,3);
                 }
             }
-            if(state.voxenPreset>=4){
+            if(!imported && state.voxenPreset>=4){
                 static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS","MATRIX","BUBBLE 3D","ANIME CEL","MANGA INK","FLOWING MARBLE","CELLULAR GLOW","FIRE","MAGMA LAVA","ASCII MORPH"};
                 ImGui::Combo("Surface material",&state.voxenMaterial,materials,12);
             }
             ImGui::TextDisabled("RIGHT STICK: UP/DOWN shape | LEFT/RIGHT size");
             ImGui::TextDisabled("RIGHT TRIGGER: place one Voxen");
-            ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
+            if(!imported)ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
             if(!state.voxenPaintEnabled)ImGui::TextDisabled("No Voxen selected for painting");
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.18f,0.60f,"%.2f");
             ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
@@ -71,53 +109,6 @@ void drawCarousel(CarouselState& state) {
             if(ImGui::Button("CLEAR VOXENS"))state.voxenClear=true;
             ImGui::TextDisabled("Right trigger paints in space");
             ImGui::TextDisabled("Audio / deformation / trajectories: next steps");
-            if(ImGui::CollapsingHeader("GLB FILES",ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::SeparatorText("IMPORTED 3D OBJECTS / GLB");
-            static constexpr const char* glbModes[]={"ORIGINAL","VOXEN"};
-            ImGui::Combo("GLB material",&state.glbMaterialMode,glbModes,2);
-            ImGui::TextDisabled("ORIGINAL: embedded materials and textures when available");
-            ImGui::TextDisabled("Android/data/org.voxen.xr/files/assets");
-            if(ImGui::Button("RESCAN ASSETS"))state.glbRescan=true;
-            ImGui::BeginChild("glb-list",ImVec2(0,155),true);
-            for(int i=0;i<static_cast<int>(state.glbFiles.size());++i)
-                if(ImGui::Selectable(state.glbFiles[i].c_str(),state.glbSelected==i)) {
-                    state.glbSelected=i;
-                    state.voxenPaintEnabled=false;
-                    state.glbPreviewRequest=true;
-                }
-            ImGui::EndChild();
-            if(state.glbFiles.empty())ImGui::TextDisabled("No .glb files found");
-            if(state.glbFiles.empty())ImGui::BeginDisabled();
-            if(ImGui::Button("PREVIEW",ImVec2(140,44))) {
-                state.glbPreviewRequest=true;
-                state.voxenPaintEnabled=false;
-            }
-            ImGui::SameLine();
-            if(ImGui::Button("PLACE IN SCENE",ImVec2(140,44)))state.glbPlaceScene=true;
-            ImGui::SameLine();
-            if(ImGui::Button("PLACE IN GALLERY",ImVec2(220,44)))state.glbPlaceGallery=true;
-            if(state.glbFiles.empty())ImGui::EndDisabled();
-            ImGui::TextWrapped("%s",state.glbStatus.c_str());
-            ImGui::TextDisabled("Preview follows right controller");
-            ImGui::TextDisabled("RIGHT STICK LEFT/RIGHT: resize (default 0.1)");
-            ImGui::TextDisabled("RIGHT TRIGGER: place preview");
-            if(!state.glbAnimationNames.empty()) {
-                ImGui::SeparatorText("GLB ANIMATIONS");
-                const char* selected=state.glbAnimationClip>=0 &&
-                    static_cast<size_t>(state.glbAnimationClip)<state.glbAnimationNames.size()
-                    ?state.glbAnimationNames[state.glbAnimationClip].c_str():"NONE";
-                if(ImGui::BeginCombo("Clip",selected)) {
-                    if(ImGui::Selectable("NONE",state.glbAnimationClip<0))state.glbAnimationClip=-1;
-                    for(int i=0;i<static_cast<int>(state.glbAnimationNames.size());++i)
-                        if(ImGui::Selectable(state.glbAnimationNames[i].c_str(),state.glbAnimationClip==i))
-                            state.glbAnimationClip=i;
-                    ImGui::EndCombo();
-                }
-                ImGui::Checkbox("Play / loop",&state.glbAnimationPlaying);
-                ImGui::SliderFloat("Clip speed",&state.glbAnimationSpeed,0.1f,3.f);
-                ImGui::TextDisabled("TRS node animation only; skinning pending");
-            }
-            }
             break;
 
 
