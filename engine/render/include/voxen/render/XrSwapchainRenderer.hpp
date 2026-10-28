@@ -274,6 +274,7 @@ private:
     VkPipeline synthwaveSunsetPipeline_ = VK_NULL_HANDLE;
     VkPipeline oceanWavesPipeline_ = VK_NULL_HANDLE;
     VkPipeline neonStarNestPipeline_ = VK_NULL_HANDLE;
+    VkPipeline universeWithinPipeline_ = VK_NULL_HANDLE;
     VkPipeline heppGlowPipeline_ = VK_NULL_HANDLE;
     VkPipeline phiFieldPipeline_ = VK_NULL_HANDLE;
     VkPipeline soundDemoPipeline_ = VK_NULL_HANDLE;
