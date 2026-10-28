@@ -170,7 +170,7 @@ bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
     std::vector<GlbTexture> incomingTextures;
     VkDescriptorPool incomingPool=VK_NULL_HANDLE;
     try {
-        const auto model=voxen::scene::gltf::loadMeshGlb(file);
+        auto model=voxen::scene::gltf::loadMeshGlb(file);
         if(!model.images.empty() && glbTextureSetLayout_ && commandPool_) {
             VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                                      static_cast<uint32_t>(model.images.size())};
@@ -185,7 +185,8 @@ bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
                               tex.view,tex.sampler,tex.descriptor);
             }
         }
-        for(const auto& node:model.nodes) {
+        for(size_t nodeIndex=0;nodeIndex<model.nodes.size();++nodeIndex) {
+            const auto& node=model.nodes[nodeIndex];
             for(auto primitiveId:node.primitives) {
                 const auto& primitive=model.primitives.at(primitiveId);
                 if(primitive.vertices.empty() || primitive.indices.empty())continue;
@@ -197,6 +198,7 @@ bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
                                         {v.uv[0],v.uv[1]}});
                 GlbGpuPrimitive gpu{};
                 gpu.worldMatrix=node.worldMatrix;
+                gpu.nodeIndex=static_cast<int>(nodeIndex);
                 gpu.baseColor=primitive.baseColor;
                 gpu.textureIndex=primitive.baseColorTexture;
                 incoming.push_back(gpu); // record immediately for exception-safe cleanup
@@ -217,6 +219,8 @@ bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
         checked(vkDeviceWaitIdle(device_),"GLB vkDeviceWaitIdle");
         releaseGlbGpu();
         glbPrimitives_=std::move(incoming);
+        glbAsset_=std::move(model);
+        glbAnimationEpoch_=0.f;
         glbTextures_=std::move(incomingTextures);
         glbTextureDescriptorPool_=incomingPool;
         return !glbPrimitives_.empty();
