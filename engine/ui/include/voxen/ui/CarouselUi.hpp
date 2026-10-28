@@ -43,6 +43,8 @@ struct CarouselState {
     bool panoramaImportRequest = false;
     bool panoramaRescanRequest = false;
     int panoramaSelected = -1;
+    int panoramaProjection = 0; // 0 sphere, 1 walls, 2 both
+    int wallPhotoMapping = 1; // 0 FIT, 1 COVER
     float panoramaYawDegrees = 0.f;
     float panoramaHorizontalDegrees = 220.f;
     float panoramaVerticalDegrees = 75.f;
