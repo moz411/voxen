@@ -91,10 +91,17 @@ void drawCarousel(CarouselState& state) {
 
             ImGui::Separator();
             ImGui::Checkbox("Wall effect",&state.liquidRoom);
-            static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","SEASCAPE","OCTGRAMS","RAINBOW SPIRAL","MOBIUS SPIRAL","THEREMIN WAVE","GEOMETRIC KALEIDOSCOPE","CHROMATIC EDGES","COSMIC PALETTE","SYNTHWAVE SUNSET","OCEAN WAVES","NEON STAR NEST","UNIVERSE WITHIN","CYBERCITY","VORONOI FALL","TAN GLITCH"};
+            static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","RAINBOW SPIRAL","MOBIUS SPIRAL","THEREMIN WAVE","GEOMETRIC KALEIDOSCOPE","CHROMATIC EDGES","COSMIC PALETTE","SYNTHWAVE SUNSET","OCEAN WAVES","UNIVERSE WITHIN","CYBERCITY","VORONOI FALL","TAN GLITCH"};
             ImGui::Checkbox("Different shader per wall",&state.cycleWallShaders);
             if(state.cycleWallShaders) ImGui::SliderFloat("Change every (seconds)",&state.wallCycleSeconds,10.f,90.f,"%.0f");
-            else ImGui::Combo("Wall shader",&state.wallShaderMode,effects,23);
+            else {
+                // Persisted wallShaderMode IDs are preserved; hide deprecated 8, 9 and 18.
+                static constexpr int modeIds[]={0,1,2,3,4,5,6,7,10,11,12,13,14,15,16,17,19,20,21,22};
+                int selection=0;
+                for(int i=0;i<20;++i)if(state.wallShaderMode==modeIds[i])selection=i;
+                if(ImGui::Combo("Wall shader",&selection,effects,20))
+                    state.wallShaderMode=modeIds[selection];
+            }
             if(state.wallShaderMode==1) {
                 ImGui::ColorEdit3("Wall color",state.wallColor);
                 ImGui::SliderFloat("Solid opacity",&state.wallSolidOpacity,0.1f,1.0f);
