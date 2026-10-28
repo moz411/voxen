@@ -65,6 +65,7 @@
 #include "cosmicPaletteFrag.spv.hpp"
 #include "synthwaveSunsetFrag.spv.hpp"
 #include "oceanWavesFrag.spv.hpp"
+#include "neonStarNestFrag.spv.hpp"
 #include "heppGlowFrag.spv.hpp"
 #include "phiFieldFrag.spv.hpp"
 #include "soundDemoFrag.spv.hpp"
@@ -1360,6 +1361,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, cosmicPaletteFrag, cosmicPaletteFragSize, cosmicPalettePipeline_);
     buildPipeline(fractalVert, fractalVertSize, synthwaveSunsetFrag, synthwaveSunsetFragSize, synthwaveSunsetPipeline_);
     buildPipeline(fractalVert, fractalVertSize, oceanWavesFrag, oceanWavesFragSize, oceanWavesPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, neonStarNestFrag, neonStarNestFragSize, neonStarNestPipeline_);
     buildPipeline(fractalVert, fractalVertSize, heppGlowFrag, heppGlowFragSize, heppGlowPipeline_);
     buildPipeline(fractalVert, fractalVertSize, phiFieldFrag, phiFieldFragSize, phiFieldPipeline_);
     buildPipeline(fractalVert, fractalVertSize, soundDemoFrag, soundDemoFragSize, soundDemoPipeline_);
@@ -1817,7 +1819,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
     if (liquidEnabled && (wallShaderMode!=0 || liquidOpacity>0.001f) &&
-        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && midnightRidePipeline_ != VK_NULL_HANDLE && seascapePipeline_ != VK_NULL_HANDLE && octgramsPipeline_ != VK_NULL_HANDLE && rainbowSpiralPipeline_ != VK_NULL_HANDLE && mobiusSpiralPipeline_ != VK_NULL_HANDLE && thereminWavePipeline_ != VK_NULL_HANDLE && geometricKaleidoscopePipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE && chromaticEdgesPipeline_ != VK_NULL_HANDLE && cosmicPalettePipeline_ != VK_NULL_HANDLE && synthwaveSunsetPipeline_ != VK_NULL_HANDLE && oceanWavesPipeline_ != VK_NULL_HANDLE) {
+        liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && midnightRidePipeline_ != VK_NULL_HANDLE && seascapePipeline_ != VK_NULL_HANDLE && octgramsPipeline_ != VK_NULL_HANDLE && rainbowSpiralPipeline_ != VK_NULL_HANDLE && mobiusSpiralPipeline_ != VK_NULL_HANDLE && thereminWavePipeline_ != VK_NULL_HANDLE && geometricKaleidoscopePipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE && chromaticEdgesPipeline_ != VK_NULL_HANDLE && cosmicPalettePipeline_ != VK_NULL_HANDLE && synthwaveSunsetPipeline_ != VK_NULL_HANDLE && oceanWavesPipeline_ != VK_NULL_HANDLE && neonStarNestPipeline_ != VK_NULL_HANDLE) {
         // Stable slots are based on scene anchor IDs, not eye-specific
         // distance ordering. Both eyes therefore show the same effect per wall.
         std::vector<uint64_t> shaderIds;
@@ -1828,7 +1830,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         std::sort(shaderIds.begin(),shaderIds.end());
         shaderIds.erase(std::unique(shaderIds.begin(),shaderIds.end()),shaderIds.end());
         const int cycleStep=static_cast<int>(std::floor(seconds / wallCycleSeconds));
-        constexpr int demoModes[]={0,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17}; // omit solid diagnostic
+        constexpr int demoModes[]={0,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18}; // omit solid diagnostic
         auto choosePipeline=[&](int mode)->VkPipeline {
             switch(mode){
                 case 1:return solidWallPipeline_;
@@ -1848,6 +1850,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 case 15:return cosmicPalettePipeline_;
                 case 16:return synthwaveSunsetPipeline_;
                 case 17:return oceanWavesPipeline_;
+                case 18:return neonStarNestPipeline_;
                 default:return liquidRoomPipeline_;
             }
         };
@@ -1902,7 +1905,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             if(cycleWallShaders){
                 auto it=std::lower_bound(shaderIds.begin(),shaderIds.end(),surface->id);
                 const auto rank=static_cast<int>(it-shaderIds.begin());
-                activeMode=demoModes[(rank+cycleStep)%17];
+                activeMode=demoModes[(rank+cycleStep)%18];
             }
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,choosePipeline(activeMode));
             const Mat4 wallMvp=multiply(projView,surfaceModel(*surface));
@@ -3237,6 +3240,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(cosmicPalettePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,cosmicPalettePipeline_,nullptr);cosmicPalettePipeline_=VK_NULL_HANDLE;}
     if(synthwaveSunsetPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,synthwaveSunsetPipeline_,nullptr);synthwaveSunsetPipeline_=VK_NULL_HANDLE;}
     if(oceanWavesPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,oceanWavesPipeline_,nullptr);oceanWavesPipeline_=VK_NULL_HANDLE;}
+    if(neonStarNestPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,neonStarNestPipeline_,nullptr);neonStarNestPipeline_=VK_NULL_HANDLE;}
     if(heppGlowPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,heppGlowPipeline_,nullptr);heppGlowPipeline_=VK_NULL_HANDLE;}
     if(phiFieldPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,phiFieldPipeline_,nullptr);phiFieldPipeline_=VK_NULL_HANDLE;}
     if(soundDemoPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,soundDemoPipeline_,nullptr);soundDemoPipeline_=VK_NULL_HANDLE;}
