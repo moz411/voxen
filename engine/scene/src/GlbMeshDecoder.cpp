@@ -168,6 +168,8 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
         node.parent=item.parent;
         if(item.node->name) node.name=item.node->name;
         cgltf_node_transform_world(item.node,node.worldMatrix.data());
+        cgltf_node_transform_local(item.node,node.localMatrix.data());
+        node.hasMatrix=item.node->has_matrix;
         if(item.node->has_translation)std::copy_n(item.node->translation,3,node.translation.data());
         if(item.node->has_rotation)std::copy_n(item.node->rotation,4,node.rotation.data());
         if(item.node->has_scale)std::copy_n(item.node->scale,3,node.scale.data());
