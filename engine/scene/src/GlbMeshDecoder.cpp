@@ -156,6 +156,7 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
     if(!scene) throw std::runtime_error("glTF: no scene");
     // Non-recursive traversal prevents stack exhaustion from hostile documents.
     struct Entry { const cgltf_node* node; int parent; };
+    std::unordered_map<const cgltf_node*,int> nodeIndices;
     std::vector<Entry> pending;
     for(cgltf_size i=scene->nodes_count;i>0;--i)
         pending.push_back({scene->nodes[i-1],-1});
@@ -167,11 +168,61 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
         node.parent=item.parent;
         if(item.node->name) node.name=item.node->name;
         cgltf_node_transform_world(item.node,node.worldMatrix.data());
+        if(item.node->has_translation)std::copy_n(item.node->translation,3,node.translation.data());
+        if(item.node->has_rotation)std::copy_n(item.node->rotation,4,node.rotation.data());
+        if(item.node->has_scale)std::copy_n(item.node->scale,3,node.scale.data());
         if(item.node->mesh) node.primitives=loadMesh(item.node->mesh);
         const auto idx=static_cast<int>(output.nodes.size());
         output.nodes.push_back(std::move(node));
+        nodeIndices[item.node]=idx;
         for(cgltf_size i=item.node->children_count;i>0;--i)
             pending.push_back({item.node->children[i-1],idx});
+    }
+    if(data->animations_count>32)throw std::runtime_error("glTF: too many animation clips");
+    for(cgltf_size a=0;a<data->animations_count;++a) {
+        const auto& source=data->animations[a];
+        AnimationClip clip;
+        clip.name=source.name?source.name:("Clip "+std::to_string(a+1));
+        if(source.channels_count>256)throw std::runtime_error("glTF: too many animation channels");
+        for(cgltf_size c=0;c<source.channels_count;++c) {
+            const auto& ch=source.channels[c];
+            if(!ch.target_node || !ch.sampler || !ch.sampler->input || !ch.sampler->output)continue;
+            const auto it=nodeIndices.find(ch.target_node);
+            if(it==nodeIndices.end())continue;
+            AnimationChannel track;
+            track.node=it->second;
+            int components=3;
+            switch(ch.target_path){
+              case cgltf_animation_path_type_translation:track.path=AnimationPath::Translation;break;
+              case cgltf_animation_path_type_rotation:track.path=AnimationPath::Rotation;components=4;break;
+              case cgltf_animation_path_type_scale:track.path=AnimationPath::Scale;break;
+              default:continue;
+            }
+            if(ch.sampler->interpolation!=cgltf_interpolation_type_linear &&
+               ch.sampler->interpolation!=cgltf_interpolation_type_step)continue;
+            track.step=ch.sampler->interpolation==cgltf_interpolation_type_step;
+            const auto* input=ch.sampler->input;
+            const auto* values=ch.sampler->output;
+            if(input->count<1 || input->count>4096 || values->count!=input->count)continue;
+            if(input->type!=cgltf_type_scalar ||
+               values->type!=(components==4?cgltf_type_vec4:cgltf_type_vec3))continue;
+            track.times.reserve(input->count);track.values.reserve(input->count);
+            float previous=-1.f;
+            bool valid=true;
+            for(cgltf_size k=0;k<input->count;++k){
+                float t=0.f; std::array<float,4> value{0.f,0.f,0.f,0.f};
+                if(!cgltf_accessor_read_float(input,k,&t,1) ||
+                   !cgltf_accessor_read_float(values,k,value.data(),components) ||
+                   t<previous){valid=false;break;}
+                previous=t;
+                track.times.push_back(t);
+                track.values.push_back(value);
+            }
+            if(!valid)continue;
+            clip.duration=std::max(clip.duration,track.times.back());
+            clip.channels.push_back(std::move(track));
+        }
+        if(!clip.channels.empty())output.animations.push_back(std::move(clip));
     }
     return output;
 }
