@@ -268,6 +268,7 @@ private:
     VkPipeline voxenGoldeenPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenPbrSmilePipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenCubeCloudPipeline_ = VK_NULL_HANDLE;
+    VkPipeline voxenRubikCubePipeline_ = VK_NULL_HANDLE;
     VkPipeline liquidRoomPipeline_ = VK_NULL_HANDLE;
     VkPipeline solidWallPipeline_ = VK_NULL_HANDLE;
     VkPipeline meshWirePipeline_ = VK_NULL_HANDLE;
