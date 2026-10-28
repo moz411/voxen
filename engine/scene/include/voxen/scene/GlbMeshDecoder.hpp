@@ -28,6 +28,8 @@ struct Node {
     std::string name;
     int parent=-1;
     std::array<float,16> worldMatrix{};
+    std::array<float,16> localMatrix{};
+    bool hasMatrix=false;
     std::array<float,3> translation{0,0,0};
     std::array<float,4> rotation{0,0,0,1};
     std::array<float,3> scale{1,1,1};
