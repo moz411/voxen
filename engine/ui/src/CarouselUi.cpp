@@ -85,6 +85,13 @@ void drawCarousel(CarouselState& state) {
                     state.panoramaSelected=i;
             ImGui::EndChild();
             if(!state.panoramaStatus.empty()) ImGui::TextWrapped("%s",state.panoramaStatus.c_str());
+            static constexpr const char* photoModes[]={"SPHERE","META WALLS","BOTH"};
+            ImGui::Combo("Photo projection",&state.panoramaProjection,photoModes,3);
+            if(state.panoramaProjection!=0){
+                static constexpr const char* photoMapping[]={"FIT","COVER"};
+                ImGui::Combo("Wall photo mapping",&state.wallPhotoMapping,photoMapping,2);
+                ImGui::TextDisabled("Uses the selected photo on all tracked Meta walls");
+            }
             ImGui::SliderFloat("Panorama yaw",&state.panoramaYawDegrees,-180.f,180.f,"%.0f deg");
             ImGui::SliderFloat("Horizontal coverage",&state.panoramaHorizontalDegrees,60.f,360.f,"%.0f deg");
             ImGui::SliderFloat("Vertical coverage",&state.panoramaVerticalDegrees,30.f,180.f,"%.0f deg");
