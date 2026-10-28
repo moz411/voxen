@@ -2521,6 +2521,117 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
         [](const SpikeProjectile& p){return p.age>=2.5f;}),spikeProjectiles_.end());
 }
 
+#ifdef VOXEN_WITH_GLB_IMPORT
+// Imported GLB uses the same motion mode / gravity / bounce settings as Voxens.
+// Broad-phase collision uses a bounded sphere proxy rather than animated triangles.
+void XrSwapchainRenderer::advanceGlbPhysics(float dt,bool gravity,float bounce,int mode,bool collideRoomMesh){
+    if(!glbPlaced_ || glbPreview_ || glbInGallery_ || dt<=0.f)return;
+    const float r=std::clamp(glbCollisionRadius_,0.06f,1.2f);
+    if(mode==2){
+#ifdef VOXEN_WITH_IMGUI
+        glbOrbitPhase_+=dt*std::clamp(imguiCarousel_.orbitSpeed,0.1f,3.f);
+        const float radius=std::clamp(imguiCarousel_.orbitRadius,0.4f,5.f);
+        const float c=std::cos(glbOrbitPhase_),z=std::sin(glbOrbitPhase_);
+        if(imguiCarousel_.orbitRandomAxis)
+            glbPlacement_={viewerPosition_[0]+radius*c,
+                           viewerPosition_[1]+radius*.45f*z,
+                           viewerPosition_[2]+radius*.89f*z};
+        else glbPlacement_={viewerPosition_[0]+radius*c,
+                            viewerPosition_[1],
+                            viewerPosition_[2]+radius*z};
+#endif
+        glbVelocity_={0.f,0.f,0.f};
+        return;
+    }
+    if(gravity)glbVelocity_[1]-=9.81f*dt;
+    for(int k=0;k<3;++k){
+        glbVelocity_[k]=std::clamp(glbVelocity_[k],-4.f,4.f);
+        glbPlacement_[k]+=glbVelocity_[k]*dt;
+    }
+    if(hasTrackedFloor_ && glbPlacement_[1]-r<trackedFloorY_){
+        glbPlacement_[1]=trackedFloorY_+r;
+        if(glbVelocity_[1]<0.f)glbVelocity_[1]=-glbVelocity_[1]*bounce;
+        if(gravity && std::fabs(glbVelocity_[1])<.07f)glbVelocity_[1]=0.f;
+    }
+    if(!collideRoomMesh || roomCollisionTriangles_.empty())return;
+    // Exact sphere/triangle closest-point contact, candidate grid shared with Voxens.
+    const auto dot=[](const std::array<float,3>& a,const std::array<float,3>& b){
+        return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];};
+    const auto sub=[](const std::array<float,3>& a,const std::array<float,3>& b){
+        return std::array<float,3>{a[0]-b[0],a[1]-b[1],a[2]-b[2]};};
+    std::array<int,3> lo{},hi{};
+    for(int k=0;k<3;++k){
+        lo[k]=int(std::floor((glbPlacement_[k]-r)/.5f));
+        hi[k]=int(std::floor((glbPlacement_[k]+r)/.5f));
+    }
+    std::vector<uint32_t> candidates;
+    for(int x=lo[0];x<=hi[0];++x)
+    for(int y=lo[1];y<=hi[1];++y)
+    for(int z=lo[2];z<=hi[2];++z){
+        auto it=roomCollisionGrid_.find({x,y,z});
+        if(it!=roomCollisionGrid_.end())candidates.insert(candidates.end(),it->second.begin(),it->second.end());
+    }
+    std::sort(candidates.begin(),candidates.end());
+    candidates.erase(std::unique(candidates.begin(),candidates.end()),candidates.end());
+    for(auto triangleIndex:candidates){
+        const auto& tri=roomCollisionTriangles_[triangleIndex];
+        const auto ab=sub(tri.b,tri.a),ac=sub(tri.c,tri.a),ap=sub(glbPlacement_,tri.a);
+        // Christer Ericson closest-point-on-triangle barycentric regions.
+        const float d1=dot(ab,ap),d2=dot(ac,ap);
+        std::array<float,3> nearest{};
+        if(d1<=0.f&&d2<=0.f)nearest=tri.a;
+        else{
+            auto bp=sub(glbPlacement_,tri.b);
+            const float d3=dot(ab,bp),d4=dot(ac,bp);
+            if(d3>=0.f&&d4<=d3)nearest=tri.b;
+            else{
+                const float vc=d1*d4-d3*d2;
+                if(vc<=0.f&&d1>=0.f&&d3<=0.f){
+                    const float v=d1/(d1-d3);
+                    for(int k=0;k<3;++k)nearest[k]=tri.a[k]+v*ab[k];
+                }else{
+                    auto cp=sub(glbPlacement_,tri.c);
+                    const float d5=dot(ab,cp),d6=dot(ac,cp);
+                    if(d6>=0.f&&d5<=d6)nearest=tri.c;
+                    else{
+                        const float vb=d5*d2-d1*d6;
+                        if(vb<=0.f&&d2>=0.f&&d6<=0.f){
+                            const float w=d2/(d2-d6);
+                            for(int k=0;k<3;++k)nearest[k]=tri.a[k]+w*ac[k];
+                        }else{
+                            const float va=d3*d6-d5*d4;
+                            if(va<=0.f&&d4-d3>=0.f&&d5-d6>=0.f){
+                                const auto bc=sub(tri.c,tri.b);
+                                const float w=(d4-d3)/((d4-d3)+(d5-d6));
+                                for(int k=0;k<3;++k)nearest[k]=tri.b[k]+w*bc[k];
+                            }else{
+                                const float den=va+vb+vc;
+                                if(std::fabs(den)<1e-8f)continue;
+                                const float v=vb/den,w=vc/den;
+                                for(int k=0;k<3;++k)nearest[k]=tri.a[k]+v*ab[k]+w*ac[k];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        auto delta=sub(glbPlacement_,nearest);
+        float dist=std::sqrt(dot(delta,delta));
+        if(dist>=r)continue;
+        if(dist<1e-6f){
+            delta={ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0]};
+            const float length=std::sqrt(dot(delta,delta));
+            if(length<1e-7f)continue;
+            for(float& v:delta)v/=length;
+            if(dot(delta,glbVelocity_)>0.f)for(float& v:delta)v=-v;
+        }else for(float& v:delta)v/=dist;
+        for(int k=0;k<3;++k)glbPlacement_[k]+=delta[k]*(r-dist+.001f);
+        const float vn=dot(glbVelocity_,delta);
+        if(vn<0.f)for(int k=0;k<3;++k)glbVelocity_[k]-=(1.f+bounce)*vn*delta[k];
+    }
+}
+#endif
+
 // Fixed-step, world-space sphere proxy physics. One update per stereo frame.
 // The procedural surface deformation stays entirely in the Vulkan shaders.
 void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float bounce,
@@ -3112,6 +3223,10 @@ void XrSwapchainRenderer::render(
                 imguiCarousel_.motionMode,imguiCarousel_.swarmRadius,
                 imguiCarousel_.swarmStrength,imguiCarousel_.swarmSeparation,
                 imguiCarousel_.collideRoomMesh);
+#ifdef VOXEN_WITH_GLB_IMPORT
+            advanceGlbPhysics(step,imguiCarousel_.motionGravity,imguiCarousel_.motionBounce,
+                imguiCarousel_.motionMode,imguiCarousel_.collideRoomMesh);
+#endif
             physicsAccumulator_-=step;
         }
     }else physicsAccumulator_=0.f;
