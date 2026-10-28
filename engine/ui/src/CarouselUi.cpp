@@ -101,6 +101,22 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextDisabled("Preview follows right controller");
             ImGui::TextDisabled("RIGHT STICK LEFT/RIGHT: resize (default 0.1)");
             ImGui::TextDisabled("RIGHT TRIGGER: place preview");
+            if(!state.glbAnimationNames.empty()) {
+                ImGui::SeparatorText("GLB ANIMATIONS");
+                const char* selected=state.glbAnimationClip>=0 &&
+                    static_cast<size_t>(state.glbAnimationClip)<state.glbAnimationNames.size()
+                    ?state.glbAnimationNames[state.glbAnimationClip].c_str():"NONE";
+                if(ImGui::BeginCombo("Clip",selected)) {
+                    if(ImGui::Selectable("NONE",state.glbAnimationClip<0))state.glbAnimationClip=-1;
+                    for(int i=0;i<static_cast<int>(state.glbAnimationNames.size());++i)
+                        if(ImGui::Selectable(state.glbAnimationNames[i].c_str(),state.glbAnimationClip==i))
+                            state.glbAnimationClip=i;
+                    ImGui::EndCombo();
+                }
+                ImGui::Checkbox("Play / loop",&state.glbAnimationPlaying);
+                ImGui::SliderFloat("Clip speed",&state.glbAnimationSpeed,0.1f,3.f);
+                ImGui::TextDisabled("TRS node animation only; skinning pending");
+            }
             }
             break;
 
