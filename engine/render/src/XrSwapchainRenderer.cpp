@@ -290,6 +290,41 @@ std::vector<voxen::gallery::SceneId> XrSwapchainRenderer::savedSceneIds() const 
 }
 
 void XrSwapchainRenderer::requestGalleryDelete() {
+#ifdef VOXEN_WITH_GLB_IMPORT
+    // Right-controller B also deletes a placed GLB when directly aimed at it.
+    // This importer currently has one resident GLB placement; a preview is
+    // never deleted, and a miss leaves the model untouched.
+    if(glbPlaced_ && !glbPreview_ && controllerTracked_[1] &&
+       (glbInGallery_ ? (!editingMode() && !immersiveSceneActive_)
+                      : (editingMode() || immersiveSceneActive_))) {
+        const auto& hand=controllerPoses_[1];
+        const auto& q=hand.orientation;
+        const std::array<float,3> ray{
+            -2.f*(q.x*q.z+q.w*q.y),
+            -2.f*(q.y*q.z-q.w*q.x),
+            -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        const float dx=glbPlacement_[0]-hand.position.x;
+        const float dy=glbPlacement_[1]-hand.position.y;
+        const float dz=glbPlacement_[2]-hand.position.z;
+        const float along=dx*ray[0]+dy*ray[1]+dz*ray[2];
+        const float miss2=dx*dx+dy*dy+dz*dz-along*along;
+        // Conservative radius: allow targeting small imported models.
+        const float radius=std::clamp(glbScale_*1.5f,0.12f,0.65f);
+        if(along>0.08f && along<4.f && miss2<=radius*radius) {
+            glbPlaced_=false;
+            glbInGallery_=false;
+            glbAnimationEpoch_=0.f;
+#ifdef VOXEN_WITH_IMGUI
+            imguiCarousel_.glbStatus="GLB removed with B";
+#endif
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_INFO,"VoxenGLB",
+                                "B delete: placed GLB removed");
+#endif
+            return;
+        }
+    }
+#endif
     // Delete only the current ray-hovered gallery sphere; never delete a
     // previous selection or an immersive-scene object by accident.
     if(editingMode() || immersiveSceneActive_ || galleryDragging_ ||
