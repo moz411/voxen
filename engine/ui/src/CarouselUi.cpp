@@ -62,7 +62,7 @@ void drawCarousel(CarouselState& state) {
                 if(!state.glbStatus.empty())ImGui::TextWrapped("%s",state.glbStatus.c_str());
                 if(ImGui::Button("RESCAN GLB"))state.glbRescan=true;
             }
-            ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : state.voxenPreset==4 ? "Animated deforming 3D sphere" : state.voxenPreset==5 ? "Twisting torus knot" : state.voxenPreset==6 ? "Spiky bloom" : state.voxenPreset==7 ? "Jellyfish bell" : state.voxenPreset==19 ? "Rotating Rubik cube with animated face turns" : state.voxenPreset==18 ? "Pulsating cube cloud with rotating lattice" : state.voxenPreset==17 ? "Smiling golden PBR creature with glossy eyes" : state.voxenPreset==16 ? "Animated goldfish with flowing fins and bubbles" : state.voxenPreset==15 ? "Floating one-eyed demon with charging fireball" : state.voxenPreset==14 ? "Animated stick figure with neon motion trails" : state.voxenPreset==13 ? "100-sphere evolving phyllotaxis spiral" : state.voxenPreset==12 ? "Animated fractal pyramid raymarch" : "Animated 12-segment earthworm");
+            if(!imported)ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : state.voxenPreset==4 ? "Animated deforming 3D sphere" : state.voxenPreset==5 ? "Twisting torus knot" : state.voxenPreset==6 ? "Spiky bloom" : state.voxenPreset==7 ? "Jellyfish bell" : state.voxenPreset==19 ? "Rotating Rubik cube with animated face turns" : state.voxenPreset==18 ? "Pulsating cube cloud with rotating lattice" : state.voxenPreset==17 ? "Smiling golden PBR creature with glossy eyes" : state.voxenPreset==16 ? "Animated goldfish with flowing fins and bubbles" : state.voxenPreset==15 ? "Floating one-eyed demon with charging fireball" : state.voxenPreset==14 ? "Animated stick figure with neon motion trails" : state.voxenPreset==13 ? "100-sphere evolving phyllotaxis spiral" : state.voxenPreset==12 ? "Animated fractal pyramid raymarch" : "Animated 12-segment earthworm");
             if(!imported && state.voxenPreset==2){
                 ImGui::Checkbox("Experimental 3D lighting",&state.mandelbulbLighting);
                 if(state.mandelbulbLighting){
@@ -77,11 +77,11 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextDisabled("RIGHT STICK: UP/DOWN shape | LEFT/RIGHT size");
             ImGui::TextDisabled("RIGHT TRIGGER: place one Voxen");
             if(!imported)ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
-            if(!state.voxenPaintEnabled)ImGui::TextDisabled("No Voxen selected for painting");
-            ImGui::SliderFloat("Size (m)",&state.voxenScale,0.18f,0.60f,"%.2f");
-            ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
-            ImGui::SliderFloat(state.voxenPreset>=4 ? "Deformation" : "Density",&state.voxenDensity,0.3f,2.f);
-            ImGui::SliderFloat("Speed",&state.voxenSpeed,0.1f,3.f);
+            if(!imported && !state.voxenPaintEnabled)ImGui::TextDisabled("No Voxen selected for painting");
+            if(!imported)ImGui::SliderFloat("Size (m)",&state.voxenScale,0.18f,0.60f,"%.2f");
+            if(!imported)ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
+            if(!imported)ImGui::SliderFloat(state.voxenPreset>=4 ? "Deformation" : "Density",&state.voxenDensity,0.3f,2.f);
+            if(!imported)ImGui::SliderFloat("Speed",&state.voxenSpeed,0.1f,3.f);
             ImGui::Separator();
             ImGui::TextUnformatted("FREE FLOAT / PHYSICS");
             ImGui::Checkbox("Enable motion",&state.motionEnabled);
