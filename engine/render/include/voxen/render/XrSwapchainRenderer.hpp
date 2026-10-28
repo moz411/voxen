@@ -279,7 +279,6 @@ private:
     VkPipeline cosmicPalettePipeline_ = VK_NULL_HANDLE;
     VkPipeline synthwaveSunsetPipeline_ = VK_NULL_HANDLE;
     VkPipeline oceanWavesPipeline_ = VK_NULL_HANDLE;
-    VkPipeline neonStarNestPipeline_ = VK_NULL_HANDLE;
     VkPipeline universeWithinPipeline_ = VK_NULL_HANDLE;
     VkPipeline cyberCityPipeline_ = VK_NULL_HANDLE;
     VkPipeline voronoiFallPipeline_ = VK_NULL_HANDLE;
@@ -288,8 +287,6 @@ private:
     VkPipeline phiFieldPipeline_ = VK_NULL_HANDLE;
     VkPipeline soundDemoPipeline_ = VK_NULL_HANDLE;
     VkPipeline midnightRidePipeline_ = VK_NULL_HANDLE;
-    VkPipeline seascapePipeline_ = VK_NULL_HANDLE;
-    VkPipeline octgramsPipeline_ = VK_NULL_HANDLE;
     VkPipeline rainbowSpiralPipeline_ = VK_NULL_HANDLE;
     VkPipeline mobiusSpiralPipeline_ = VK_NULL_HANDLE;
     VkPipeline thereminWavePipeline_ = VK_NULL_HANDLE;
