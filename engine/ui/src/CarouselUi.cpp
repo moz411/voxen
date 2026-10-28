@@ -53,6 +53,7 @@ void drawCarousel(CarouselState& state) {
                 ImGui::EndCombo();
             }
             const bool imported=state.voxenCatalogueSelection>=20;
+            if(!imported && state.glbFiles.empty() && ImGui::SmallButton("RESCAN GLB"))state.glbRescan=true;
             if(imported) {
                 ImGui::TextDisabled("Imported GLB - right trigger to place");
                 ImGui::TextDisabled("Right stick left/right: resize");
