@@ -13,10 +13,15 @@ const int TENT_SEG=12;
 const int TENT_SIDES=6;
 const int VERTS_PER_TENT=TENT_SEG*TENT_SIDES*6;
 vec3 spine(float u,float tent,float t){
+ int mode=int(pc.parameters.w+0.5);
  float angle=TAU*(tent/8.0);
+ if(mode==14)angle+=2.5*u+0.25*sin(t*0.7);
  float r=0.29+0.73*u;
+ if(mode==13)r+=0.15*u*sin(t*2.1+tent*1.2);
  float sway=0.10*sin(t*1.4+u*8.0+tent*0.8)*u;
- return vec3(cos(angle)*r-sin(angle)*sway,0.12*sin(t+tent)-0.26*u+0.09*sin(u*11.-t*2.+tent),sin(angle)*r+cos(angle)*sway);
+ if(mode==13)sway+=0.24*u*sin(t*3.0-u*9.0+tent);
+ if(mode==14)sway+=0.16*u*sin(t*1.5+u*17.0+tent*0.6);
+ return vec3(cos(angle)*r-sin(angle)*sway,0.12*sin(t+tent)-0.26*u+0.09*sin(u*11.-t*2.+tent)+(mode==13 ? 0.30*u*sin(t*2.6-u*6.0+tent) : mode==14 ? 0.14*u*cos(t+u*TAU*2.0) : 0.0),sin(angle)*r+cos(angle)*sway);
 }
 void main(){
  float t=pc.parameters.x*max(pc.parameters.y,0.01);
@@ -30,7 +35,8 @@ void main(){
   float phi=uv.y*3.14159265359;
   float theta=uv.x*TAU;
   norm=vec3(sin(phi)*cos(theta),cos(phi),sin(phi)*sin(theta));
-  pos=norm*(0.34+0.015*sin(t*2.0));
+  float bodyPulse=int(pc.parameters.w+0.5)==13 ? 0.055*sin(t*3.5) : 0.015*sin(t*2.0);
+  pos=norm*(0.34+bodyPulse);
  } else {
   int id=gl_VertexIndex-BODY_VERTS;
   int tent=id/VERTS_PER_TENT;
