@@ -75,6 +75,7 @@ struct CarouselState {
     bool mandelbulbLighting = false; // Opt-in: proven cyan shader remains default
     int voxenMaterial = 0; // independent surface material for procedural mesh shapes
     bool collideRoomMesh = true;
+    int voxenVolumeShape = 0; // 0 cube, 1 octahedron for image-space effects
     int voxenPreset = 0; // Plasma or Spheres Intersections
     bool voxenPaintEnabled = false;
     float voxenScale = 0.18f;
