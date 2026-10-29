@@ -49,6 +49,7 @@
 #include "voxenCubeCloudFrag.spv.hpp"
 #include "voxenRubikCubeFrag.spv.hpp"
 #include "voxenFlatCubeVert.spv.hpp"
+#include "voxenBillboardVert.spv.hpp"
 #include "voxenVolumeVert.spv.hpp"
 #include "voxenAttractorVert.spv.hpp"
 #include "voxenAttractorFrag.spv.hpp"
@@ -1348,14 +1349,14 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(metaballsVert, metaballsVertSize, organicSphereFrag, organicSphereFragSize, metaballsPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
     buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
-    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenFractalPyramidFrag, voxenFractalPyramidFragSize, voxenFractalPyramidPipeline_);
-    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenPhyllotaxisFrag, voxenPhyllotaxisFragSize, voxenPhyllotaxisPipeline_);
-    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenStickmanEchoFrag, voxenStickmanEchoFragSize, voxenStickmanEchoPipeline_);
-    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenCacodemonFrag, voxenCacodemonFragSize, voxenCacodemonPipeline_);
-    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenGoldeenFrag, voxenGoldeenFragSize, voxenGoldeenPipeline_);
-    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenPbrSmileFrag, voxenPbrSmileFragSize, voxenPbrSmilePipeline_);
-    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenCubeCloudFrag, voxenCubeCloudFragSize, voxenCubeCloudPipeline_);
-    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenRubikCubeFrag, voxenRubikCubeFragSize, voxenRubikCubePipeline_);
+    buildPipeline(voxenBillboardVert, voxenBillboardVertSize, voxenFractalPyramidFrag, voxenFractalPyramidFragSize, voxenFractalPyramidPipeline_);
+    buildPipeline(voxenBillboardVert, voxenBillboardVertSize, voxenPhyllotaxisFrag, voxenPhyllotaxisFragSize, voxenPhyllotaxisPipeline_);
+    buildPipeline(voxenBillboardVert, voxenBillboardVertSize, voxenStickmanEchoFrag, voxenStickmanEchoFragSize, voxenStickmanEchoPipeline_);
+    buildPipeline(voxenBillboardVert, voxenBillboardVertSize, voxenCacodemonFrag, voxenCacodemonFragSize, voxenCacodemonPipeline_);
+    buildPipeline(voxenBillboardVert, voxenBillboardVertSize, voxenGoldeenFrag, voxenGoldeenFragSize, voxenGoldeenPipeline_);
+    buildPipeline(voxenBillboardVert, voxenBillboardVertSize, voxenPbrSmileFrag, voxenPbrSmileFragSize, voxenPbrSmilePipeline_);
+    buildPipeline(voxenBillboardVert, voxenBillboardVertSize, voxenCubeCloudFrag, voxenCubeCloudFragSize, voxenCubeCloudPipeline_);
+    buildPipeline(voxenBillboardVert, voxenBillboardVertSize, voxenRubikCubeFrag, voxenRubikCubeFragSize, voxenRubikCubePipeline_);
     buildPipeline(meshWireVert, meshWireVertSize, laserFrag, laserFragSize, voxenMandelbulbPipeline_);
     buildPipeline(mandelbulbLitVert, mandelbulbLitVertSize, mandelbulbLitFrag, mandelbulbLitFragSize, voxenMandelbulbLitPipeline_);
 #ifdef VOXEN_WITH_GLB_IMPORT
@@ -2137,7 +2138,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             // For Mandelbulbs, pack material into the otherwise unchanged float slot.
             // Density remains in [0.3,2.0], while material uses multiples of 4.
             const float packedDensity=v.preset==2 ? v.density+4.0f*float(v.material) : v.density;
-            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue+(v.preset>=4?float(v.material):0.f),v.preset>=4 ? std::clamp(v.density*0.20f,0.06f,0.40f) : packedDensity}};
+            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue+(v.preset>=4?float(v.material):0.f),v.preset>=12 ? 0.92f : (v.preset>=4 ? std::clamp(v.density*0.20f,0.06f,0.40f) : packedDensity)}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             if(v.preset==2){
@@ -2149,7 +2150,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                     vkCmdDrawIndexed(commandBuffer_,lod.indexCount,1,0,0,0);
                 }
             }else{
-                vkCmdDraw(commandBuffer_,(v.preset==12 || v.preset==13 || v.preset==14 || v.preset==15 || v.preset==16 || v.preset==17 || v.preset==18 || v.preset==19) ? 36 : (v.preset==11 ? (24*16*6+8*12*6*6) : (v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 : (v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6)))))),1,0,0);
+                vkCmdDraw(commandBuffer_,(v.preset>=12 && v.preset<=19) ? 6 : (v.preset==11 ? (24*16*6+8*12*6*6) : (v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 : (v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6)))))),1,0,0);
             }
         };
         for(const auto& v:voxens_)paintPlasma(v);
