@@ -19,7 +19,7 @@ void drawCarousel(CarouselState& state) {
         if (ImGui::Button("NEXT >")) state.page=(state.page+1)%4;
         ImGui::Separator();
         switch(state.page) {
-        case 0:
+        case 0: {
             ImGui::TextUnformatted("VOXENS / PROCEDURAL PRESETS");
             ImGui::Separator();
             static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH","EARTHWORM","CLOUD","METABALLS","TENTACLE CREATURE","FRACTAL PYRAMID","PHYLLOTAXIS SPIRAL","CACODEMON","GOLDEEN","PBR SMILE","PULSING CUBE CLOUD","RUBIK CUBE"};
@@ -112,6 +112,7 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextDisabled("RIGHT TRIGGER: place preview");
             }
             break;
+        }
 
 
         case 1:
