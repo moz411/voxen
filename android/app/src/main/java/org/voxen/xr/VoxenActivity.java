@@ -62,8 +62,13 @@ public final class VoxenActivity extends NativeActivity {
 
     public synchronized void closeVideoPreview() {
         if (previewRetriever != null) {
-            previewRetriever.release();
-            previewRetriever = null;
+            try {
+                previewRetriever.release();
+            } catch (java.io.IOException e) {
+                Log.w("VoxenVideo", "Could not release preview retriever", e);
+            } finally {
+                previewRetriever = null;
+            }
         }
         previewPath = null;
     }
