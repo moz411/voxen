@@ -642,7 +642,8 @@ bool XrSession::openVideoSurface(const std::string& path, JavaVM* vm, jobject ac
         if(env->ExceptionCheck()) {env->ExceptionDescribe();env->ExceptionClear();}
         if(jpath)env->DeleteLocalRef(jpath);
         if(cls)env->DeleteLocalRef(cls);
-        env->DeleteLocalRef(surface);
+        // Surface is owned by the OpenXR runtime and destroyed with the swapchain.
+        // Do not DeleteLocalRef a reference whose JNI ownership was not specified.
     }
     if(attached)vm->DetachCurrentThread();
     if(ok) {
