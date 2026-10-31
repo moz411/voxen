@@ -69,7 +69,8 @@ void drawCarousel(CarouselState& state) {
             ImGui::SliderFloat("Speed",&state.voxenSpeed,0.1f,3.f);
             ImGui::Separator();
             ImGui::TextUnformatted("FREE FLOAT / PHYSICS");
-            ImGui::Checkbox("Enable motion",&state.motionEnabled);
+            ImGui::Checkbox("Animate next placed Voxen",&state.motionEnabled);
+            ImGui::TextDisabled("Motion toggle is captured when placing each Voxen");
             static constexpr const char* motionModes[]={"FREE FLOAT","SWARM / BOIDS","ROTATION"};
             ImGui::Combo("Motion mode",&state.motionMode,motionModes,3);
             if(state.motionMode==2){
