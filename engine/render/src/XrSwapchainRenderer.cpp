@@ -171,7 +171,8 @@ void XrSwapchainRenderer::rescanGlbAssets() {
 std::filesystem::path XrSwapchainRenderer::selectedBackgroundVideo() const {
 #if defined(__ANDROID__) && defined(VOXEN_WITH_IMGUI)
     const int i=imguiCarousel_.videoSelected;
-    if(imguiCarousel_.backgroundSourceKind==2 && i>=0 &&
+    if(imguiCarousel_.backgroundSourceKind==2 &&
+       imguiCarousel_.backgroundTargetSurface==-1 && i>=0 &&
        static_cast<std::size_t>(i)<imguiCarousel_.videoFiles.size())
         return std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/Videos") /
             imguiCarousel_.videoFiles[static_cast<std::size_t>(i)];
