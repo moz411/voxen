@@ -3,14 +3,7 @@
 #include <jni.h>
 
 #include <exception>
-#include <memory>
-#include "AndroidVideoDecoder.hpp"
-#include "AndroidVideoImage.hpp"
-#include "VideoFrameDescriptor.hpp"
-#include "AndroidVideoBuffer.hpp"
 #include <filesystem>
-#include <chrono>
-#include <vector>
 #include <voxen/scene/SceneRepository.hpp>
 
 #include <voxen/core/Engine.hpp>
@@ -21,40 +14,6 @@
 
 namespace {
 constexpr auto kTag = "Voxen";
-
-// Diagnostic visual preview: low-rate RGBA upload via existing panorama pipeline.
-// NOT the production zero-copy MediaCodec frame renderer.
-bool uploadMp4Preview(android_app* app, voxen::render::XrSwapchainRenderer& renderer,
-                      const std::filesystem::path& file, std::int64_t timeUs) {
-    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz)
-        return false;
-    JNIEnv* env=nullptr;
-    JavaVM* vm=app->activity->vm;
-    const bool attached=vm->GetEnv(reinterpret_cast<void**>(&env),JNI_VERSION_1_6)!=JNI_OK;
-    if (attached && vm->AttachCurrentThread(&env,nullptr)!=JNI_OK) return false;
-    bool ok=false;
-    jclass cls=env->GetObjectClass(app->activity->clazz);
-    jmethodID method=cls ? env->GetMethodID(cls,"extractVideoPreviewRgba",
-        "(Ljava/lang/String;J)[B") : nullptr;
-    jstring name=env->NewStringUTF(file.string().c_str());
-    auto bytes=static_cast<jbyteArray>(method && name ?
-        env->CallObjectMethod(app->activity->clazz,method,name,static_cast<jlong>(timeUs)) : nullptr);
-    if(!env->ExceptionCheck() && bytes && env->GetArrayLength(bytes)==512*256*4) {
-        voxen::render::PanoramaImage frame;
-        frame.width=512;
-        frame.height=256;
-        frame.rgba.resize(512*256*4);
-        env->GetByteArrayRegion(bytes,0,512*256*4,
-            reinterpret_cast<jbyte*>(frame.rgba.data()));
-        if(!env->ExceptionCheck()) ok=renderer.submitVideoPreview(std::move(frame));
-    }
-    if(env->ExceptionCheck()) {env->ExceptionDescribe();env->ExceptionClear();}
-    if(bytes)env->DeleteLocalRef(bytes);
-    if(name)env->DeleteLocalRef(name);
-    if(cls)env->DeleteLocalRef(cls);
-    if(attached)vm->DetachCurrentThread();
-    return ok;
-}
 
 void logError(const char* message) {
     __android_log_print(ANDROID_LOG_ERROR, kTag, "%s", message);
@@ -202,7 +161,8 @@ void android_main(android_app* app) {
             vulkan.graphicsQueueFamily(),
             xr.passthroughEnabled(),
             xr.sceneEnabled(),
-            sceneGranted);
+            sceneGranted,
+            xr.videoSurfaceEnabled());
         __android_log_print(ANDROID_LOG_INFO, kTag, "XR session initialized; initializing renderer");
         renderer.configureMusicJavaVm(app->activity->vm);
         renderer.initialize(
@@ -219,11 +179,7 @@ void android_main(android_app* app) {
 
         // Selection-driven decoder lifecycle; the Vulkan sampler path remains
         // separate until external ownership/fence synchronization is verified.
-        std::unique_ptr<voxen::video::AndroidVideoDecoder> videoDecoder;
         std::filesystem::path activeVideoPath;
-        unsigned importedVideoFrames = 0;
-        auto videoPreviewStart=std::chrono::steady_clock::now();
-        auto videoPreviewLast=std::chrono::steady_clock::time_point{};
         __android_log_print(
             ANDROID_LOG_INFO,
             kTag,
@@ -255,84 +211,16 @@ void android_main(android_app* app) {
             }
 
             running = session.pollEvents();
-            // Renderer UI determines the active MP4. A selection change
-            // releases the previous decoder and opens the chosen clip.
-            const auto requestedVideo = renderer.selectedBackgroundVideo();
-            if (requestedVideo != activeVideoPath) {
-                if (videoDecoder) {
-                    videoDecoder->close();
-                    videoDecoder.reset();
-                }
-                activeVideoPath = requestedVideo;
-                importedVideoFrames = 0;
-                videoPreviewStart=std::chrono::steady_clock::now();
-                videoPreviewLast={};
-                // Avoid decoding twice: RGBA visual preview owns playback for now.
-                constexpr bool kEnableParallelYcbcrProbe = false;
-                if (kEnableParallelYcbcrProbe && !requestedVideo.empty() &&
-                    vulkan.videoBufferImportEnabled() &&
-                    std::filesystem::is_regular_file(requestedVideo)) {
-                    videoDecoder = std::make_unique<voxen::video::AndroidVideoDecoder>(
-                        app->activity->vm, app->activity->clazz);
-                    if (!videoDecoder->valid() ||
-                        !videoDecoder->open(requestedVideo.string(), true)) {
-                        videoDecoder.reset();
-                        __android_log_print(ANDROID_LOG_ERROR, "VoxenVideo",
-                            "Could not open selected MP4: %s", requestedVideo.c_str());
-                    } else {
-                        __android_log_print(ANDROID_LOG_INFO, "VoxenVideo",
-                            "Selected MP4 decoder started: %s", requestedVideo.c_str());
-                    }
-                }
-            }
-
-            // Frame ownership extends across both eye submissions. The current
-            // renderer waits for its GPU fence before session.frame returns.
-            voxen::video::AndroidVideoDecoder::Frame videoFrame{};
-            voxen::video::AndroidVideoImage videoImage{};
-            if (videoDecoder) {
-                videoFrame = videoDecoder->acquireLatestFrame();
-                if (videoFrame.buffer && importedVideoFrames == 0) {
-                    const auto format = voxen::video::inspectVideoBuffer(
-                        vulkan.device(), videoFrame.buffer);
-                    if (format.supported) {
-                        const bool ok = videoImage.importBuffer(
-                            vulkan.physicalDevice(), vulkan.device(), videoFrame.buffer);
-                        if (ok) {
-                            voxen::video::VideoFrameDescriptor descriptor;
-                            const bool bound = descriptor.create(vulkan.device(), videoImage,
-                                videoImage.combinedSamplerDescriptorCount());
-                            __android_log_print(bound ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
-                                "VoxenVideo", "YCbCr immutable descriptor: %s",
-                                bound ? "OK" : "FAILED");
-                            // Descriptor must be destroyed before its immutable sampler.
-                            descriptor.reset();
-                        }
-                        __android_log_print(ok ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
-                            "VoxenVideo", "Selected MP4 first frame import: %s",
-                            ok ? "OK" : "FAILED");
-                    } else {
-                        __android_log_print(ANDROID_LOG_WARN, "VoxenVideo",
-                            "Selected MP4 buffer not sampleable");
-                    }
-                    ++importedVideoFrames;
-                }
-            }
-            // 1 fps, 512x256, throttled while synchronous CPU preview is in use.
-            // The regular YCbCr importer remains a separate experiment.
-            if(!requestedVideo.empty() && std::filesystem::is_regular_file(requestedVideo)) {
-                const auto now=std::chrono::steady_clock::now();
-                if(videoPreviewLast.time_since_epoch().count()==0 ||
-                   now-videoPreviewLast>=std::chrono::milliseconds(1000)) {
-                    videoPreviewLast=now;
-                    const auto elapsed=std::chrono::duration_cast<std::chrono::microseconds>(
-                        now-videoPreviewStart).count();
-                    if(uploadMp4Preview(app,renderer,requestedVideo,elapsed)) {
-                        if(elapsed<600000)
-                            __android_log_print(ANDROID_LOG_INFO,"VoxenVideo",
-                                "MP4 panorama RGBA preview visible path active");
-                    }
-                }
+            // The compositor owns the decoded Surface: no RGBA readback,
+            // no per-frame VkImage recreation and no queue idle stalls.
+            const auto requestedVideo=renderer.selectedBackgroundVideo();
+            if(requestedVideo!=activeVideoPath) {
+                session.closeVideoSurface();
+                activeVideoPath=requestedVideo;
+                if(!activeVideoPath.empty() &&
+                   std::filesystem::is_regular_file(activeVideoPath))
+                    session.openVideoSurface(activeVideoPath.string(),
+                        app->activity->vm,app->activity->clazz);
             }
             if(pollPanoramaImports(app))renderer.rescanPanoramaAssets();
             if(renderer.consumePanoramaImportRequest())openPanoramaPicker(app);
@@ -348,11 +236,6 @@ void android_main(android_app* app) {
             if (session.running()) {
                 session.frame(renderer);
             }
-            // Release only after both eyes have completed their GPU submissions.
-            // This also covers the no-session case (no GPU work was submitted).
-            videoImage.reset();
-            if(videoDecoder && videoFrame.buffer)
-                videoDecoder->releaseFrame(videoFrame);
         }
     } catch (const std::exception& error) {
         logError(error.what());
