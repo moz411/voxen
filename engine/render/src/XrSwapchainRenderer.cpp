@@ -2946,6 +2946,27 @@ void XrSwapchainRenderer::render(
             });
         }
 #endif
+        // Expose only tracked, physically sized Meta scene planes to the UI.
+        imguiCarousel_.detectedSurfaceIds.clear();
+        imguiCarousel_.detectedSurfaceLabels.clear();
+        for(const auto& surface : environmentSurfaces_.surfaces()) {
+            if(!surface.tracked || surface.classification==voxen::scene::SurfaceClass::Unknown ||
+               surface.halfExtents[0]<=0.05f || surface.halfExtents[1]<=0.05f) continue;
+            const char* category=surface.classification==voxen::scene::SurfaceClass::Wall
+                ? "Wall" : surface.classification==voxen::scene::SurfaceClass::Floor
+                ? "Floor" : "Ceiling";
+            imguiCarousel_.detectedSurfaceIds.push_back(surface.id);
+            imguiCarousel_.detectedSurfaceLabels.push_back(
+                std::string(category)+" #"+std::to_string(surface.id)+" ("+
+                std::to_string(int(surface.halfExtents[0]*2.f*100.f))+" x "+
+                std::to_string(int(surface.halfExtents[1]*2.f*100.f))+" cm)");
+        }
+        if(imguiCarousel_.backgroundTargetSurface>=0 &&
+            std::find(imguiCarousel_.detectedSurfaceIds.begin(),
+                      imguiCarousel_.detectedSurfaceIds.end(),
+                      static_cast<std::uint64_t>(imguiCarousel_.backgroundTargetSurface))
+                ==imguiCarousel_.detectedSurfaceIds.end())
+            imguiCarousel_.backgroundTargetSurface=-1;
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         imguiCarousel_.savedSceneIds=sceneIds_;
