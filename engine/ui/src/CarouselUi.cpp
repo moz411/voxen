@@ -112,40 +112,68 @@ void drawCarousel(CarouselState& state) {
             break;
 
 
-        case 1:
-            if(ImGui::BeginTabBar("background-sources")) {
-            if(ImGui::BeginTabItem("IMAGES")) {
-            ImGui::SeparatorText("IMAGES / PANORAMAS");
-            if(ImGui::Button("USE PASSTHROUGH SOBEL")) state.panoramaSelected=-1;
-            if (ImGui::Button("RESCAN PHOTOS")) state.panoramaRescanRequest=true;
-            ImGui::TextDisabled("ADB: /sdcard/Android/data/org.voxen.xr/files/Backgrounds");
-            ImGui::BeginChild("panorama-list",ImVec2(0,100),true);
-            for (int i=0;i<static_cast<int>(state.panoramaFiles.size());++i)
-                if(ImGui::Selectable(state.panoramaFiles[i].c_str(),state.panoramaSelected==i))
+        case 1: {
+            // Unified source lists: media types are peers, not separate tabs.
+            // Selection of a video/image for walls is preparatory only until
+            // the Vulkan texture consumer is integrated.
+            ImGui::SeparatorText("BACKGROUND - SOURCE");
+            if (ImGui::Button("RESCAN MEDIA")) {
+                state.panoramaRescanRequest=true;
+                state.videoRescanRequest=true;
+            }
+            ImGui::TextDisabled("Images: Backgrounds/ | MP4: Videos/");
+            ImGui::BeginChild("background-media-list",ImVec2(0,145),true);
+            if(ImGui::Selectable("PASSTHROUGH SOBEL",state.backgroundSourceKind==0)) {
+                state.backgroundSourceKind=0;
+                state.panoramaSelected=-1;
+            }
+            for(int i=0;i<static_cast<int>(state.panoramaFiles.size());++i) {
+                const std::string label="[IMAGE] "+state.panoramaFiles[i]+"##bgimage"+std::to_string(i);
+                if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==1 && state.panoramaSelected==i)) {
+                    state.backgroundSourceKind=1;
                     state.panoramaSelected=i;
+                    state.videoSelected=-1;
+                }
+            }
+            for(int i=0;i<static_cast<int>(state.videoFiles.size());++i) {
+                const std::string label="[MP4] "+state.videoFiles[i]+"##bgvideo"+std::to_string(i);
+                if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==2 && state.videoSelected==i)) {
+                    state.backgroundSourceKind=2;
+                    state.videoSelected=i;
+                    state.panoramaSelected=-1;
+                }
+            }
             ImGui::EndChild();
-            if(!state.panoramaStatus.empty()) ImGui::TextWrapped("%s",state.panoramaStatus.c_str());
+            if(state.backgroundSourceKind==2)
+                ImGui::TextDisabled("MP4 selected; playback on sphere not connected.");
+            else if(!state.panoramaStatus.empty())
+                ImGui::TextWrapped("%s",state.panoramaStatus.c_str());
             ImGui::SliderFloat("Panorama yaw",&state.panoramaYawDegrees,-180.f,180.f,"%.0f deg");
             ImGui::SliderFloat("Horizontal coverage",&state.panoramaHorizontalDegrees,60.f,360.f,"%.0f deg");
             ImGui::SliderFloat("Vertical coverage",&state.panoramaVerticalDegrees,30.f,180.f,"%.0f deg");
 
-            ImGui::EndTabItem();
+            ImGui::SeparatorText("WALLS - SOURCE");
+            ImGui::BeginChild("wall-source-list",ImVec2(0,105),true);
+            if(ImGui::Selectable("[SHADER] Procedural wall effect",state.wallSourceKind==0))
+                state.wallSourceKind=0;
+            for(int i=0;i<static_cast<int>(state.panoramaFiles.size());++i) {
+                const std::string label="[IMAGE] "+state.panoramaFiles[i]+"##wallimage"+std::to_string(i);
+                if(ImGui::Selectable(label.c_str(),state.wallSourceKind==1 && state.wallImageSelected==i)) {
+                    state.wallSourceKind=1;
+                    state.wallImageSelected=i;
+                }
             }
-            if(ImGui::BeginTabItem("VIDEOS")) {
-            ImGui::SeparatorText("VIDEOS / MP4");
-            if(ImGui::Button("RESCAN VIDEOS")) state.videoRescanRequest=true;
-            ImGui::TextDisabled("ADB: /sdcard/Android/data/org.voxen.xr/files/Videos");
-            ImGui::BeginChild("video-list", ImVec2(0,85),true);
-            for(int i=0;i<static_cast<int>(state.videoFiles.size());++i)
-                if(ImGui::Selectable(state.videoFiles[i].c_str(),state.videoSelected==i))
-                    state.videoSelected=i;
+            for(int i=0;i<static_cast<int>(state.videoFiles.size());++i) {
+                const std::string label="[MP4] "+state.videoFiles[i]+"##wallvideo"+std::to_string(i);
+                if(ImGui::Selectable(label.c_str(),state.wallSourceKind==2 && state.wallVideoSelected==i)) {
+                    state.wallSourceKind=2;
+                    state.wallVideoSelected=i;
+                }
+            }
             ImGui::EndChild();
-            if(state.videoFiles.empty()) ImGui::TextDisabled("No MP4 found in Videos");
-            ImGui::TextWrapped("MP4 browsing only - Vulkan playback and projection are not connected yet.");
-            ImGui::EndTabItem();
-            }
-            if(ImGui::BeginTabItem("SHADERS")) {
-            ImGui::SeparatorText("WALL SHADERS");
+            if(state.wallSourceKind!=0)
+                ImGui::TextDisabled("Wall media selected; texture projection not connected.");
+            ImGui::SeparatorText("WALL SHADER SETTINGS");
             ImGui::Checkbox("Wall effect",&state.liquidRoom);
             static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","RAINBOW SPIRAL","MOBIUS SPIRAL","THEREMIN WAVE","GEOMETRIC KALEIDOSCOPE","CHROMATIC EDGES","COSMIC PALETTE","SYNTHWAVE SUNSET","OCEAN WAVES","UNIVERSE WITHIN","CYBERCITY","VORONOI FALL","TAN GLITCH"};
             ImGui::Checkbox("Different shader per wall",&state.cycleWallShaders);
@@ -171,11 +199,8 @@ void drawCarousel(CarouselState& state) {
             ImGui::Checkbox("Occlude walls with scene mesh",&state.sceneOcclusion);
             if(state.sceneOcclusion) ImGui::SliderFloat("Occlusion bias",&state.sceneDepthBias,0.0f,0.01f,"%.4f");
             ImGui::TextDisabled("Quest fast mode: nearest tracked walls");
-            ImGui::EndTabItem();
-            }
-            ImGui::EndTabBar();
-            }
             break;
+        }
         case 2: {
             ImGui::TextUnformatted("AMBIENT SOUND");
             static constexpr const char* sources[]={"PROCEDURAL","MP3 FILES"};
