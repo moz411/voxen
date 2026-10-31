@@ -1331,7 +1331,7 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &organicSpherePipeline_ || &out == &torusKnotPipeline_ || &out == &spikeBloomPipeline_ || &out == &jellyfishPipeline_ || &out == &earthwormPipeline_ || &out == &cloudPipeline_ || &out == &metaballsPipeline_ || &out == &voxenAttractorPipeline_ || &out == &voxenFractalPyramidPipeline_ || &out == &voxenPhyllotaxisPipeline_ || &out == &voxenStickmanEchoPipeline_ || &out == &voxenCacodemonPipeline_ || &out == &voxenGoldeenPipeline_ || &out == &voxenPbrSmilePipeline_ || &out == &voxenCubeCloudPipeline_ || &out == &voxenRubikCubePipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &organicSpherePipeline_
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &organicSpherePipeline_ || &out == &torusKnotPipeline_ || &out == &spikeBloomPipeline_ || &out == &jellyfishPipeline_ || &out == &earthwormPipeline_ || &out == &cloudPipeline_ || &out == &metaballsPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &organicSpherePipeline_
 #ifdef VOXEN_WITH_IMGUI
         || &out == &imguiPanelPipeline_
 #endif
@@ -1361,14 +1361,6 @@ void XrSwapchainRenderer::createPipeline() {
             ;
         if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
         if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
-        // Transparent procedural materials must not depth-occlude their own
-        // back faces and later scene objects.
-        if(&out==&voxenPlasmaPipeline_ || &out==&voxenSpheresPipeline_ ||
-           &out==&voxenFractalPyramidPipeline_ || &out==&voxenPhyllotaxisPipeline_ ||
-           &out==&voxenStickmanEchoPipeline_ || &out==&voxenCacodemonPipeline_ ||
-           &out==&voxenGoldeenPipeline_ || &out==&voxenPbrSmilePipeline_ ||
-           &out==&voxenCubeCloudPipeline_ || &out==&voxenRubikCubePipeline_)
-            ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
         if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
@@ -1420,8 +1412,8 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(earthwormVert, earthwormVertSize, organicSphereFrag, organicSphereFragSize, earthwormPipeline_);
     buildPipeline(cloudVert, cloudVertSize, cloudFrag, cloudFragSize, cloudPipeline_);
     buildPipeline(metaballsVert, metaballsVertSize, organicSphereFrag, organicSphereFragSize, metaballsPipeline_);
-    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
-    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
+    buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
     buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenFractalPyramidFrag, voxenFractalPyramidFragSize, voxenFractalPyramidPipeline_);
     buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenPhyllotaxisFrag, voxenPhyllotaxisFragSize, voxenPhyllotaxisPipeline_);
     buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenStickmanEchoFrag, voxenStickmanEchoFragSize, voxenStickmanEchoPipeline_);
@@ -2250,7 +2242,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                     vkCmdDrawIndexed(commandBuffer_,lod.indexCount,1,0,0,0);
                 }
             }else{
-                vkCmdDraw(commandBuffer_,(v.preset==0 || v.preset==1 || v.preset>=12) ? 36 : (v.preset==11 ? (24*16*6+8*12*6*6) : (v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 : (v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6)))))),1,0,0);
+                vkCmdDraw(commandBuffer_,(v.preset==12 || v.preset==13 || v.preset==14 || v.preset==15 || v.preset==16 || v.preset==17 || v.preset==18 || v.preset==19) ? 36 : (v.preset==11 ? (24*16*6+8*12*6*6) : (v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 : (v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6)))))),1,0,0);
             }
         };
         for(const auto& v:voxens_)paintPlasma(v);
