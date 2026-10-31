@@ -220,46 +220,29 @@ void android_main(android_app* app) {
             // releases the previous decoder and opens the chosen clip.
             const auto requestedVideo = renderer.selectedBackgroundVideo();
             if(requestedVideo != activeVideoPath) {
-                if(videoDecoder) {
-                    videoDecoder->close();
-                    videoDecoder.reset();
-                }
-                activeVideoPath=requestedVideo;
-                importedVideoFrames=0;
-                if(!requestedVideo.empty() && vulkan.videoBufferImportEnabled() &&
-                   std::filesystem::is_regular_file(requestedVideo)) {
-                    videoDecoder=std::make_unique<voxen::video::AndroidVideoDecoder>(
-                        app->activity->vm,app->activity->clazz);
-                    if(!videoDecoder->valid() ||
-                       !videoDecoder->open(requestedVideo.string(),true)) {
-                        videoDecoder.reset();
-                        __android_log_print(ANDROID_LOG_ERROR,"VoxenVideo",
-                            "Could not open selected MP4: %s",requestedVideo.c_str());
-                    } else {
-                        __android_log_print(ANDROID_LOG_INFO,"VoxenVideo",
-                            "Selected MP4 decoder started: %s",requestedVideo.c_str());
-                    }
-                }
-            }
+                // Hold a decoded frame and its imported VkImage across both eye
+            // submissions. XrSwapchainRenderer::renderImage currently waits
+            // for its submit fence before returning. A future descriptor bind
+            // can therefore safely sample this resource within the frame.
+            voxen::video::AndroidVideoDecoder::Frame videoFrame{};
+            voxen::video::AndroidVideoImage videoImage{};
             if(videoDecoder) {
-                auto frame=videoDecoder->acquireLatestFrame();
-                if(frame.buffer) {
-                    // Diagnostics only until a rendering descriptor and external
-                    // producer fences are connected; never sample unsynchronized.
+                videoFrame=videoDecoder->acquireLatestFrame();
+                if(videoFrame.buffer) {
                     if(importedVideoFrames==0) {
                         const auto format=voxen::video::inspectVideoBuffer(
-                            vulkan.device(),frame.buffer);
-                        if(format.supported) {
-                            voxen::video::AndroidVideoImage image;
-                            const bool imported=image.importBuffer(
-                                vulkan.physicalDevice(),vulkan.device(),frame.buffer);
-                            __android_log_print(imported?ANDROID_LOG_INFO:ANDROID_LOG_ERROR,
-                                "VoxenVideo","Selected MP4 first frame import: %s",
-                                imported?"OK":"FAILED");
-                        }
+                            vulkan.device(),videoFrame.buffer);
+                        __android_log_print(format.supported?ANDROID_LOG_INFO:ANDROID_LOG_WARN,
+                            "VoxenVideo","Selected MP4 buffer sampleable: %s",
+                            format.supported?"YES":"NO");
                     }
-                    ++importedVideoFrames;
-                    videoDecoder->releaseFrame(frame);
+                    if(videoImage.importBuffer(
+                           vulkan.physicalDevice(),vulkan.device(),videoFrame.buffer)) {
+                        ++importedVideoFrames;
+                    } else if(importedVideoFrames==0) {
+                        __android_log_print(ANDROID_LOG_ERROR,"VoxenVideo",
+                            "Selected MP4 VkImage import failed");
+                    }
                 }
             }
             if(pollPanoramaImports(app))renderer.rescanPanoramaAssets();
@@ -276,6 +259,11 @@ void android_main(android_app* app) {
             if (session.running()) {
                 session.frame(renderer);
             }
+            // Release only after both eyes have completed their GPU submissions.
+            // This also covers the no-session case (no GPU work was submitted).
+            videoImage.reset();
+            if(videoDecoder && videoFrame.buffer)
+                videoDecoder->releaseFrame(videoFrame);
         }
     } catch (const std::exception& error) {
         logError(error.what());
