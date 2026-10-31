@@ -220,7 +220,7 @@ void drawCarousel(CarouselState& state) {
                 const auto currentAssignment=state.surfaceMedia.find(id);
                 if(currentAssignment!=state.surfaceMedia.end() &&
                    currentAssignment->second.kind==2)
-                    ImGui::TextDisabled("Video projection GPU path pending");
+                    ImGui::TextDisabled("MP4 via OpenXR quad (one active surface at a time)");
             }
             if(!state.applyMediaStatus.empty())
                 ImGui::TextWrapped("%s",state.applyMediaStatus.c_str());
