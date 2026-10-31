@@ -6,6 +6,7 @@
 #include <memory>
 #include "AndroidVideoDecoder.hpp"
 #include "AndroidVideoImage.hpp"
+#include "VideoFrameDescriptor.hpp"
 #include "AndroidVideoBuffer.hpp"
 #include <filesystem>
 #include <voxen/scene/SceneRepository.hpp>
@@ -254,6 +255,15 @@ void android_main(android_app* app) {
                     if (format.supported) {
                         const bool ok = videoImage.importBuffer(
                             vulkan.physicalDevice(), vulkan.device(), videoFrame.buffer);
+                        if (ok) {
+                            voxen::video::VideoFrameDescriptor descriptor;
+                            const bool bound = descriptor.create(vulkan.device(), videoImage);
+                            __android_log_print(bound ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
+                                "VoxenVideo", "YCbCr immutable descriptor: %s",
+                                bound ? "OK" : "FAILED");
+                            // Descriptor must be destroyed before its immutable sampler.
+                            descriptor.reset();
+                        }
                         __android_log_print(ok ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
                             "VoxenVideo", "Selected MP4 first frame import: %s",
                             ok ? "OK" : "FAILED");
