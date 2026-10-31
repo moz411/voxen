@@ -26,6 +26,7 @@ void drawCarousel(CarouselState& state) {
             if(ImGui::BeginTabBar("object-media-tabs")) {
             if(ImGui::BeginTabItem("VOXENS")) {
             for(int i=0;i<20;++i) {
+                if(i==14 || i==18)continue; // Removed from catalog, keep stable IDs for saved scenes.
                 const std::string label=std::string("[VOXEN] ")+presets[i]+"##vox"+std::to_string(i);
                 if(ImGui::Selectable(label.c_str(),state.voxenPaintEnabled && state.voxenPreset==i)) {
                     state.voxenPreset=i;
@@ -52,8 +53,8 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : state.voxenPreset==4 ? "Animated deforming 3D sphere" : state.voxenPreset==5 ? "Twisting torus knot" : state.voxenPreset==6 ? "Spiky bloom" : state.voxenPreset==7 ? "Jellyfish bell" : state.voxenPreset==19 ? "Rotating Rubik cube with animated face turns" : state.voxenPreset==18 ? "Pulsating cube cloud with rotating lattice" : state.voxenPreset==17 ? "Smiling golden PBR creature with glossy eyes" : state.voxenPreset==16 ? "Animated goldfish with flowing fins and bubbles" : state.voxenPreset==15 ? "Floating one-eyed demon with charging fireball" : state.voxenPreset==14 ? "Animated stick figure with neon motion trails" : state.voxenPreset==13 ? "100-sphere evolving phyllotaxis spiral" : state.voxenPreset==12 ? "Animated fractal pyramid raymarch" : "Animated 12-segment earthworm");
             if(state.voxenPreset==0 || state.voxenPreset==1 ||
                state.voxenPreset>=12) {
-                static constexpr const char* volumes[]={"CUBE","SPHERE"};
-                ImGui::Combo("Material volume",&state.flatVoxenVolume,volumes,2);
+                static constexpr const char* volumes[]={"CUBE","SPHERE","OCTAHEDRON","CONE","CYLINDER"};
+                ImGui::Combo("Material volume",&state.flatVoxenVolume,volumes,5);
                 ImGui::TextDisabled("Preview and placement use the selected volume");
             }
             if(state.voxenPreset==2){
