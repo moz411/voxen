@@ -118,3 +118,17 @@ no GPU commands. Do not treat it as a video player.
 - The `BACKGROUNDS` page lists `.mp4` files from `/sdcard/Android/data/org.voxen.xr/files/Videos`, with a manual rescan command.
 - Selecting a video currently changes only the UI state; it does **not** activate playback or projection. The standalone opt-in smoke test still uses `Videos/video-test.mp4`.
 - Next milestone: a synchronized sampled-video image in a real renderer descriptor set, followed by panorama/wall projection.
+
+## Unified media selection in carousel
+
+The Backgrounds page no longer has media-type tabs. Two source selectors
+list images and MP4 clips as peers (with an explicit [IMAGE]/[MP4] prefix):
+
+- Background: passthrough, JPG/PNG panorama or MP4.
+- Walls: shader, JPG/PNG or MP4.
+
+This is **UI/state only** for MP4 and image-on-wall selection. The pre-existing
+image-on-sphere path and wall shader renderer are unchanged. Selecting an MP4
+currently does not display video: a GPU-synchronized Vulkan video texture
+consumer must still be implemented. Never consider media selection a successful
+playback test. These new selectors are not yet persisted in SavedRuntime.
