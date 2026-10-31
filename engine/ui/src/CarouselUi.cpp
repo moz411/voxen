@@ -217,7 +217,9 @@ void drawCarousel(CarouselState& state) {
                     state.surfaceMedia.erase(id);
                     state.applyMediaRequest=true;
                 }
-                if(existing!=state.surfaceMedia.end() && existing->second.kind==2)
+                const auto currentAssignment=state.surfaceMedia.find(id);
+                if(currentAssignment!=state.surfaceMedia.end() &&
+                   currentAssignment->second.kind==2)
                     ImGui::TextDisabled("Video projection GPU path pending");
             }
             if(!state.applyMediaStatus.empty())
