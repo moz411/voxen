@@ -3,12 +3,12 @@
 #include <array>
 #include <string>
 
+#include <vulkan/vulkan.h>
 #include <openxr/openxr.h>
 #ifdef __ANDROID__
 #include <jni.h>
 #include <openxr/openxr_platform.h>
 #endif
-#include <vulkan/vulkan.h>
 #include <voxen/xr/MetaSceneProvider.hpp>
 
 namespace voxen::render { class XrSwapchainRenderer; }
