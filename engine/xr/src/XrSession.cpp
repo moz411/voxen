@@ -362,15 +362,17 @@ void XrSession::initializePassthrough() {
     layerInfo.flags = XR_PASSTHROUGH_IS_RUNNING_AT_CREATION_BIT_FB;
     checkXr(createLayer_(session_, &layerInfo, &passthroughLayer_), "xrCreatePassthroughLayerFB");
 
-    // Keep native Meta edge detection, but hide the camera image itself.
+    // The compositor performs native edge highlighting; no camera frame readback.
+    XrPassthroughColorMapMonoToRgbaFB palette{XR_TYPE_PASSTHROUGH_COLOR_MAP_MONO_TO_RGBA_FB};
+    for (uint32_t i = 0; i < XR_PASSTHROUGH_COLOR_MAP_MONO_SIZE_FB; ++i) {
+        const float v = static_cast<float>(i) / 255.0F;
+        palette.textureColorMap[i] = {0.015F + 0.06F*v, 0.045F + 0.22F*v, 0.16F + 0.66F*v, 1.0F};
+    }
     XrPassthroughStyleFB style{XR_TYPE_PASSTHROUGH_STYLE_FB};
-    style.textureOpacityFactor=0.0F;
-    style.edgeColor={0.0F,0.95F,1.0F,1.0F};
-    checkXr(setLayerStyle_(passthroughLayer_,&style),"xrPassthroughLayerSetStyleFB");
-#ifdef __ANDROID__
-    __android_log_print(ANDROID_LOG_INFO,"VoxenVideo",
-        "Passthrough edges overlay enabled: camera opacity 0");
-#endif
+    style.next = &palette;
+    style.textureOpacityFactor = 1.0F;
+    style.edgeColor = {1.0F, 1.0F, 1.0F, 1.0F};
+    checkXr(setLayerStyle_(passthroughLayer_, &style), "xrPassthroughLayerSetStyleFB");
 }
 
 void XrSession::destroyPassthrough() noexcept {
@@ -575,7 +577,19 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
             layer.space = localSpace_;
             layer.viewCount = static_cast<uint32_t>(projectionViews.size());
             layer.views = projectionViews.data();
-            layer.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+            if (passthroughLayer_ != XR_NULL_HANDLE) {
+                layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&passthroughComposition);
+                layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+                static bool loggedComposition = false;
+                if (!loggedComposition) {
+#ifdef __ANDROID__
+                    __android_log_print(ANDROID_LOG_INFO, "Voxen", "Submitting passthrough and transparent projection layers");
+#else
+                    std::printf("[Voxen] Submitting passthrough and transparent projection layers\n");
+#endif
+                    loggedComposition = true;
+                }
+            }
 #ifdef __ANDROID__
             if(videoSwapchain_!=XR_NULL_HANDLE) {
                 if(videoPlaneActive_) {
@@ -602,18 +616,6 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
             }
 #endif
             layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer);
-            // Last layer wins: scene edges appear above the videos and 3D scene.
-            if(passthroughLayer_!=XR_NULL_HANDLE) {
-                layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&passthroughComposition);
-#ifdef __ANDROID__
-                static bool loggedOverlay=false;
-                if(!loggedOverlay) {
-                    __android_log_print(ANDROID_LOG_INFO,"VoxenVideo",
-                        "Layer order: video, projection, transparent edge overlay");
-                    loggedOverlay=true;
-                }
-#endif
-            }
         }
     }
 
