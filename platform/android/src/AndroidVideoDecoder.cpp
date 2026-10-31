@@ -139,12 +139,12 @@ AndroidVideoDecoder::Frame AndroidVideoDecoder::acquireLatestFrame() {
                 }
             }
         }
-        if (javaBuffer) env->DeleteLocalRef(javaBuffer);
-        if (imageCls) env->DeleteLocalRef(imageCls);
         if (!frame.image) {
             jmethodID close = imageCls ? env->GetMethodID(imageCls, "close", "()V") : nullptr;
             if (close) env->CallVoidMethod(image, close);
         }
+        if (javaBuffer) env->DeleteLocalRef(javaBuffer);
+        if (imageCls) env->DeleteLocalRef(imageCls);
         env->DeleteLocalRef(image);
     }
     clearException(env, "acquireLatestFrame");
