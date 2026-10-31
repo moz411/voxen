@@ -22,9 +22,8 @@ bool VideoFrameDescriptor::create(VkDevice device, const AndroidVideoImage& imag
         reset();
         return false;
     }
-    // A YCbCr combined sampler may consume >1 underlying descriptors.
-    // Callers must query combinedImageSamplerDescriptorCount for the format;
-    // a count of four is only a conservative default for smoke testing.
+    // Allocates precisely the combined-sampler descriptor count queried
+    // from VkSamplerYcbcrConversionImageFormatProperties.
     VkDescriptorPoolSize poolSize{};
     poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     poolSize.descriptorCount = combinedSamplerDescriptorCount;
