@@ -168,6 +168,31 @@ bool AndroidVideoImage::importBuffer(VkPhysicalDevice physicalDevice, VkDevice d
     return true;
 }
 
+void AndroidVideoImage::recordAcquireForSampling(
+    VkCommandBuffer commandBuffer) const noexcept {
+    if (!commandBuffer || !image_) return;
+    // This is only the image layout/access barrier. The caller must first
+    // synchronize the MediaCodec producer (native acquire fence), and if
+    // necessary perform foreign queue-family ownership acquisition.
+    // GENERAL is the externally maintained layout assumed by this contract;
+    // do not substitute UNDEFINED, which discards the decoded contents.
+    VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image_;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.layerCount = 1;
+    vkCmdPipelineBarrier(commandBuffer,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+        0, nullptr, 0, nullptr, 1, &barrier);
+}
+
 void AndroidVideoImage::reset() noexcept {
     if (device_ != VK_NULL_HANDLE) {
         if (sampler_) vkDestroySampler(device_, sampler_, nullptr);
