@@ -20,12 +20,26 @@ void drawCarousel(CarouselState& state) {
         ImGui::Separator();
         switch(state.page) {
         case 0:
-            if(ImGui::BeginTabBar("objects-tabs")) {
-            if(ImGui::BeginTabItem("VOXENS")) {
-            ImGui::TextUnformatted("PROCEDURAL OBJECTS");
-            ImGui::Separator();
+            ImGui::SeparatorText("OBJECTS / VOXENS + GLB");
             static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH","EARTHWORM","CLOUD","METABALLS","TENTACLE CREATURE","FRACTAL PYRAMID","PHYLLOTAXIS SPIRAL","STICKMAN ECHO","CACODEMON","GOLDEEN","PBR SMILE","PULSING CUBE CLOUD","RUBIK CUBE"};
-            if(ImGui::Combo("Voxen preset",&state.voxenPreset,presets,20))state.voxenPaintEnabled=true;
+            ImGui::BeginChild("objects-unified",ImVec2(0,170),true);
+            for(int i=0;i<20;++i) {
+                const std::string label=std::string("[VOXEN] ")+presets[i]+"##vox"+std::to_string(i);
+                if(ImGui::Selectable(label.c_str(),state.voxenPaintEnabled && state.voxenPreset==i)) {
+                    state.voxenPreset=i;
+                    state.voxenPaintEnabled=true;
+                }
+            }
+            for(int i=0;i<static_cast<int>(state.glbFiles.size());++i) {
+                const std::string label="[GLB] "+state.glbFiles[i]+"##model"+std::to_string(i);
+                if(ImGui::Selectable(label.c_str(),!state.voxenPaintEnabled && state.glbSelected==i)) {
+                    state.glbSelected=i;
+                    state.voxenPaintEnabled=false;
+                    state.glbPreviewRequest=true;
+                }
+            }
+            ImGui::EndChild();
+            if(state.voxenPaintEnabled) {
             ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : state.voxenPreset==4 ? "Animated deforming 3D sphere" : state.voxenPreset==5 ? "Twisting torus knot" : state.voxenPreset==6 ? "Spiky bloom" : state.voxenPreset==7 ? "Jellyfish bell" : state.voxenPreset==19 ? "Rotating Rubik cube with animated face turns" : state.voxenPreset==18 ? "Pulsating cube cloud with rotating lattice" : state.voxenPreset==17 ? "Smiling golden PBR creature with glossy eyes" : state.voxenPreset==16 ? "Animated goldfish with flowing fins and bubbles" : state.voxenPreset==15 ? "Floating one-eyed demon with charging fireball" : state.voxenPreset==14 ? "Animated stick figure with neon motion trails" : state.voxenPreset==13 ? "100-sphere evolving phyllotaxis spiral" : state.voxenPreset==12 ? "Animated fractal pyramid raymarch" : "Animated 12-segment earthworm");
             if(state.voxenPreset==2){
                 ImGui::Checkbox("Experimental 3D lighting",&state.mandelbulbLighting);
@@ -73,23 +87,14 @@ void drawCarousel(CarouselState& state) {
             if(ImGui::Button("CLEAR VOXENS"))state.voxenClear=true;
             ImGui::TextDisabled("Right trigger paints in space");
             ImGui::TextDisabled("Audio / deformation / trajectories: next steps");
-            ImGui::EndTabItem();
             }
-            if(ImGui::BeginTabItem("GLB MODELS")) {
-            ImGui::SeparatorText("IMPORTED 3D OBJECTS / GLB");
+            if(!state.voxenPaintEnabled) {
+            ImGui::SeparatorText("GLB SETTINGS");
             static constexpr const char* glbModes[]={"ORIGINAL","VOXEN"};
             ImGui::Combo("GLB material",&state.glbMaterialMode,glbModes,2);
             ImGui::TextDisabled("ORIGINAL: embedded materials and textures when available");
             ImGui::TextDisabled("Android/data/org.voxen.xr/files/assets");
-            if(ImGui::Button("RESCAN ASSETS"))state.glbRescan=true;
-            ImGui::BeginChild("glb-list",ImVec2(0,155),true);
-            for(int i=0;i<static_cast<int>(state.glbFiles.size());++i)
-                if(ImGui::Selectable(state.glbFiles[i].c_str(),state.glbSelected==i)) {
-                    state.glbSelected=i;
-                    state.voxenPaintEnabled=false;
-                    state.glbPreviewRequest=true;
-                }
-            ImGui::EndChild();
+
             if(state.glbFiles.empty())ImGui::TextDisabled("No .glb files found");
             if(state.glbFiles.empty())ImGui::BeginDisabled();
             if(ImGui::Button("PREVIEW",ImVec2(140,44))) {
@@ -105,39 +110,42 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextDisabled("Preview follows right controller");
             ImGui::TextDisabled("RIGHT STICK LEFT/RIGHT: resize (default 0.1)");
             ImGui::TextDisabled("RIGHT TRIGGER: place preview");
-            ImGui::EndTabItem();
-            }
-            ImGui::EndTabBar();
             }
             break;
 
 
         case 1: {
-            // Unified source lists: media types are peers, not separate tabs.
-            // Selection of a video/image for walls is preparatory only until
-            // the Vulkan texture consumer is integrated.
-            ImGui::SeparatorText("BACKGROUND - SOURCE");
-            if (ImGui::Button("RESCAN MEDIA")) {
-                state.panoramaRescanRequest=true;
-                state.videoRescanRequest=true;
-            }
-            ImGui::TextDisabled("Images: Backgrounds/ | MP4: Videos/");
-            ImGui::BeginChild("background-media-list",ImVec2(0,145),true);
-            if(ImGui::Selectable("PASSTHROUGH SOBEL",state.backgroundSourceKind==0)) {
+            ImGui::SeparatorText("BACKGROUNDS / SHADERS + IMAGES + MP4");
+            static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","RAINBOW SPIRAL","MOBIUS SPIRAL","THEREMIN WAVE","GEOMETRIC KALEIDOSCOPE","CHROMATIC EDGES","COSMIC PALETTE","SYNTHWAVE SUNSET","OCEAN WAVES","UNIVERSE WITHIN","CYBERCITY","VORONOI FALL","TAN GLITCH"};
+            static constexpr int modeIds[]={0,1,2,3,4,5,6,7,10,11,12,13,14,15,16,17,19,20,21,22};
+            ImGui::BeginChild("background-unified",ImVec2(0,235),true);
+            if(ImGui::Selectable("[MR] PASSTHROUGH SOBEL",state.backgroundSourceKind==0)) {
                 state.backgroundSourceKind=0;
                 state.panoramaSelected=-1;
             }
+            for(int i=0;i<20;++i) {
+                const std::string label=std::string("[SHADER] ")+effects[i]+"##bgsh"+std::to_string(i);
+                if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==3 &&
+                                      state.wallShaderMode==modeIds[i])) {
+                    state.backgroundSourceKind=3;
+                    state.wallShaderMode=modeIds[i];
+                    state.liquidRoom=true;
+                    state.panoramaSelected=-1;
+                }
+            }
             for(int i=0;i<static_cast<int>(state.panoramaFiles.size());++i) {
-                const std::string label="[IMAGE] "+state.panoramaFiles[i]+"##bgimage"+std::to_string(i);
-                if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==1 && state.panoramaSelected==i)) {
+                const std::string label="[IMAGE] "+state.panoramaFiles[i]+"##bgi"+std::to_string(i);
+                if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==1 &&
+                                      state.panoramaSelected==i)) {
                     state.backgroundSourceKind=1;
                     state.panoramaSelected=i;
                     state.videoSelected=-1;
                 }
             }
             for(int i=0;i<static_cast<int>(state.videoFiles.size());++i) {
-                const std::string label="[MP4] "+state.videoFiles[i]+"##bgvideo"+std::to_string(i);
-                if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==2 && state.videoSelected==i)) {
+                const std::string label="[MP4] "+state.videoFiles[i]+"##bgv"+std::to_string(i);
+                if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==2 &&
+                                      state.videoSelected==i)) {
                     state.backgroundSourceKind=2;
                     state.videoSelected=i;
                     state.panoramaSelected=-1;
@@ -145,60 +153,60 @@ void drawCarousel(CarouselState& state) {
             }
             ImGui::EndChild();
             if(state.backgroundSourceKind==2)
-                ImGui::TextDisabled("MP4 selected; playback on sphere not connected.");
-            else if(!state.panoramaStatus.empty())
+                ImGui::TextDisabled("Video rendering is not implemented yet");
+            if(state.backgroundSourceKind==1 && !state.panoramaStatus.empty())
                 ImGui::TextWrapped("%s",state.panoramaStatus.c_str());
-            ImGui::SliderFloat("Panorama yaw",&state.panoramaYawDegrees,-180.f,180.f,"%.0f deg");
-            ImGui::SliderFloat("Horizontal coverage",&state.panoramaHorizontalDegrees,60.f,360.f,"%.0f deg");
-            ImGui::SliderFloat("Vertical coverage",&state.panoramaVerticalDegrees,30.f,180.f,"%.0f deg");
-
-            ImGui::SeparatorText("WALLS - SOURCE");
-            ImGui::BeginChild("wall-source-list",ImVec2(0,105),true);
-            if(ImGui::Selectable("[SHADER] Procedural wall effect",state.wallSourceKind==0))
-                state.wallSourceKind=0;
+            if(state.backgroundSourceKind==1 || state.backgroundSourceKind==2) {
+                ImGui::SliderFloat("Panorama yaw",&state.panoramaYawDegrees,-180.f,180.f,"%.0f deg");
+                ImGui::SliderFloat("Horizontal coverage",&state.panoramaHorizontalDegrees,60.f,360.f,"%.0f deg");
+                ImGui::SliderFloat("Vertical coverage",&state.panoramaVerticalDegrees,30.f,180.f,"%.0f deg");
+            }
+            ImGui::SeparatorText("WALLS");
+            ImGui::Checkbox("Wall effect",&state.liquidRoom);
+            ImGui::BeginChild("wall-media-unified",ImVec2(0,100),true);
+            for(int i=0;i<20;++i) {
+                const std::string label=std::string("[SHADER] ")+effects[i]+"##wsh"+std::to_string(i);
+                if(ImGui::Selectable(label.c_str(),state.wallSourceKind==0 &&
+                                      state.wallShaderMode==modeIds[i])) {
+                    state.wallSourceKind=0;
+                    state.wallShaderMode=modeIds[i];
+                    state.liquidRoom=true;
+                }
+            }
             for(int i=0;i<static_cast<int>(state.panoramaFiles.size());++i) {
-                const std::string label="[IMAGE] "+state.panoramaFiles[i]+"##wallimage"+std::to_string(i);
-                if(ImGui::Selectable(label.c_str(),state.wallSourceKind==1 && state.wallImageSelected==i)) {
+                const std::string label="[IMAGE] "+state.panoramaFiles[i]+"##wi"+std::to_string(i);
+                if(ImGui::Selectable(label.c_str(),state.wallSourceKind==1 &&
+                                      state.wallImageSelected==i)) {
                     state.wallSourceKind=1;
                     state.wallImageSelected=i;
                 }
             }
             for(int i=0;i<static_cast<int>(state.videoFiles.size());++i) {
-                const std::string label="[MP4] "+state.videoFiles[i]+"##wallvideo"+std::to_string(i);
-                if(ImGui::Selectable(label.c_str(),state.wallSourceKind==2 && state.wallVideoSelected==i)) {
+                const std::string label="[MP4] "+state.videoFiles[i]+"##wv"+std::to_string(i);
+                if(ImGui::Selectable(label.c_str(),state.wallSourceKind==2 &&
+                                      state.wallVideoSelected==i)) {
                     state.wallSourceKind=2;
                     state.wallVideoSelected=i;
                 }
             }
             ImGui::EndChild();
             if(state.wallSourceKind!=0)
-                ImGui::TextDisabled("Wall media selected; texture projection not connected.");
-            ImGui::SeparatorText("WALL SHADER SETTINGS");
-            ImGui::Checkbox("Wall effect",&state.liquidRoom);
-            static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","RAINBOW SPIRAL","MOBIUS SPIRAL","THEREMIN WAVE","GEOMETRIC KALEIDOSCOPE","CHROMATIC EDGES","COSMIC PALETTE","SYNTHWAVE SUNSET","OCEAN WAVES","UNIVERSE WITHIN","CYBERCITY","VORONOI FALL","TAN GLITCH"};
-            ImGui::Checkbox("Different shader per wall",&state.cycleWallShaders);
-            if(state.cycleWallShaders) ImGui::SliderFloat("Change every (seconds)",&state.wallCycleSeconds,10.f,90.f,"%.0f");
-            else {
-                // Persisted wallShaderMode IDs are preserved; hide deprecated 8, 9 and 18.
-                static constexpr int modeIds[]={0,1,2,3,4,5,6,7,10,11,12,13,14,15,16,17,19,20,21,22};
-                int selection=0;
-                for(int i=0;i<20;++i)if(state.wallShaderMode==modeIds[i])selection=i;
-                if(ImGui::Combo("Wall shader",&selection,effects,20))
-                    state.wallShaderMode=modeIds[selection];
-            }
-            if(state.wallShaderMode==1) {
-                ImGui::ColorEdit3("Wall color",state.wallColor);
-                ImGui::SliderFloat("Solid opacity",&state.wallSolidOpacity,0.1f,1.0f);
-            } else {
-                ImGui::SliderFloat("Opacity",&state.liquidOpacity,0.0f,0.6f);
+                ImGui::TextDisabled("Wall media projection is not implemented yet");
+            if(state.wallSourceKind==0) {
+                ImGui::Checkbox("Different shader per wall",&state.cycleWallShaders);
+                if(state.cycleWallShaders)
+                    ImGui::SliderFloat("Change every (seconds)",&state.wallCycleSeconds,10.f,90.f,"%.0f");
+                if(state.wallShaderMode==1) {
+                    ImGui::ColorEdit3("Wall color",state.wallColor);
+                    ImGui::SliderFloat("Solid opacity",&state.wallSolidOpacity,0.1f,1.f);
+                } else ImGui::SliderFloat("Opacity",&state.liquidOpacity,0.f,0.6f);
             }
             ImGui::SliderInt("Max walls",&state.maxLiquidWalls,1,8);
             ImGui::Checkbox("Floor & ceiling",&state.includeFloorCeiling);
-            if(state.wallShaderMode==3)ImGui::TextDisabled("Hepp Maccoy 2019 / CC BY-NC-SA 3.0");
             ImGui::Checkbox("Scene mesh wireframe",&state.showSceneMesh);
             ImGui::Checkbox("Occlude walls with scene mesh",&state.sceneOcclusion);
-            if(state.sceneOcclusion) ImGui::SliderFloat("Occlusion bias",&state.sceneDepthBias,0.0f,0.01f,"%.4f");
-            ImGui::TextDisabled("Quest fast mode: nearest tracked walls");
+            if(state.sceneOcclusion)
+                ImGui::SliderFloat("Occlusion bias",&state.sceneDepthBias,0.f,0.01f,"%.4f");
             break;
         }
         case 2: {
