@@ -36,6 +36,11 @@ public final class VoxenActivity extends NativeActivity {
                     loopedTimeUs, MediaMetadataRetriever.OPTION_CLOSEST,
                     512, 256);
             if (bitmap == null) return null;
+            if (bitmap.getWidth() != 512 || bitmap.getHeight() != 256) {
+                Bitmap scaled = Bitmap.createScaledBitmap(bitmap, 512, 256, true);
+                bitmap.recycle();
+                bitmap = scaled;
+            }
             int[] argb = new int[512 * 256];
             bitmap.getPixels(argb, 0, 512, 0, 0, 512, 256);
             bitmap.recycle();
