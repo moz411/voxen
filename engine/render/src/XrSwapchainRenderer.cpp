@@ -2946,6 +2946,7 @@ void XrSwapchainRenderer::render(
 #endif
         if(imguiCarousel_.panoramaSelected!=panoramaDecodedSelection_) {
             panoramaDecodedSelection_=imguiCarousel_.panoramaSelected;
+            if(panoramaDecodedSelection_>=0) videoPreviewActive_=false;
 #ifdef VOXEN_WITH_GLB_IMPORT
             panoramaFadeActive_=false;
             if(device_)vkDeviceWaitIdle(device_);
