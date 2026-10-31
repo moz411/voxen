@@ -1,201 +1,85 @@
-# Video media engine — phase 1 (experimental)
+# Voxen video playback — OpenXR Android Surface (experimental)
 
-Branch: `feature/video-media-engine`
+Branch: `feature/video-media-engine` / draft PR #51.
 
-## Current scope
+## Architecture
 
-`android/app/src/main/java/org/voxen/xr/media/VideoDecoder.java` is an isolated
-hardware decoder prototype. It uses Android `MediaExtractor` +
-`MediaCodec`, outputs video to a GPU-backed `ImageReader` with
-`ImageFormat.PRIVATE` and `AHardwareBuffer.USAGE_GPU_SAMPLED_IMAGE`,
-and exposes decoded frames as `android.media.Image`.
-
-- Local video track only; video MIME selected from the container.
-- Background codec thread, nonblocking frame dequeue and timestamp-based release.
-- Playback, pause, seek and optional loop.
-- No CPU readback / bitmap conversion.
-- **Not yet instantiated by VoxenActivity or the native render loop.**
-- **No Vulkan import or presentation yet; this does not display video.**
-- **No audio decoding or A/V sync yet.**
-- No headset build or playback verification has been performed.
-
-## Required Vulkan bridge before integration
-
-1. Obtain the newest `Image` from `acquireLatestFrame()`; preserve its
-   lifetime until GPU sampling is complete. The caller owns and closes it.
-2. Call `Image.getHardwareBuffer()` and import via Android hardware buffer
-   Vulkan extension (verify format, feature flags, usage and external-memory
-   support on the device first). Do not assume all PRIVATE allocations are
-   importable or sampleable.
-3. Query `vkGetAndroidHardwareBufferPropertiesANDROID`, configure Vulkan
-   external format / YCbCr conversion as required, and import device memory.
-4. Respect Android buffer acquire fences and Vulkan submission/completion
-   synchronization. Do not close or reuse frames during GPU reads.
-5. Reuse descriptor sets / imported resources where possible; limit outstanding
-   frames. Avoid one allocation per frame when the decoder reuses its buffers.
-6. Preserve the existing panorama and shader pipelines; connect the video
-   frame as an *optional* texture input.
-
-This decoder cannot be treated as zero-copy end-to-end until the bridge is
-implemented and profiled.
-
-## Integration / test checklist
-
-- Run `cd android && ./gradlew assembleDebug`.
-- Deploy with `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
-- Observe `adb logcat -s VoxenVideo:V AndroidRuntime:E`.
-- Create an Activity/JNI owner with lifecycle matching active scene state.
-- Start playback of a small H.264 MP4 in app-private storage, verify reported
-  dimensions and sampled Vulkan frames on Quest 3.
-- Test repeat, seek, pause/resume, scene exit, application background/foreground,
-  unsupported codec, oversized resolution and full ImageReader queue.
-- Profile GPU memory and latency for 1080p and 4K, and verify the decoder
-  is hardware-accelerated on the device.
-
-Do not merge to main before the JNI/Vulkan bridge and device tests.
-
-
-## Vulkan import module (new, experimental)
-
-`platform/android/src/AndroidVideoImage.cpp` now provides an **explicit,
-non-rendering** import of an `AHardwareBuffer` as a Vulkan sampled image.
-It creates dedicated imported memory, a YCbCr conversion, image view and
-sampler, and owns their destruction. The Android `Image` and its native
-buffer reference remain owned by `AndroidVideoDecoder::Frame`.
-
-**Important:** creation of a VkImage is not evidence that its content is safe
-for sampling. Before actual rendering, implement and validate:
-
-- Codec/producer acquire fence semantics, Android buffer external queue-family
-  ownership, and matching Vulkan barriers/layout transitions.
-- GPU completion fences before `AndroidVideoDecoder::releaseFrame()` and
-  `AndroidVideoImage::reset()`. Never destroy image/view while in flight.
-- Descriptor-set lifetime and sampler-YCbCr immutable sampler requirements.
-- Queue pacing/backpressure: max 3 outstanding ImageReader images; reused
-  buffers and bounded Vulkan imported-image cache.
-- Test decoder-produced `PRIVATE` buffers on Quest 3; Vulkan import can fail
-  based on hardware/format/extension support.
-- Validate Android SDK/NDK compilation and vendor runtime behavior.
-
-Current behavior is **not yet active** in Voxen's render loop. No video playback
-or image display has been validated on Quest 3.
-
-
-## Opt-in MP4 → VkImage smoke test (latest)
-
-The Android entrypoint probes exactly one decoded frame **only when** an
-`internalDataPath/video-test.mp4` file exists and Vulkan external-video
-support is enabled. This is an import/lifetime test; it does not display video
-or submit GPU work. No MP4 file means the existing UI is unaffected.
-
-To exercise on a debug APK with `run-as` allowed:
-
-```bash
-cd android && ./gradlew assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-# Replace ./sample.mp4 with a short local H.264 video:
-adb shell run-as org.voxen.xr mkdir -p files
-adb shell run-as org.voxen.xr sh -c 'cat > files/video-test.mp4' < ./sample.mp4
-adb shell am force-stop org.voxen.xr
-adb shell monkey -p org.voxen.xr 1
-adb logcat -v time -s VoxenVideo:V AndroidRuntime:E
+```
+Backgrounds [MP4] → selectedBackgroundVideo()
+    → XrSession::openVideoSurface()
+    → xrCreateSwapchainAndroidSurfaceKHR()
+    → Android MediaPlayer.setSurface(surface)
+    → XrCompositionLayerEquirect2KHR in xrEndFrame()
 ```
 
-Log outcome: `MP4 smoke-test armed`, `Decoder ready`,
-`AHB ... sampleable=1`, `Imported video VkImage`,
-`MP4 frame VkImage import: OK`.
-These are *expected* messages, not yet verified on Quest 3.
-If importing fails, capture the whole VoxenVideo log.
+The Quest runtime compositor samples the decoder's Surface directly. There is no
+Vulkan sampling, YCbCr sampler setup, CPU frame extraction, RGBA upload, or
+per-frame queue/device idle in the video path.
 
-**Limitations:** no render pass, no external ownership-transfer barriers,
-no decoder-acquire fence integration, no GPU completion fence, no audio. The
-smoke test deliberately creates/imports/destroys only one image and issues
-no GPU commands. Do not treat it as a video player.
+Enabled only when **both** `XR_KHR_android_surface_swapchain` and
+`XR_KHR_composition_layer_equirect2` are advertised by the installed runtime.
+No extension is assumed present. If absent, image/shader rendering remains
+available and MP4 playback is disabled.
 
-## UI navigation update
+## Functional scope
 
-- The `OBJECTS` carousel page contains two tabs: procedural `VOXENS` and imported `GLB MODELS`.
-- The `BACKGROUNDS` page lists `.mp4` files from `/sdcard/Android/data/org.voxen.xr/files/Videos`, with a manual rescan command.
-- Selecting a video currently changes only the UI state; it does **not** activate playback or projection. The standalone opt-in smoke test still uses `Videos/video-test.mp4`.
-- Next milestone: a synchronized sampled-video image in a real renderer descriptor set, followed by panorama/wall projection.
+- One global 360° equirectangular video layer, centered in LOCAL space,
+  mapped to an infinite sphere.
+- Android MediaPlayer hardware decode when a supported codec is available.
+- Automatic looping and track audio as handled by MediaPlayer.
+- On selection change: stop the previous player, destroy the old Surface
+  swapchain, create the new one and start the new MP4.
+- On XR STOPPING: stop producing frames **before** `xrEndSession`.
+- On XR READY after stopping: re-open the selected video when running.
+- **Not yet implemented:** projecting videos onto individual Meta walls,
+  multiple parallel video sources, audio mixing with the existing music engine,
+  file-specific dimension/orientation mapping, seeking and playback controls.
 
-## Unified media selection in carousel
+## Cleanup
 
-The Backgrounds page no longer has media-type tabs. Two source selectors
-list images and MP4 clips as peers (with an explicit [IMAGE]/[MP4] prefix):
+Removed from Android build and repository:
+- MediaCodec → ImageReader → AHardwareBuffer experimental decoder and
+  JNI wrapper.
+- `AndroidVideoBuffer`, `AndroidVideoImage`,
+  `VideoFrameDescriptor` and related CMake references.
+- Synchronous `MediaMetadataRetriever` 512×256 RGBA preview and its
+  per-frame Vulkan upload path (the source of XR stalls).
+- Obsolete video-preview methods on `XrSwapchainRenderer`.
 
-- Background: passthrough, JPG/PNG panorama or MP4.
-- Walls: shader, JPG/PNG or MP4.
+JPEG/PNG panorama uploads remain unchanged.
 
-This is **UI/state only** for MP4 and image-on-wall selection. The pre-existing
-image-on-sphere path and wall shader renderer are unchanged. Selecting an MP4
-currently does not display video: a GPU-synchronized Vulkan video texture
-consumer must still be implemented. Never consider media selection a successful
-playback test. These new selectors are not yet persisted in SavedRuntime.
+## Test on Meta Quest 3
 
-## Selection-driven decoder (2026-10-31)
+```bash
+cd ~/voxen
+git pull --ff-only origin feature/video-media-engine
+cd android
+./gradlew assembleDebug &&
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 
-The Android application now watches the renderer's selected background MP4
-path. Changing the selection closes the previous decoder, opens the new MP4
-with looping enabled, and acquires frames. It attempts Vulkan import of the
-first frame as an end-to-end diagnostic.
+adb logcat -v time -s VoxenVideo:V Voxen:V AndroidRuntime:E
+```
 
-This still **does not draw the video**. The existing panorama pipeline uses
-a conventional combined sampler layout, whereas the decoder produces external
-YCbCr images. Before display we need an immutable YCbCr sampler descriptor
-layout and correct producer/consumer ownership/layout transitions, plus
-frame lifetime held through the GPU completion fence. These requirements
-are not satisfied by the existing image import wrapper alone.
-The independent wall-media selector is not yet connected to a decoder.
+With an MP4 in `Android/data/org.voxen.xr/files/Videos/`, choose its
+`[MP4]` entry in Backgrounds and set Apply to `GLOBAL SPHERE`.
 
-## Per-frame lifetime bridge
+Expected logs:
+- `OpenXR Android Surface + Equirect2: enabled`
+- `OpenXR Surface player started: ...`
+- `OpenXR Surface playback: STARTED (result=0)`
 
-The Android entrypoint now retains the MediaCodec `Image`, its
-`AHardwareBuffer`, and the imported Vulkan image across both stereo
-`session.frame(renderer)` submissions. The current XR renderer waits on the
-submission fence for each eye; the entrypoint frees resources only afterwards.
-This removes a premature-release obstacle to connecting a sampled-video
-descriptor.
+If `unavailable`, collect the runtime extensions; if `FAILED`,
+capture the XrResult and the Java exception from Logcat.
 
-**Rendering not yet connected:** no video descriptor layout/pipeline,
-sampler-YCbCr immutable sampler, or acquire/ownership barriers are bound.
-Producer synchronization still needs a documented fence path. This step is
-not proof of correct video presentation and remains untested on Quest 3.
+**Unverified**: Android build and on-device playback have not been tested
+after this refactor. The OpenXR runtime and actual MP4 codec support must
+be validated on the headset. Keep PR #51 in draft until validated.
 
-## YCbCr descriptor preflight
+## Reference
 
-- Fixed the Android main-loop block that was accidentally truncated in an earlier revision (`091e055`).
-- `VideoFrameDescriptor` creates a one-binding immutable-YCbCr-sampler layout, a pool, and a combined-image-sampler descriptor for an imported `AndroidVideoImage`.
-- On the first decoded frame, logs `YCbCr immutable descriptor: OK/FAILED`; the descriptor is then destroyed before its immutable sampler.
-- **No video sampling or display yet.** This first-frame probe does not provide external producer fences, Vulkan ownership transfers, or an image-layout transition. The panorama pipeline and the rendering pipeline remain unchanged.
-- Before production: query the driver's exact `combinedImageSamplerDescriptorCount` for each video format, cache descriptors across frames and handle decoder reuse. The current pool capacity is a test fallback and must not be assumed sufficient universally.
-- The Android native build has not been executed in this environment. Validate using `./gradlew assembleDebug` and device Logcat before attempting rendering.
-
-## Reference implementation review: ThiyaMediaEngine
-
-Reference: https://github.com/ghimanshu383/ThiyaMediaEngine-Android_playerSDK
-
-Inspected upstream native sources:
-- `engine/src/main/cpp/MediaDecoder.cpp`: NDK `AImageReader_acquireNextImage` and frame handoff.
-- `engine/src/main/cpp/VideoProcessor.cpp`: hardware-buffer properties/import.
-- `engine/src/main/include/Util.h`: YCbCr sampler creation and explicit `VkImageMemoryBarrier` helpers.
-
-What Voxen now has:
-- Java MediaCodec → ImageReader → AHardwareBuffer, JNI ownership and VkImage import.
-- Native immutable YCbCr descriptor allocation (format-specific count).
-- Explicit, **non-destructive** GENERAL → SHADER_READ_ONLY layout barrier helper.
-
-What is **not** complete:
-- Producer-ready native fence (the Java ImageReader path does not currently
-  hand an acquire sync FD to Vulkan); external queue-family ownership handshake.
-- A persistent immutable sampler/layout + video-specific panorama pipeline.
-- A per-frame descriptor update or buffer-slot cache with stable lifetime.
-- Actual video projection on global sphere and individual detected Meta planes.
-- GPU release/producer hand-back and device validation.
-
-Do not use an UNDEFINED → SHADER_READ_ONLY transition for decoder-produced
-contents: UNDEFINED discards image contents. The helper records a barrier only;
-it does **not** resolve the producer fence or foreign ownership. It is not
-invoked by the render loop yet.
-
-Thiya's stated 4K/Mali results are not validation on Quest 3/Adreno.
+- Khronos `XR_KHR_android_surface_swapchain` spec:
+  https://registry.khronos.org/OpenXR/specs/1.1/man/html/xrCreateSwapchainAndroidSurfaceKHR.html
+- Khronos `XrCompositionLayerEquirect2KHR`:
+  https://registry.khronos.org/OpenXR/specs/1.1/man/html/XrCompositionLayerEquirect2KHR.html
+- Khronos runtime inventory indicates Quest 3 support, but the
+  installed firmware is authoritative.
