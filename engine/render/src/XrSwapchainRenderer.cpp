@@ -118,6 +118,29 @@ void checkVk(VkResult result, const char* operation) {
     }
 }
 
+#ifdef __ANDROID__
+std::vector<std::string> scanVideoFiles() {
+    const std::filesystem::path folder =
+        "/sdcard/Android/data/org.voxen.xr/files/Videos";
+    std::vector<std::string> files;
+    try {
+        std::filesystem::create_directories(folder);
+        for (const auto& entry : std::filesystem::directory_iterator(folder)) {
+            if (!entry.is_regular_file() || entry.is_symlink()) continue;
+            std::string ext=entry.path().extension().string();
+            std::transform(ext.begin(),ext.end(),ext.begin(),[](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            if (ext == ".mp4") files.push_back(entry.path().filename().string());
+        }
+        std::sort(files.begin(),files.end());
+    } catch (const std::filesystem::filesystem_error&) {
+        files.clear();
+    }
+    return files;
+}
+#endif
+
 } // namespace
 
 
@@ -183,6 +206,9 @@ void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& roo
     panoramaRoot_=root / "Backgrounds";
 #endif
     rescanPanoramaAssets();
+#if defined(__ANDROID__) && defined(VOXEN_WITH_IMGUI)
+    imguiCarousel_.videoFiles=scanVideoFiles();
+#endif
     portalManager_ = std::make_unique<voxen::gallery::PortalManager>(*sceneRepository_);
     // Seed a real repository scene so gallery placement and walk-in work unchanged.
     if(!sceneRepository_->loadSceneMetadata(mechanicalCannonSceneId_)) {
@@ -3008,6 +3034,20 @@ void XrSwapchainRenderer::render(
                     } else imguiCarousel_.glbStatus="GLB decode / Vulkan upload failed";
                 }
             }
+        }
+#endif
+#ifdef __ANDROID__
+        if(imguiCarousel_.videoRescanRequest) {
+            imguiCarousel_.videoRescanRequest=false;
+            const auto selected=imguiCarousel_.videoSelected;
+            const std::string previous=selected>=0 &&
+                static_cast<std::size_t>(selected)<imguiCarousel_.videoFiles.size()
+                    ? imguiCarousel_.videoFiles[selected] : std::string{};
+            imguiCarousel_.videoFiles=scanVideoFiles();
+            const auto found=std::find(imguiCarousel_.videoFiles.begin(),
+                imguiCarousel_.videoFiles.end(),previous);
+            imguiCarousel_.videoSelected=found==imguiCarousel_.videoFiles.end()
+                ? -1 : static_cast<int>(found-imguiCarousel_.videoFiles.begin());
         }
 #endif
         if(imguiCarousel_.musicRescan){
