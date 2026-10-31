@@ -2,6 +2,8 @@ package org.voxen.xr;
 
 import android.app.NativeActivity;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
@@ -13,6 +15,50 @@ import java.util.UUID;
 
 /** Android document picker bridge. Call openPanoramaPicker() on the UI thread. */
 public final class VoxenActivity extends NativeActivity {
+    // Temporary low-resolution visual path while zero-copy YCbCr sync is completed.
+    // 512x256 RGBA is intentionally capped to avoid massive XR upload stalls.
+    private MediaMetadataRetriever previewRetriever;
+    private String previewPath;
+
+    public synchronized byte[] extractVideoPreviewRgba(String path, long timeUs) {
+        try {
+            if (!path.equals(previewPath) || previewRetriever == null) {
+                closeVideoPreview();
+                previewRetriever = new MediaMetadataRetriever();
+                previewRetriever.setDataSource(path);
+                previewPath = path;
+            }
+            Bitmap bitmap = previewRetriever.getScaledFrameAtTime(
+                    Math.max(0L, timeUs), MediaMetadataRetriever.OPTION_CLOSEST,
+                    512, 256);
+            if (bitmap == null) return null;
+            int[] argb = new int[512 * 256];
+            bitmap.getPixels(argb, 0, 512, 0, 0, 512, 256);
+            bitmap.recycle();
+            byte[] rgba = new byte[argb.length * 4];
+            for (int i = 0, j = 0; i < argb.length; i++, j += 4) {
+                int p = argb[i];
+                rgba[j] = (byte) (p >>> 16);
+                rgba[j + 1] = (byte) (p >>> 8);
+                rgba[j + 2] = (byte) p;
+                rgba[j + 3] = (byte) 255;
+            }
+            return rgba;
+        } catch (Exception ex) {
+            Log.e("VoxenVideo", "Video preview decode failed", ex);
+            closeVideoPreview();
+            return null;
+        }
+    }
+
+    public synchronized void closeVideoPreview() {
+        if (previewRetriever != null) {
+            previewRetriever.release();
+            previewRetriever = null;
+        }
+        previewPath = null;
+    }
+
     private static final int PICK_PANORAMA = 4201;
     private final ArrayDeque<String> imported = new ArrayDeque<>();
 
