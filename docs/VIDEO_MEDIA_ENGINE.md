@@ -132,3 +132,18 @@ image-on-sphere path and wall shader renderer are unchanged. Selecting an MP4
 currently does not display video: a GPU-synchronized Vulkan video texture
 consumer must still be implemented. Never consider media selection a successful
 playback test. These new selectors are not yet persisted in SavedRuntime.
+
+## Selection-driven decoder (2026-10-31)
+
+The Android application now watches the renderer's selected background MP4
+path. Changing the selection closes the previous decoder, opens the new MP4
+with looping enabled, and acquires frames. It attempts Vulkan import of the
+first frame as an end-to-end diagnostic.
+
+This still **does not draw the video**. The existing panorama pipeline uses
+a conventional combined sampler layout, whereas the decoder produces external
+YCbCr images. Before display we need an immutable YCbCr sampler descriptor
+layout and correct producer/consumer ownership/layout transitions, plus
+frame lifetime held through the GPU completion fence. These requirements
+are not satisfied by the existing image import wrapper alone.
+The independent wall-media selector is not yet connected to a decoder.
