@@ -586,6 +586,7 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
                 }
             }
             if(videoSwapchain_!=XR_NULL_HANDLE) {
+#ifdef __ANDROID__
                 videoLayer.space=localSpace_;
                 videoLayer.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
                 videoLayer.subImage.swapchain=videoSwapchain_;
@@ -597,6 +598,7 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
                 videoLayer.lowerVerticalAngle=-1.57079632679f;
                 layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&videoLayer);
             }
+#endif
             layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer);
         }
     }
@@ -639,7 +641,19 @@ bool XrSession::openVideoSurface(const std::string& path, JavaVM* vm, jobject ac
         env->DeleteLocalRef(surface);
     }
     if(attached)vm->DetachCurrentThread();
-    if(ok) {videoJavaVm_=vm;videoPlayer_=env?activity:nullptr;}
+    if(ok) {
+        videoJavaVm_=vm;
+        // Activity reference must outlive this JNI call.
+        bool retained=false;
+        JNIEnv* holder=nullptr;
+        const bool mustAttach=vm->GetEnv(reinterpret_cast<void**>(&holder),JNI_VERSION_1_6)!=JNI_OK;
+        if(!mustAttach || vm->AttachCurrentThread(&holder,nullptr)==JNI_OK) {
+            videoPlayer_=holder->NewGlobalRef(activity);
+            retained=videoPlayer_!=nullptr;
+            if(mustAttach)vm->DetachCurrentThread();
+        }
+        if(!retained) {ok=false;closeVideoSurface();}
+    }
     else if(videoSwapchain_!=XR_NULL_HANDLE) {
         xrDestroySwapchain(videoSwapchain_);videoSwapchain_=XR_NULL_HANDLE;
     }
@@ -658,6 +672,7 @@ void XrSession::closeVideoSurface() noexcept {
             if(stop)env->CallVoidMethod(videoPlayer_,stop);
             if(env->ExceptionCheck()){env->ExceptionDescribe();env->ExceptionClear();}
             if(cls)env->DeleteLocalRef(cls);
+            env->DeleteGlobalRef(videoPlayer_);
             if(attached)videoJavaVm_->DetachCurrentThread();
         }
     }
