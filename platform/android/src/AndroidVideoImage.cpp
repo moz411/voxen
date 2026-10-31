@@ -45,32 +45,34 @@ bool AndroidVideoImage::importBuffer(VkPhysicalDevice physicalDevice, VkDevice d
     const bool external = format.format == VK_FORMAT_UNDEFINED;
     if (external && !format.externalFormat) return false;
 
-    // Query the true descriptor multiplicity instead of guessing the count
-    // for a multi-plane external YCbCr combined image sampler.
-    VkPhysicalDeviceExternalImageFormatInfo externalImage{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO};
-    externalImage.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
-    VkPhysicalDeviceExternalFormatInfoANDROID externalInfo{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_FORMAT_INFO_ANDROID};
-    externalInfo.externalFormat = format.externalFormat;
-    externalImage.pNext = external ? &externalInfo : nullptr;
-    VkPhysicalDeviceImageFormatInfo2 formatInfo{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2};
-    formatInfo.pNext = &externalImage;
-    formatInfo.format = format.format;
-    formatInfo.type = VK_IMAGE_TYPE_2D;
-    formatInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    formatInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
-    VkSamplerYcbcrConversionImageFormatProperties conversionProperties{
-        VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_IMAGE_FORMAT_PROPERTIES};
-    VkImageFormatProperties2 imageProperties{
-        VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2};
-    imageProperties.pNext = &conversionProperties;
-    if (vkGetPhysicalDeviceImageFormatProperties2(
-            physicalDevice, &formatInfo, &imageProperties) != VK_SUCCESS ||
-        !conversionProperties.combinedImageSamplerDescriptorCount) return false;
-    combinedSamplerDescriptorCount_ =
-        conversionProperties.combinedImageSamplerDescriptorCount;
+    // Multi-planar imported buffers may require multiple combined sampler
+    // descriptors. External-format images cannot be queried as an ordinary
+    // VkFormat (VK_FORMAT_UNDEFINED); use the conservative Vulkan minimum
+    // pool allocation here until a format-specific supported query is added.
+    combinedSamplerDescriptorCount_ = 4;
+    if (!external) {
+        VkPhysicalDeviceExternalImageFormatInfo externalImage{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO};
+        externalImage.handleType =
+            VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
+        VkPhysicalDeviceImageFormatInfo2 formatInfo{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2};
+        formatInfo.pNext = &externalImage;
+        formatInfo.format = format.format;
+        formatInfo.type = VK_IMAGE_TYPE_2D;
+        formatInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        formatInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+        VkSamplerYcbcrConversionImageFormatProperties conversionProperties{
+            VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_IMAGE_FORMAT_PROPERTIES};
+        VkImageFormatProperties2 imageProperties{
+            VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2};
+        imageProperties.pNext = &conversionProperties;
+        if (vkGetPhysicalDeviceImageFormatProperties2(
+                physicalDevice, &formatInfo, &imageProperties) == VK_SUCCESS &&
+            conversionProperties.combinedImageSamplerDescriptorCount)
+            combinedSamplerDescriptorCount_ =
+                conversionProperties.combinedImageSamplerDescriptorCount;
+    }
     const uint32_t type = chooseMemoryType(physicalDevice, properties.memoryTypeBits);
     if (type == UINT32_MAX) return false;
     device_ = device;
