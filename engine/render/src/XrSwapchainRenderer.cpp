@@ -1670,7 +1670,9 @@ void XrSwapchainRenderer::updateControllerInteraction(
         const float y=thumbsticks[1].y;
         if(std::fabs(y)<0.30f)editorPresetStickLatched_=false;
         if(!editorPresetStickLatched_ && std::fabs(y)>0.72f) {
-            imguiCarousel_.voxenPreset=(imguiCarousel_.voxenPreset+(y>0.f?1:19))%20;
+            do {
+                imguiCarousel_.voxenPreset=(imguiCarousel_.voxenPreset+(y>0.f?1:19))%20;
+            } while(imguiCarousel_.voxenPreset==14 || imguiCarousel_.voxenPreset==18);
             editorPresetStickLatched_=true;
         }
         if(std::fabs(x)<0.30f)editorScaleStickLatched_=false;
