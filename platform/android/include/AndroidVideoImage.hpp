@@ -24,9 +24,11 @@ public:
     VkSampler sampler() const noexcept { return sampler_; }
     // The YCbCr sampler must be immutable in the descriptor-set layout.
     VkSamplerYcbcrConversion conversion() const noexcept { return conversion_; }
+    uint32_t combinedSamplerDescriptorCount() const noexcept { return combinedSamplerDescriptorCount_; }
     bool valid() const noexcept { return image_ != VK_NULL_HANDLE && view_ != VK_NULL_HANDLE; }
 
 private:
+    uint32_t combinedSamplerDescriptorCount_ = 0;
     VkDevice device_ = VK_NULL_HANDLE;
     VkImage image_ = VK_NULL_HANDLE;
     VkDeviceMemory memory_ = VK_NULL_HANDLE;
