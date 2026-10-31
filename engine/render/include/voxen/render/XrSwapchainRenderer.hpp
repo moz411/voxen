@@ -75,6 +75,11 @@ public:
     // exposes intent, not ownership of decoder resources.
     [[nodiscard]] std::filesystem::path selectedBackgroundVideo() const;
     [[nodiscard]] std::filesystem::path selectedWallVideo() const;
+    struct SurfaceVideoSelection {
+        std::filesystem::path path;
+        voxen::scene::EnvironmentSurface surface;
+    };
+    [[nodiscard]] std::optional<SurfaceVideoSelection> selectedSurfaceVideo() const;
     bool saveCurrentScene();
     bool loadSavedScene(const voxen::gallery::SceneId& id);
     bool deleteSavedScene(const voxen::gallery::SceneId& id);
