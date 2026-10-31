@@ -248,6 +248,74 @@ void XrSwapchainRenderer::releasePanoramaGpu() noexcept {
     if(panoramaDescriptorPool_)vkDestroyDescriptorPool(device_,panoramaDescriptorPool_,nullptr);
     panoramaDescriptorPool_=VK_NULL_HANDLE;
 }
+bool XrSwapchainRenderer::updateVideoPreviewGpu(const PanoramaImage& frame) {
+    // Reuse the existing 512x256 VkImage / descriptor, rather than rebuilding
+    // the entire texture and calling vkDeviceWaitIdle every video frame.
+    if (!device_ || !panoramaTexture_.image || !commandPool_ ||
+        frame.width != 512 || frame.height != 256 ||
+        frame.rgba.size() != 512u*256u*4u) return false;
+    VkBuffer staging=VK_NULL_HANDLE;
+    VkDeviceMemory stagingMemory=VK_NULL_HANDLE;
+    VkCommandBuffer cmd=VK_NULL_HANDLE;
+    try {
+        upload(device_, physicalDevice_, frame.rgba.data(), frame.rgba.size(),
+               VK_BUFFER_USAGE_TRANSFER_SRC_BIT, staging, stagingMemory);
+        VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        ai.commandPool=commandPool_;
+        ai.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        ai.commandBufferCount=1;
+        checked(vkAllocateCommandBuffers(device_, &ai, &cmd), "video copy cmd");
+        VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        bi.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        checked(vkBeginCommandBuffer(cmd,&bi), "video begin copy");
+        VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        barrier.image=panoramaTexture_.image;
+        barrier.subresourceRange.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.levelCount=1;
+        barrier.subresourceRange.layerCount=1;
+        barrier.srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+        barrier.oldLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier.newLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.srcAccessMask=VK_ACCESS_SHADER_READ_BIT;
+        barrier.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
+        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,nullptr,0,nullptr,1,&barrier);
+        VkBufferImageCopy region{};
+        region.imageSubresource.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.layerCount=1;
+        region.imageExtent={512,256,1};
+        vkCmdCopyBufferToImage(cmd,staging,panoramaTexture_.image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&region);
+        barrier.oldLayout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.newLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask=VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(cmd,VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,0,0,nullptr,0,nullptr,1,&barrier);
+        checked(vkEndCommandBuffer(cmd),"video end copy");
+        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.commandBufferCount=1;
+        submit.pCommandBuffers=&cmd;
+        checked(vkQueueSubmit(queue_,1,&submit,VK_NULL_HANDLE),"video submit copy");
+        // Still synchronous for the prototype; avoid destroying staging
+        // resources while the transfer is in flight. Future: upload fence pool.
+        checked(vkQueueWaitIdle(queue_),"video upload completion");
+        vkFreeCommandBuffers(device_,commandPool_,1,&cmd);
+        vkDestroyBuffer(device_,staging,nullptr);
+        vkFreeMemory(device_,stagingMemory,nullptr);
+        return true;
+    } catch(const std::exception& e) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_ERROR,"VoxenVideo",
+            "In-place video frame upload failed: %s",e.what());
+#endif
+        if(cmd)vkFreeCommandBuffers(device_,commandPool_,1,&cmd);
+        if(staging)vkDestroyBuffer(device_,staging,nullptr);
+        if(stagingMemory)vkFreeMemory(device_,stagingMemory,nullptr);
+        return false;
+    }
+}
 bool XrSwapchainRenderer::loadPanoramaGpu(PanoramaImage&& decoded) {
     if(!device_ || !panoramaSetLayout_ || !commandPool_)return false;
     GlbTexture incoming{};
