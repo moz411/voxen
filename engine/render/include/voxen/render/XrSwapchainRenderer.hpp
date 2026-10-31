@@ -22,6 +22,7 @@
 #include <memory>
 #include <filesystem>
 #include <future>
+#include <optional>
 #include <voxen/render/PanoramaImage.hpp>
 #ifdef VOXEN_WITH_IMGUI
 #include <voxen/ui/CarouselUi.hpp>
