@@ -41,6 +41,10 @@ struct CarouselState {
     std::vector<std::string> glbFiles;
     std::string glbStatus;
     int videoSelected = -1;
+    int backgroundSourceKind = 0; // 0 passthrough, 1 image, 2 video (pending render)
+    int wallSourceKind = 0; // 0 shader, 1 image, 2 video (pending render)
+    int wallImageSelected = -1;
+    int wallVideoSelected = -1;
     bool videoRescanRequest = false;
     std::vector<std::string> videoFiles;
     bool panoramaImportRequest = false;
