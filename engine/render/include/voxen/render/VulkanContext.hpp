@@ -18,6 +18,7 @@ public:
     void initialize(XrInstance xrInstance, XrSystemId systemId);
     void shutdown() noexcept;
 
+    [[nodiscard]] bool videoBufferImportEnabled() const noexcept { return videoBufferImportEnabled_; }
     [[nodiscard]] VkInstance instance() const noexcept { return instance_; }
     [[nodiscard]] VkPhysicalDevice physicalDevice() const noexcept { return physicalDevice_; }
     [[nodiscard]] VkDevice device() const noexcept { return device_; }
@@ -25,6 +26,7 @@ public:
     [[nodiscard]] uint32_t graphicsQueueFamily() const noexcept { return graphicsQueueFamily_; }
 
 private:
+    bool videoBufferImportEnabled_ = false;
     VkInstance instance_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
     VkDevice device_ = VK_NULL_HANDLE;
