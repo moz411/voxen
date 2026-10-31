@@ -171,7 +171,10 @@ void XrSwapchainRenderer::rescanGlbAssets() {
 bool XrSwapchainRenderer::submitVideoPreview(PanoramaImage&& frame) {
 #ifdef VOXEN_WITH_GLB_IMPORT
     if(frame.width<=0 || frame.height<=0 || frame.rgba.empty()) return false;
-    if(!loadPanoramaGpu(std::move(frame))) return false;
+    const bool updated=videoPreviewActive_
+        ? updateVideoPreviewGpu(frame)
+        : loadPanoramaGpu(std::move(frame));
+    if(!updated) return false;
     videoPreviewActive_=true;
     panoramaFadeActive_=false;
     return true;
