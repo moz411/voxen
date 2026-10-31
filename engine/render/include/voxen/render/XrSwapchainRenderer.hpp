@@ -71,6 +71,10 @@ public:
 #endif
     }
     void rescanPanoramaAssets();
+    // Resolved media selection for the Android video decoder. The renderer
+    // exposes intent, not ownership of decoder resources.
+    [[nodiscard]] std::filesystem::path selectedBackgroundVideo() const;
+    [[nodiscard]] std::filesystem::path selectedWallVideo() const;
     bool saveCurrentScene();
     bool loadSavedScene(const voxen::gallery::SceneId& id);
     bool deleteSavedScene(const voxen::gallery::SceneId& id);
