@@ -661,7 +661,14 @@ bool XrSession::openVideoSurface(const std::string& path, JavaVM* vm, jobject ac
     if(attached)vm->DetachCurrentThread();
     if(ok) {
         videoPlaneActive_=target!=nullptr;
-        if(target)videoPlane_=*target;
+        if(target) {
+            videoPlane_=*target;
+            __android_log_print(ANDROID_LOG_INFO,"VoxenVideo",
+                "Video quad target id=%llu size=%.2fx%.2f m tracked=%d",
+                static_cast<unsigned long long>(target->id),
+                target->halfExtents[0]*2.f,target->halfExtents[1]*2.f,
+                target->tracked?1:0);
+        }
         videoJavaVm_=vm;
         // Activity reference must outlive this JNI call.
         bool retained=false;
