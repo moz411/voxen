@@ -168,6 +168,19 @@ void XrSwapchainRenderer::rescanGlbAssets() {
 }
 #endif
 
+bool XrSwapchainRenderer::submitVideoPreview(PanoramaImage&& frame) {
+#ifdef VOXEN_WITH_GLB_IMPORT
+    if(frame.width<=0 || frame.height<=0 || frame.rgba.empty()) return false;
+    if(!loadPanoramaGpu(std::move(frame))) return false;
+    videoPreviewActive_=true;
+    panoramaFadeActive_=false;
+    return true;
+#else
+    (void)frame;
+    return false;
+#endif
+}
+
 std::filesystem::path XrSwapchainRenderer::selectedBackgroundVideo() const {
 #if defined(__ANDROID__) && defined(VOXEN_WITH_IMGUI)
     const int i=imguiCarousel_.videoSelected;
@@ -1766,7 +1779,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 
 #if defined(VOXEN_WITH_GLB_IMPORT) && defined(VOXEN_WITH_IMGUI)
     // Opaque background first, with no depth writes. Real scene objects draw over it.
-    if(imguiCarousel_.panoramaSelected>=0 && panoramaTexture_.descriptor && panoramaPipeline_) {
+    if((imguiCarousel_.panoramaSelected>=0 || (videoPreviewActive_ && !selectedBackgroundVideo().empty())) && panoramaTexture_.descriptor && panoramaPipeline_) {
         struct PanoramaPush {
             float orientation[4];
             float tangents[4];
@@ -2933,7 +2946,7 @@ void XrSwapchainRenderer::render(
 #ifdef VOXEN_WITH_GLB_IMPORT
             panoramaFadeActive_=false;
             if(device_)vkDeviceWaitIdle(device_);
-            releasePanoramaGpu();
+            if(!videoPreviewActive_) releasePanoramaGpu();
             imguiCarousel_.panoramaStatus=panoramaDecodedSelection_<0
                 ? std::string{} : "Loading panorama in background...";
 #endif
