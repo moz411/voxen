@@ -2258,7 +2258,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 }
             }else{
                 const uint32_t vertices=flatSurface
-                    ? (v.flatVolume==1 ? 32u*16u*6u : 36u)
+                    ? ((v.flatVolume==2 ? 24u : (v.flatVolume==0 ? 36u : 32u*16u*6u)))
                     : (v.preset==11 ? (24*16*6+8*12*6*6) :
                        (v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 :
                        (v.preset==7 ? 24*16*6 :
