@@ -347,6 +347,7 @@ private:
     voxen::scene::EnvironmentSurfaceRegistry environmentSurfaces_{};
     struct PlasmaVoxen {
         int preset=0;
+        int flatVolume=0; // 0 cube; 1 sphere
         std::array<float,3> position{};
         float scale=0.18f;
         float hue=0.52f;
