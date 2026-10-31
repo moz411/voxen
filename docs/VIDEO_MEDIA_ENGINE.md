@@ -79,3 +79,35 @@ for sampling. Before actual rendering, implement and validate:
 
 Current behavior is **not yet active** in Voxen's render loop. No video playback
 or image display has been validated on Quest 3.
+
+
+## Opt-in MP4 → VkImage smoke test (latest)
+
+The Android entrypoint probes exactly one decoded frame **only when** an
+`internalDataPath/video-test.mp4` file exists and Vulkan external-video
+support is enabled. This is an import/lifetime test; it does not display video
+or submit GPU work. No MP4 file means the existing UI is unaffected.
+
+To exercise on a debug APK with `run-as` allowed:
+
+```bash
+cd android && ./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+# Replace ./sample.mp4 with a short local H.264 video:
+adb shell run-as org.voxen.xr mkdir -p files
+adb shell run-as org.voxen.xr sh -c 'cat > files/video-test.mp4' < ./sample.mp4
+adb shell am force-stop org.voxen.xr
+adb shell monkey -p org.voxen.xr 1
+adb logcat -v time -s VoxenVideo:V AndroidRuntime:E
+```
+
+Log outcome: `MP4 smoke-test armed`, `Decoder ready`,
+`AHB ... sampleable=1`, `Imported video VkImage`,
+`MP4 frame VkImage import: OK`.
+These are *expected* messages, not yet verified on Quest 3.
+If importing fails, capture the whole VoxenVideo log.
+
+**Limitations:** no render pass, no external ownership-transfer barriers,
+no decoder-acquire fence integration, no GPU completion fence, no audio. The
+smoke test deliberately creates/imports/destroys only one image and issues
+no GPU commands. Do not treat it as a video player.
