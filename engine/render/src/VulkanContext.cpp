@@ -2,6 +2,7 @@
 
 #ifdef __ANDROID__
 #include <jni.h>
+#include <vulkan/vulkan_android.h>
 #include <android/log.h>
 #include <algorithm>
 #include <cstring>
