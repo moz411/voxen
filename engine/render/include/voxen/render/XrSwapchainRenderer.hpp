@@ -74,6 +74,8 @@ public:
     // Resolved media selection for the Android video decoder. The renderer
     // exposes intent, not ownership of decoder resources.
     [[nodiscard]] std::filesystem::path selectedBackgroundVideo() const;
+    // Experimental low-rate RGBA video preview through the proven panorama uploader.
+    bool submitVideoPreview(PanoramaImage&& frame);
     [[nodiscard]] std::filesystem::path selectedWallVideo() const;
     bool saveCurrentScene();
     bool loadSavedScene(const voxen::gallery::SceneId& id);
@@ -221,6 +223,7 @@ private:
     struct GlbTexture { VkImage image=VK_NULL_HANDLE; VkDeviceMemory memory=VK_NULL_HANDLE; VkImageView view=VK_NULL_HANDLE; VkSampler sampler=VK_NULL_HANDLE; VkDescriptorSet descriptor=VK_NULL_HANDLE; };
     std::vector<GlbTexture> glbTextures_;
     GlbTexture panoramaTexture_{};
+    bool videoPreviewActive_=false;
     VkDescriptorPool panoramaDescriptorPool_=VK_NULL_HANDLE;
     bool loadPanoramaGpu(PanoramaImage&& decoded);
     std::future<PanoramaImage> panoramaDecodeFuture_;
