@@ -94,10 +94,6 @@ add_subdirectory(engine)
 if(ANDROID)
     add_library(voxen SHARED
         platform/android/src/main.cpp
-        platform/android/src/AndroidVideoDecoder.cpp
-        platform/android/src/AndroidVideoBuffer.cpp
-        platform/android/src/AndroidVideoImage.cpp
-        platform/android/src/VideoFrameDescriptor.cpp
         ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
     )
 
