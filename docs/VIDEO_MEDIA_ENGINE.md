@@ -161,3 +161,12 @@ descriptor.
 sampler-YCbCr immutable sampler, or acquire/ownership barriers are bound.
 Producer synchronization still needs a documented fence path. This step is
 not proof of correct video presentation and remains untested on Quest 3.
+
+## YCbCr descriptor preflight
+
+- Fixed the Android main-loop block that was accidentally truncated in an earlier revision (`091e055`).
+- `VideoFrameDescriptor` creates a one-binding immutable-YCbCr-sampler layout, a pool, and a combined-image-sampler descriptor for an imported `AndroidVideoImage`.
+- On the first decoded frame, logs `YCbCr immutable descriptor: OK/FAILED`; the descriptor is then destroyed before its immutable sampler.
+- **No video sampling or display yet.** This first-frame probe does not provide external producer fences, Vulkan ownership transfers, or an image-layout transition. The panorama pipeline and the rendering pipeline remain unchanged.
+- Before production: query the driver's exact `combinedImageSamplerDescriptorCount` for each video format, cache descriptors across frames and handle decoder reuse. The current pool capacity is a test fallback and must not be assumed sufficient universally.
+- The Android native build has not been executed in this environment. Validate using `./gradlew assembleDebug` and device Logcat before attempting rendering.
