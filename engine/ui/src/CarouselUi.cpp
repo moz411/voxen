@@ -153,7 +153,7 @@ void drawCarousel(CarouselState& state) {
             }
             ImGui::EndChild();
             if(state.backgroundSourceKind==2)
-                ImGui::TextDisabled("Video rendering is not implemented yet");
+                ImGui::TextDisabled("MP4: Android Surface / OpenXR equirect2 (experimental)");
             if(state.backgroundSourceKind==1 && !state.panoramaStatus.empty())
                 ImGui::TextWrapped("%s",state.panoramaStatus.c_str());
             if(state.backgroundSourceKind==1 || state.backgroundSourceKind==2) {
