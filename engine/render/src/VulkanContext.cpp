@@ -111,64 +111,7 @@ void VulkanContext::initialize(XrInstance xrInstance, XrSystemId systemId) {
     queueInfo.queueCount = 1;
     queueInfo.pQueuePriorities = &queuePriority;
 
-#ifdef __ANDROID__
-    // Do not make video support mandatory for OpenXR startup: query hardware
-    // capabilities first and enable the complete dependency set only if present.
-    uint32_t extensionCount = 0;
-    vkEnumerateDeviceExtensionProperties(physicalDevice_, nullptr, &extensionCount, nullptr);
-    std::vector<VkExtensionProperties> extensions(extensionCount);
-    vkEnumerateDeviceExtensionProperties(physicalDevice_, nullptr, &extensionCount, extensions.data());
-    const auto hasExtension = [&](const char* name) {
-        return std::any_of(extensions.begin(), extensions.end(), [&](const auto& item) {
-            return std::strcmp(item.extensionName, name) == 0;
-        });
-    };
-    constexpr const char* videoExtensions[] = {
-        VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME,
-        VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME,
-        VK_KHR_BIND_MEMORY_2_EXTENSION_NAME,
-        VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
-        VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
-        VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME
-    };
-    bool videoAvailable = true;
-    for (const char* extension : videoExtensions) {
-        const bool supported = hasExtension(extension);
-        __android_log_print(supported ? ANDROID_LOG_INFO : ANDROID_LOG_WARN,
-            "VoxenVideo", "Vulkan extension %s: %s", extension,
-            supported ? "yes" : "no");
-        videoAvailable &= supported;
-    }
-    std::vector<const char*> enabledVideoExtensions;
-    if (videoAvailable) {
-        enabledVideoExtensions.assign(
-            std::begin(videoExtensions), std::end(videoExtensions));
-    }
-    VkPhysicalDeviceSamplerYcbcrConversionFeatures ycbcr{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES};
-    VkPhysicalDeviceFeatures2 features2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
-    features2.pNext = &ycbcr;
-    vkGetPhysicalDeviceFeatures2(physicalDevice_, &features2);
-    if (!ycbcr.samplerYcbcrConversion) {
-        videoAvailable = false;
-        enabledVideoExtensions.clear();
-    }
-    __android_log_print(ANDROID_LOG_INFO, "VoxenVideo",
-        "Vulkan AHardwareBuffer video path: %s",
-        videoAvailable ? "enabled" : "unsupported (disabled)");
-#endif
     VkDeviceCreateInfo vkDeviceInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
-#ifdef __ANDROID__
-    VkPhysicalDeviceSamplerYcbcrConversionFeatures enabledYcbcr{
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES};
-    enabledYcbcr.samplerYcbcrConversion = videoAvailable ? VK_TRUE : VK_FALSE;
-    if (videoAvailable) {
-        vkDeviceInfo.enabledExtensionCount =
-            static_cast<uint32_t>(enabledVideoExtensions.size());
-        vkDeviceInfo.ppEnabledExtensionNames = enabledVideoExtensions.data();
-        vkDeviceInfo.pNext = &enabledYcbcr;
-    }
-#endif
     vkDeviceInfo.queueCreateInfoCount = 1;
     vkDeviceInfo.pQueueCreateInfos = &queueInfo;
 
@@ -184,14 +127,10 @@ void VulkanContext::initialize(XrInstance xrInstance, XrSystemId systemId) {
         throw std::runtime_error("vkCreateDevice through OpenXR failed with VkResult " + std::to_string(vkResult));
     }
 
-#ifdef __ANDROID__
-    videoBufferImportEnabled_ = videoAvailable;
-#endif
     vkGetDeviceQueue(device_, graphicsQueueFamily_, 0, &graphicsQueue_);
 }
 
 void VulkanContext::shutdown() noexcept {
-    videoBufferImportEnabled_ = false;
     if (device_ != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(device_);
         vkDestroyDevice(device_, nullptr);
