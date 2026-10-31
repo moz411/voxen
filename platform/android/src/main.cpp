@@ -318,12 +318,12 @@ void android_main(android_app* app) {
                     ++importedVideoFrames;
                 }
             }
-            // 2 fps, 512x256, deliberately low-rate diagnostic visual path.
+            // 1 fps, 512x256, throttled while synchronous CPU preview is in use.
             // The regular YCbCr importer remains a separate experiment.
             if(!requestedVideo.empty() && std::filesystem::is_regular_file(requestedVideo)) {
                 const auto now=std::chrono::steady_clock::now();
                 if(videoPreviewLast.time_since_epoch().count()==0 ||
-                   now-videoPreviewLast>=std::chrono::milliseconds(500)) {
+                   now-videoPreviewLast>=std::chrono::milliseconds(1000)) {
                     videoPreviewLast=now;
                     const auto elapsed=std::chrono::duration_cast<std::chrono::microseconds>(
                         now-videoPreviewStart).count();
