@@ -1899,7 +1899,11 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(depthConstants),&depthConstants);
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
-    if (liquidEnabled && (wallShaderMode!=0 || liquidOpacity>0.001f) &&
+    const bool hasExplicitWallShader=std::any_of(
+        imguiCarousel_.surfaceMedia.begin(),imguiCarousel_.surfaceMedia.end(),
+        [](const auto& entry){return entry.second.kind==3;});
+    if ((liquidEnabled || hasExplicitWallShader) &&
+        (hasExplicitWallShader || wallShaderMode!=0 || liquidOpacity>0.001f) &&
         liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && midnightRidePipeline_ != VK_NULL_HANDLE && rainbowSpiralPipeline_ != VK_NULL_HANDLE && mobiusSpiralPipeline_ != VK_NULL_HANDLE && thereminWavePipeline_ != VK_NULL_HANDLE && geometricKaleidoscopePipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE && chromaticEdgesPipeline_ != VK_NULL_HANDLE && cosmicPalettePipeline_ != VK_NULL_HANDLE && synthwaveSunsetPipeline_ != VK_NULL_HANDLE && oceanWavesPipeline_ != VK_NULL_HANDLE && universeWithinPipeline_ != VK_NULL_HANDLE && cyberCityPipeline_ != VK_NULL_HANDLE && voronoiFallPipeline_ != VK_NULL_HANDLE && tanGlitchPipeline_ != VK_NULL_HANDLE) {
         // Stable slots are based on scene anchor IDs, not eye-specific
         // distance ordering. Both eyes therefore show the same effect per wall.
@@ -1963,12 +1967,23 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             if(a.distanceSquared!=b.distanceSquared)return a.distanceSquared<b.distanceSquared;
             return a.surface->id<b.surface->id;
         });
-        const size_t budget=std::min(candidates.size(),static_cast<size_t>(maxLiquidWalls));
+        const size_t budget=liquidEnabled
+            ? std::min(candidates.size(),static_cast<size_t>(maxLiquidWalls)) : 0u;
         // Floor and ceiling are additional planes, not counted against
         // Max walls. Keep each category to one nearest anchor to bound GPU fill.
         std::vector<const voxen::scene::EnvironmentSurface*> selected;
         selected.reserve(budget+2);
         for(size_t i=0;i<budget;i++)selected.push_back(candidates[i].surface);
+        // User-assigned shaders are not subject to the global wall budget.
+        // This also keeps individually assigned floor/ceiling planes visible.
+        for(const auto& surface:environmentSurfaces_.surfaces()) {
+            auto media=imguiCarousel_.surfaceMedia.find(surface.id);
+            if(media==imguiCarousel_.surfaceMedia.end() || media->second.kind!=3 ||
+                !surface.tracked || surface.halfExtents[0]<=0.05f ||
+                surface.halfExtents[1]<=0.05f) continue;
+            if(std::find(selected.begin(),selected.end(),&surface)==selected.end())
+                selected.push_back(&surface);
+        }
         for(auto kind:{voxen::scene::SurfaceClass::Floor,voxen::scene::SurfaceClass::Ceiling}) {
             const voxen::scene::EnvironmentSurface* closest=nullptr;
             float best=1e30f;
@@ -1980,7 +1995,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 const float distance=dx*dx+dy*dy+dz*dz;
                 if(distance<best){best=distance;closest=surface;}
             }
-            if(closest)selected.push_back(closest);
+            if(closest && liquidEnabled &&
+               std::find(selected.begin(),selected.end(),closest)==selected.end())
+                selected.push_back(closest);
         }
         for(const auto* surface:selected) {
             int activeMode=wallShaderMode;
@@ -2014,7 +2031,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             vkCmdDraw(commandBuffer_,6,1,0,0);
             wallRendered=true;
         }
-        if(!wallRendered && !cycleWallShaders && wallShaderMode==0) {
+        if(liquidEnabled && !wallRendered && !cycleWallShaders && wallShaderMode==0 &&
+           !hasExplicitWallShader) {
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,liquidRoomPipeline_);
             const Mat4 planeMvp=multiply(projView,
                 modelMatrix(0.0F,-0.35F,0.65F,-2.25F,0.0F));
