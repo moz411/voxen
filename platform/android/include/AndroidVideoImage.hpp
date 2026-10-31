@@ -18,6 +18,9 @@ public:
     // Device must have VK_ANDROID_external_memory_android_hardware_buffer and
     // samplerYcbcrConversion enabled. Returns false without leaking resources.
     bool importBuffer(VkPhysicalDevice physicalDevice, VkDevice device, AHardwareBuffer* buffer);
+    // Records an acquire transition before sampling. Caller must arrange
+    // producer readiness and submit/wait for completion separately.
+    void recordAcquireForSampling(VkCommandBuffer commandBuffer) const noexcept;
     void reset() noexcept;
     VkImage image() const noexcept { return image_; }
     VkImageView view() const noexcept { return view_; }
