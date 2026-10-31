@@ -2,8 +2,6 @@ package org.voxen.xr;
 
 import android.app.NativeActivity;
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
@@ -15,62 +13,30 @@ import java.util.UUID;
 
 /** Android document picker bridge. Call openPanoramaPicker() on the UI thread. */
 public final class VoxenActivity extends NativeActivity {
-    // Temporary low-resolution visual path while zero-copy YCbCr sync is completed.
-    // 512x256 RGBA is intentionally capped to avoid massive XR upload stalls.
-    private MediaMetadataRetriever previewRetriever;
-    private String previewPath;
-
-    public synchronized byte[] extractVideoPreviewRgba(String path, long timeUs) {
+    private android.media.MediaPlayer nativeVideoPlayer;
+    public synchronized boolean startNativeVideo(String path, android.view.Surface surface) {
+        stopNativeVideo();
         try {
-            if (!path.equals(previewPath) || previewRetriever == null) {
-                closeVideoPreview();
-                previewRetriever = new MediaMetadataRetriever();
-                previewRetriever.setDataSource(path);
-                previewPath = path;
-            }
-            String durationText = previewRetriever.extractMetadata(
-                    MediaMetadataRetriever.METADATA_KEY_DURATION);
-            long durationUs = durationText == null ? 0L : Long.parseLong(durationText) * 1000L;
-            long loopedTimeUs = durationUs > 0L ? Math.floorMod(timeUs, durationUs) : Math.max(0L, timeUs);
-            Bitmap bitmap = previewRetriever.getScaledFrameAtTime(
-                    loopedTimeUs, MediaMetadataRetriever.OPTION_CLOSEST,
-                    512, 256);
-            if (bitmap == null) return null;
-            if (bitmap.getWidth() != 512 || bitmap.getHeight() != 256) {
-                Bitmap scaled = Bitmap.createScaledBitmap(bitmap, 512, 256, true);
-                bitmap.recycle();
-                bitmap = scaled;
-            }
-            int[] argb = new int[512 * 256];
-            bitmap.getPixels(argb, 0, 512, 0, 0, 512, 256);
-            bitmap.recycle();
-            byte[] rgba = new byte[argb.length * 4];
-            for (int i = 0, j = 0; i < argb.length; i++, j += 4) {
-                int p = argb[i];
-                rgba[j] = (byte) (p >>> 16);
-                rgba[j + 1] = (byte) (p >>> 8);
-                rgba[j + 2] = (byte) p;
-                rgba[j + 3] = (byte) 255;
-            }
-            return rgba;
+            nativeVideoPlayer = new android.media.MediaPlayer();
+            nativeVideoPlayer.setDataSource(path);
+            nativeVideoPlayer.setSurface(surface);
+            nativeVideoPlayer.setLooping(true);
+            nativeVideoPlayer.prepare();
+            nativeVideoPlayer.start();
+            Log.i("VoxenVideo", "OpenXR Android Surface player started: " + path);
+            return true;
         } catch (Exception ex) {
-            Log.e("VoxenVideo", "Video preview decode failed", ex);
-            closeVideoPreview();
-            return null;
+            Log.e("VoxenVideo", "OpenXR Surface playback failed", ex);
+            stopNativeVideo();
+            return false;
         }
     }
-
-    public synchronized void closeVideoPreview() {
-        if (previewRetriever != null) {
-            try {
-                previewRetriever.release();
-            } catch (java.io.IOException e) {
-                Log.w("VoxenVideo", "Could not release preview retriever", e);
-            } finally {
-                previewRetriever = null;
-            }
+    public synchronized void stopNativeVideo() {
+        if(nativeVideoPlayer != null) {
+            try { nativeVideoPlayer.stop(); } catch (IllegalStateException ignored) {}
+            nativeVideoPlayer.release();
+            nativeVideoPlayer = null;
         }
-        previewPath = null;
     }
 
     private static final int PICK_PANORAMA = 4201;
