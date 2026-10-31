@@ -1412,8 +1412,8 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(earthwormVert, earthwormVertSize, organicSphereFrag, organicSphereFragSize, earthwormPipeline_);
     buildPipeline(cloudVert, cloudVertSize, cloudFrag, cloudFragSize, cloudPipeline_);
     buildPipeline(metaballsVert, metaballsVertSize, organicSphereFrag, organicSphereFragSize, metaballsPipeline_);
-    buildPipeline(fractalVert, fractalVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
-    buildPipeline(fractalVert, fractalVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
+    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenPlasmaFrag, voxenPlasmaFragSize, voxenPlasmaPipeline_);
+    buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenSpheresFrag, voxenSpheresFragSize, voxenSpheresPipeline_);
     buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenFractalPyramidFrag, voxenFractalPyramidFragSize, voxenFractalPyramidPipeline_);
     buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenPhyllotaxisFrag, voxenPhyllotaxisFragSize, voxenPhyllotaxisPipeline_);
     buildPipeline(voxenFlatCubeVert, voxenFlatCubeVertSize, voxenStickmanEchoFrag, voxenStickmanEchoFragSize, voxenStickmanEchoPipeline_);
@@ -1700,6 +1700,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
             -(1.f-2.f*(q.x*q.x+q.y*q.y))};
         PlasmaVoxen v;
         v.preset=imguiCarousel_.voxenPreset;
+        v.flatVolume=imguiCarousel_.flatVoxenVolume;
         v.position={pose.position.x+0.25f*dir[0],
                     pose.position.y+0.25f*dir[1],
                     pose.position.z+0.25f*dir[2]};
@@ -2231,8 +2232,19 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             // Density remains in [0.3,2.0], while material uses multiples of 4.
             const float packedDensity=v.preset==2 ? v.density+4.0f*float(v.material) : v.density;
             ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue+(v.preset>=4?float(v.material):0.f),v.preset>=4 ? std::clamp(v.density*0.20f,0.06f,0.40f) : packedDensity}};
-            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
-                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            const bool flatSurface=(v.preset==0 || v.preset==1 || v.preset>=12);
+            if(flatSurface) {
+                VolumePushConstants volume{};
+                volume.mvp=pc.mvp;
+                for(int k=0;k<4;++k)volume.parameters[k]=pc.parameters[k];
+                volume.eyeLocal[0]=float(v.flatVolume);
+                vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                    VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
+                    0,sizeof(volume),&volume);
+            } else {
+                vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                    VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            }
             if(v.preset==2){
                 const auto& lod=mandelbulbLods_[std::clamp(v.lodLevel,0,2)];
                 if(lod.indexCount>0){
@@ -2242,7 +2254,13 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                     vkCmdDrawIndexed(commandBuffer_,lod.indexCount,1,0,0,0);
                 }
             }else{
-                vkCmdDraw(commandBuffer_,(v.preset==12 || v.preset==13 || v.preset==14 || v.preset==15 || v.preset==16 || v.preset==17 || v.preset==18 || v.preset==19) ? 36 : (v.preset==11 ? (24*16*6+8*12*6*6) : (v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 : (v.preset==7 ? 24*16*6 : (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6)))))),1,0,0);
+                const uint32_t vertices=flatSurface
+                    ? (v.flatVolume==1 ? 32u*16u*6u : 36u)
+                    : (v.preset==11 ? (24*16*6+8*12*6*6) :
+                       (v.preset==8 ? 12*11*6 : (v.preset==10 ? 32*24*6 :
+                       (v.preset==7 ? 24*16*6 :
+                       (v.preset>=4 ? 48*32*6 : (v.preset==3 ? 24*18*2 : 6))))));
+                vkCmdDraw(commandBuffer_,vertices,1,0,0);
             }
         };
         for(const auto& v:voxens_)paintPlasma(v);
@@ -2297,6 +2315,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const float dz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
             PlasmaVoxen preview;
             preview.preset=imguiCarousel_.voxenPreset;
+            preview.flatVolume=imguiCarousel_.flatVoxenVolume;
             preview.position={pose.position.x+0.25f*dx,
                               pose.position.y+0.25f*dy,
                               pose.position.z+0.25f*dz};
