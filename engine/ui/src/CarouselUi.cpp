@@ -20,7 +20,9 @@ void drawCarousel(CarouselState& state) {
         ImGui::Separator();
         switch(state.page) {
         case 0:
-            ImGui::TextUnformatted("VOXENS / PROCEDURAL PRESETS");
+            if(ImGui::BeginTabBar("objects-tabs")) {
+            if(ImGui::BeginTabItem("VOXENS")) {
+            ImGui::TextUnformatted("PROCEDURAL OBJECTS");
             ImGui::Separator();
             static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH","EARTHWORM","CLOUD","METABALLS","TENTACLE CREATURE","FRACTAL PYRAMID","PHYLLOTAXIS SPIRAL","STICKMAN ECHO","CACODEMON","GOLDEEN","PBR SMILE","PULSING CUBE CLOUD","RUBIK CUBE"};
             if(ImGui::Combo("Voxen preset",&state.voxenPreset,presets,20))state.voxenPaintEnabled=true;
@@ -71,7 +73,9 @@ void drawCarousel(CarouselState& state) {
             if(ImGui::Button("CLEAR VOXENS"))state.voxenClear=true;
             ImGui::TextDisabled("Right trigger paints in space");
             ImGui::TextDisabled("Audio / deformation / trajectories: next steps");
-            if(ImGui::CollapsingHeader("GLB FILES",ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::EndTabItem();
+            }
+            if(ImGui::BeginTabItem("GLB MODELS")) {
             ImGui::SeparatorText("IMPORTED 3D OBJECTS / GLB");
             static constexpr const char* glbModes[]={"ORIGINAL","VOXEN"};
             ImGui::Combo("GLB material",&state.glbMaterialMode,glbModes,2);
@@ -101,12 +105,15 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextDisabled("Preview follows right controller");
             ImGui::TextDisabled("RIGHT STICK LEFT/RIGHT: resize (default 0.1)");
             ImGui::TextDisabled("RIGHT TRIGGER: place preview");
+            ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
             }
             break;
 
 
         case 1:
-            ImGui::SeparatorText("PANORAMAS / LOCAL PHOTOS");
+            ImGui::SeparatorText("IMAGES / PANORAMAS");
             if(ImGui::Button("USE PASSTHROUGH SOBEL")) state.panoramaSelected=-1;
             if (ImGui::Button("RESCAN PHOTOS")) state.panoramaRescanRequest=true;
             ImGui::TextDisabled("ADB: /sdcard/Android/data/org.voxen.xr/files/Backgrounds");
@@ -120,6 +127,16 @@ void drawCarousel(CarouselState& state) {
             ImGui::SliderFloat("Horizontal coverage",&state.panoramaHorizontalDegrees,60.f,360.f,"%.0f deg");
             ImGui::SliderFloat("Vertical coverage",&state.panoramaVerticalDegrees,30.f,180.f,"%.0f deg");
 
+            ImGui::SeparatorText("VIDEOS / MP4");
+            if(ImGui::Button("RESCAN VIDEOS")) state.videoRescanRequest=true;
+            ImGui::TextDisabled("ADB: /sdcard/Android/data/org.voxen.xr/files/Videos");
+            ImGui::BeginChild("video-list", ImVec2(0,85),true);
+            for(int i=0;i<static_cast<int>(state.videoFiles.size());++i)
+                if(ImGui::Selectable(state.videoFiles[i].c_str(),state.videoSelected==i))
+                    state.videoSelected=i;
+            ImGui::EndChild();
+            if(state.videoFiles.empty()) ImGui::TextDisabled("No MP4 found in Videos");
+            ImGui::TextDisabled("Video preview / placement: pending Vulkan render integration");
             ImGui::Separator();
             ImGui::Checkbox("Wall effect",&state.liquidRoom);
             static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","RAINBOW SPIRAL","MOBIUS SPIRAL","THEREMIN WAVE","GEOMETRIC KALEIDOSCOPE","CHROMATIC EDGES","COSMIC PALETTE","SYNTHWAVE SUNSET","OCEAN WAVES","UNIVERSE WITHIN","CYBERCITY","VORONOI FALL","TAN GLITCH"};
