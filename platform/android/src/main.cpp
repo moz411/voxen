@@ -214,7 +214,10 @@ void android_main(android_app* app) {
             // The compositor owns the decoded Surface: no RGBA readback,
             // no per-frame VkImage recreation and no queue idle stalls.
             const auto requestedVideo=renderer.selectedBackgroundVideo();
-            if(requestedVideo!=activeVideoPath) {
+            if(!session.running()) {
+                // STOPPING destroys the swapchain; re-open after READY.
+                activeVideoPath.clear();
+            } else if(requestedVideo!=activeVideoPath) {
                 session.closeVideoSurface();
                 activeVideoPath=requestedVideo;
                 if(!activeVideoPath.empty() &&
