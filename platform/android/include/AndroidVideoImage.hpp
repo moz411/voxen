@@ -22,6 +22,8 @@ public:
     VkImage image() const noexcept { return image_; }
     VkImageView view() const noexcept { return view_; }
     VkSampler sampler() const noexcept { return sampler_; }
+    // The YCbCr sampler must be immutable in the descriptor-set layout.
+    VkSamplerYcbcrConversion conversion() const noexcept { return conversion_; }
     bool valid() const noexcept { return image_ != VK_NULL_HANDLE && view_ != VK_NULL_HANDLE; }
 
 private:
