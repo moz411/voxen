@@ -19,7 +19,7 @@ uint32_t chooseMemoryType(VkPhysicalDevice physicalDevice, uint32_t bits) {
     return UINT32_MAX;
 }
 }
-bool AndroidVideoImage::import(VkPhysicalDevice physicalDevice, VkDevice device,
+bool AndroidVideoImage::importBuffer(VkPhysicalDevice physicalDevice, VkDevice device,
                                AHardwareBuffer* buffer) {
     reset();
     if (!physicalDevice || !device || !buffer) return false;
