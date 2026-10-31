@@ -9,6 +9,8 @@
 #include "VideoFrameDescriptor.hpp"
 #include "AndroidVideoBuffer.hpp"
 #include <filesystem>
+#include <chrono>
+#include <vector>
 #include <voxen/scene/SceneRepository.hpp>
 
 #include <voxen/core/Engine.hpp>
@@ -19,6 +21,40 @@
 
 namespace {
 constexpr auto kTag = "Voxen";
+
+// Diagnostic visual preview: low-rate RGBA upload via existing panorama pipeline.
+// NOT the production zero-copy MediaCodec frame renderer.
+bool uploadMp4Preview(android_app* app, voxen::render::XrSwapchainRenderer& renderer,
+                      const std::filesystem::path& file, std::int64_t timeUs) {
+    if (!app || !app->activity || !app->activity->vm || !app->activity->clazz)
+        return false;
+    JNIEnv* env=nullptr;
+    JavaVM* vm=app->activity->vm;
+    const bool attached=vm->GetEnv(reinterpret_cast<void**>(&env),JNI_VERSION_1_6)!=JNI_OK;
+    if (attached && vm->AttachCurrentThread(&env,nullptr)!=JNI_OK) return false;
+    bool ok=false;
+    jclass cls=env->GetObjectClass(app->activity->clazz);
+    jmethodID method=cls ? env->GetMethodID(cls,"extractVideoPreviewRgba",
+        "(Ljava/lang/String;J)[B") : nullptr;
+    jstring name=env->NewStringUTF(file.string().c_str());
+    auto bytes=static_cast<jbyteArray>(method && name ?
+        env->CallObjectMethod(app->activity->clazz,method,name,static_cast<jlong>(timeUs)) : nullptr);
+    if(!env->ExceptionCheck() && bytes && env->GetArrayLength(bytes)==512*256*4) {
+        voxen::render::PanoramaImage frame;
+        frame.width=512;
+        frame.height=256;
+        frame.rgba.resize(512*256*4);
+        env->GetByteArrayRegion(bytes,0,512*256*4,
+            reinterpret_cast<jbyte*>(frame.rgba.data()));
+        if(!env->ExceptionCheck()) ok=renderer.submitVideoPreview(std::move(frame));
+    }
+    if(env->ExceptionCheck()) {env->ExceptionDescribe();env->ExceptionClear();}
+    if(bytes)env->DeleteLocalRef(bytes);
+    if(name)env->DeleteLocalRef(name);
+    if(cls)env->DeleteLocalRef(cls);
+    if(attached)vm->DetachCurrentThread();
+    return ok;
+}
 
 void logError(const char* message) {
     __android_log_print(ANDROID_LOG_ERROR, kTag, "%s", message);
@@ -186,6 +222,8 @@ void android_main(android_app* app) {
         std::unique_ptr<voxen::video::AndroidVideoDecoder> videoDecoder;
         std::filesystem::path activeVideoPath;
         unsigned importedVideoFrames = 0;
+        auto videoPreviewStart=std::chrono::steady_clock::now();
+        auto videoPreviewLast=std::chrono::steady_clock::time_point{};
         __android_log_print(
             ANDROID_LOG_INFO,
             kTag,
@@ -227,6 +265,8 @@ void android_main(android_app* app) {
                 }
                 activeVideoPath = requestedVideo;
                 importedVideoFrames = 0;
+                videoPreviewStart=std::chrono::steady_clock::now();
+                videoPreviewLast={};
                 if (!requestedVideo.empty() && vulkan.videoBufferImportEnabled() &&
                     std::filesystem::is_regular_file(requestedVideo)) {
                     videoDecoder = std::make_unique<voxen::video::AndroidVideoDecoder>(
@@ -273,6 +313,22 @@ void android_main(android_app* app) {
                             "Selected MP4 buffer not sampleable");
                     }
                     ++importedVideoFrames;
+                }
+            }
+            // 2 fps, 512x256, deliberately low-rate diagnostic visual path.
+            // The regular YCbCr importer remains a separate experiment.
+            if(!requestedVideo.empty() && std::filesystem::is_regular_file(requestedVideo)) {
+                const auto now=std::chrono::steady_clock::now();
+                if(videoPreviewLast.time_since_epoch().count()==0 ||
+                   now-videoPreviewLast>=std::chrono::milliseconds(500)) {
+                    videoPreviewLast=now;
+                    const auto elapsed=std::chrono::duration_cast<std::chrono::microseconds>(
+                        now-videoPreviewStart).count();
+                    if(uploadMp4Preview(app,renderer,requestedVideo,elapsed)) {
+                        if(elapsed<600000)
+                            __android_log_print(ANDROID_LOG_INFO,"VoxenVideo",
+                                "MP4 panorama RGBA preview visible path active");
+                    }
                 }
             }
             if(pollPanoramaImports(app))renderer.rescanPanoramaAssets();
