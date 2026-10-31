@@ -585,8 +585,8 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
                     loggedComposition = true;
                 }
             }
-            if(videoSwapchain_!=XR_NULL_HANDLE) {
 #ifdef __ANDROID__
+            if(videoSwapchain_!=XR_NULL_HANDLE) {
                 videoLayer.space=localSpace_;
                 videoLayer.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
                 videoLayer.subImage.swapchain=videoSwapchain_;
