@@ -226,6 +226,7 @@ private:
     bool videoPreviewActive_=false;
     VkDescriptorPool panoramaDescriptorPool_=VK_NULL_HANDLE;
     bool loadPanoramaGpu(PanoramaImage&& decoded);
+    bool updateVideoPreviewGpu(const PanoramaImage& frame);
     std::future<PanoramaImage> panoramaDecodeFuture_;
     int panoramaDecodeIndex_=-1;
     bool panoramaFadeActive_=false;
