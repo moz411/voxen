@@ -236,12 +236,19 @@ void android_main(android_app* app) {
                             "VoxenVideo","Selected MP4 buffer sampleable: %s",
                             format.supported?"YES":"NO");
                     }
-                    if(videoImage.importBuffer(
-                           vulkan.physicalDevice(),vulkan.device(),videoFrame.buffer)) {
-                        ++importedVideoFrames;
-                    } else if(importedVideoFrames==0) {
-                        __android_log_print(ANDROID_LOG_ERROR,"VoxenVideo",
-                            "Selected MP4 VkImage import failed");
+                    // Do not allocate/import each decoded frame until the
+                    // descriptor consumer and its cache are implemented.
+                    if(importedVideoFrames==0) {
+                        if(videoImage.importBuffer(
+                               vulkan.physicalDevice(),vulkan.device(),videoFrame.buffer)) {
+                            ++importedVideoFrames;
+                            __android_log_print(ANDROID_LOG_INFO,"VoxenVideo",
+                                "First MP4 frame retained through stereo GPU fence");
+                        } else {
+                            ++importedVideoFrames; // avoid repeated failed imports
+                            __android_log_print(ANDROID_LOG_ERROR,"VoxenVideo",
+                                "Selected MP4 VkImage import failed");
+                        }
                     }
                 }
             }
