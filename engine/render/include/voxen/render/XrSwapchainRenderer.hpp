@@ -354,6 +354,7 @@ private:
         float speed=1.0f;
         std::array<float,3> velocity{};
         int material=0;
+        bool motionEnabled=true; // per-instance physics enablement
         int lodLevel=-1; // Chosen once per stereo frame using both eye positions
     };
     std::vector<PlasmaVoxen> voxens_;
