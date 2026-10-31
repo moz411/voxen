@@ -180,6 +180,23 @@ std::filesystem::path XrSwapchainRenderer::selectedBackgroundVideo() const {
     return {};
 }
 
+std::optional<XrSwapchainRenderer::SurfaceVideoSelection>
+XrSwapchainRenderer::selectedSurfaceVideo() const {
+#if defined(__ANDROID__) && defined(VOXEN_WITH_IMGUI)
+    for(const auto& surface : environmentSurfaces_.surfaces()) {
+        if(!surface.tracked || surface.halfExtents[0]<=0.05f ||
+            surface.halfExtents[1]<=0.05f) continue;
+        auto it=imguiCarousel_.surfaceMedia.find(surface.id);
+        if(it==imguiCarousel_.surfaceMedia.end() || it->second.kind!=2 ||
+           it->second.filename.empty()) continue;
+        const auto path=std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/Videos") /
+            std::filesystem::path(it->second.filename).filename();
+        return SurfaceVideoSelection{path,surface};
+    }
+#endif
+    return std::nullopt;
+}
+
 std::filesystem::path XrSwapchainRenderer::selectedWallVideo() const {
 #if defined(__ANDROID__) && defined(VOXEN_WITH_IMGUI)
     const int i=imguiCarousel_.wallVideoSelected;
@@ -2959,7 +2976,7 @@ void XrSwapchainRenderer::render(
         if(imguiCarousel_.applyMediaRequest) {
             imguiCarousel_.applyMediaRequest=false;
             imguiCarousel_.applyMediaStatus=
-                "Per-surface shader mapping updated; image/video projection pending.";
+                "Surface mapping updated (single MP4 OpenXR plane supported).";
         }
         imguiCarousel_.detectedSurfaceIds.clear();
         imguiCarousel_.detectedSurfaceLabels.clear();
