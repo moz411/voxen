@@ -188,7 +188,7 @@ void android_main(android_app* app) {
         // A file named video-test.mp4 opts in to this smoke test.
         if (vulkan.videoBufferImportEnabled()) {
             const auto testPath = std::filesystem::path(
-                "/sdcard/Android/data/org.voxen.xr/files/Backgrounds/video-test.mp4");
+                "/sdcard/Android/data/org.voxen.xr/files/Videos/video-test.mp4");
             if (std::filesystem::is_regular_file(testPath)) {
                 videoProbe = std::make_unique<voxen::video::AndroidVideoDecoder>(
                     app->activity->vm, app->activity->clazz);
