@@ -257,7 +257,8 @@ void android_main(android_app* app) {
                             vulkan.physicalDevice(), vulkan.device(), videoFrame.buffer);
                         if (ok) {
                             voxen::video::VideoFrameDescriptor descriptor;
-                            const bool bound = descriptor.create(vulkan.device(), videoImage);
+                            const bool bound = descriptor.create(vulkan.device(), videoImage,
+                                videoImage.combinedSamplerDescriptorCount());
                             __android_log_print(bound ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
                                 "VoxenVideo", "YCbCr immutable descriptor: %s",
                                 bound ? "OK" : "FAILED");
