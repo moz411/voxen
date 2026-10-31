@@ -267,7 +267,10 @@ void android_main(android_app* app) {
                 importedVideoFrames = 0;
                 videoPreviewStart=std::chrono::steady_clock::now();
                 videoPreviewLast={};
-                if (!requestedVideo.empty() && vulkan.videoBufferImportEnabled() &&
+                // Avoid decoding twice: RGBA visual preview owns playback for now.
+                constexpr bool kEnableParallelYcbcrProbe = false;
+                if (kEnableParallelYcbcrProbe && !requestedVideo.empty() &&
+                    vulkan.videoBufferImportEnabled() &&
                     std::filesystem::is_regular_file(requestedVideo)) {
                     videoDecoder = std::make_unique<voxen::video::AndroidVideoDecoder>(
                         app->activity->vm, app->activity->clazz);
