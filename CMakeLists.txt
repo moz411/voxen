@@ -94,10 +94,12 @@ add_subdirectory(engine)
 if(ANDROID)
     add_library(voxen SHARED
         platform/android/src/main.cpp
+        platform/android/src/AndroidVideoDecoder.cpp
         ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
     )
 
     target_include_directories(voxen PRIVATE
+        platform/android/include
         ${ANDROID_NDK}/sources/android/native_app_glue
     )
 
