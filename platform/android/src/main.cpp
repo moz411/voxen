@@ -219,37 +219,49 @@ void android_main(android_app* app) {
             // Renderer UI determines the active MP4. A selection change
             // releases the previous decoder and opens the chosen clip.
             const auto requestedVideo = renderer.selectedBackgroundVideo();
-            if(requestedVideo != activeVideoPath) {
-                // Hold a decoded frame and its imported VkImage across both eye
-            // submissions. XrSwapchainRenderer::renderImage currently waits
-            // for its submit fence before returning. A future descriptor bind
-            // can therefore safely sample this resource within the frame.
+            if (requestedVideo != activeVideoPath) {
+                if (videoDecoder) {
+                    videoDecoder->close();
+                    videoDecoder.reset();
+                }
+                activeVideoPath = requestedVideo;
+                importedVideoFrames = 0;
+                if (!requestedVideo.empty() && vulkan.videoBufferImportEnabled() &&
+                    std::filesystem::is_regular_file(requestedVideo)) {
+                    videoDecoder = std::make_unique<voxen::video::AndroidVideoDecoder>(
+                        app->activity->vm, app->activity->clazz);
+                    if (!videoDecoder->valid() ||
+                        !videoDecoder->open(requestedVideo.string(), true)) {
+                        videoDecoder.reset();
+                        __android_log_print(ANDROID_LOG_ERROR, "VoxenVideo",
+                            "Could not open selected MP4: %s", requestedVideo.c_str());
+                    } else {
+                        __android_log_print(ANDROID_LOG_INFO, "VoxenVideo",
+                            "Selected MP4 decoder started: %s", requestedVideo.c_str());
+                    }
+                }
+            }
+
+            // Frame ownership extends across both eye submissions. The current
+            // renderer waits for its GPU fence before session.frame returns.
             voxen::video::AndroidVideoDecoder::Frame videoFrame{};
             voxen::video::AndroidVideoImage videoImage{};
-            if(videoDecoder) {
-                videoFrame=videoDecoder->acquireLatestFrame();
-                if(videoFrame.buffer) {
-                    if(importedVideoFrames==0) {
-                        const auto format=voxen::video::inspectVideoBuffer(
-                            vulkan.device(),videoFrame.buffer);
-                        __android_log_print(format.supported?ANDROID_LOG_INFO:ANDROID_LOG_WARN,
-                            "VoxenVideo","Selected MP4 buffer sampleable: %s",
-                            format.supported?"YES":"NO");
+            if (videoDecoder) {
+                videoFrame = videoDecoder->acquireLatestFrame();
+                if (videoFrame.buffer && importedVideoFrames == 0) {
+                    const auto format = voxen::video::inspectVideoBuffer(
+                        vulkan.device(), videoFrame.buffer);
+                    if (format.supported) {
+                        const bool ok = videoImage.importBuffer(
+                            vulkan.physicalDevice(), vulkan.device(), videoFrame.buffer);
+                        __android_log_print(ok ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
+                            "VoxenVideo", "Selected MP4 first frame import: %s",
+                            ok ? "OK" : "FAILED");
+                    } else {
+                        __android_log_print(ANDROID_LOG_WARN, "VoxenVideo",
+                            "Selected MP4 buffer not sampleable");
                     }
-                    // Do not allocate/import each decoded frame until the
-                    // descriptor consumer and its cache are implemented.
-                    if(importedVideoFrames==0) {
-                        if(videoImage.importBuffer(
-                               vulkan.physicalDevice(),vulkan.device(),videoFrame.buffer)) {
-                            ++importedVideoFrames;
-                            __android_log_print(ANDROID_LOG_INFO,"VoxenVideo",
-                                "First MP4 frame retained through stereo GPU fence");
-                        } else {
-                            ++importedVideoFrames; // avoid repeated failed imports
-                            __android_log_print(ANDROID_LOG_ERROR,"VoxenVideo",
-                                "Selected MP4 VkImage import failed");
-                        }
-                    }
+                    ++importedVideoFrames;
                 }
             }
             if(pollPanoramaImports(app))renderer.rescanPanoramaAssets();
