@@ -2853,6 +2853,16 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.voxenCount=static_cast<int>(voxens_.size());
         imguiCarousel_.musicReady=ambientMusic_.ready();
 #ifdef VOXEN_WITH_GLB_IMPORT
+        // Refresh external media catalogs automatically, without a UI rescan.
+        // Throttle filesystem scans to avoid doing I/O on every XR frame.
+        static auto lastMediaScan=std::chrono::steady_clock::time_point{};
+        const auto scanNow=std::chrono::steady_clock::now();
+        if(scanNow-lastMediaScan>=std::chrono::seconds(3)) {
+            lastMediaScan=scanNow;
+            rescanPanoramaAssets();
+            rescanGlbAssets();
+            imguiCarousel_.videoFiles=scanVideoFiles();
+        }
         imguiCarousel_.glbFiles=glbAssetNames_;
         if(imguiCarousel_.glbPreviewRequest && !glbAssetPaths_.empty() && imguiCarousel_.glbSelected>=0 &&
            static_cast<size_t>(imguiCarousel_.glbSelected)<glbAssetPaths_.size()) {
