@@ -239,7 +239,7 @@ void android_main(android_app* app) {
                     if (format.supported) {
                         // Import only: no queue submission and no GPU sampling.
                         voxen::video::AndroidVideoImage imported;
-                        const bool ok = imported.import(
+                        const bool ok = imported.importBuffer(
                             vulkan.physicalDevice(), vulkan.device(), frame.buffer);
                         __android_log_print(ok ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
                             "VoxenVideo", "MP4 frame VkImage import: %s",
