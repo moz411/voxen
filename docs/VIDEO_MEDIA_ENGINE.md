@@ -147,3 +147,17 @@ layout and correct producer/consumer ownership/layout transitions, plus
 frame lifetime held through the GPU completion fence. These requirements
 are not satisfied by the existing image import wrapper alone.
 The independent wall-media selector is not yet connected to a decoder.
+
+## Per-frame lifetime bridge
+
+The Android entrypoint now retains the MediaCodec `Image`, its
+`AHardwareBuffer`, and the imported Vulkan image across both stereo
+`session.frame(renderer)` submissions. The current XR renderer waits on the
+submission fence for each eye; the entrypoint frees resources only afterwards.
+This removes a premature-release obstacle to connecting a sampled-video
+descriptor.
+
+**Rendering not yet connected:** no video descriptor layout/pipeline,
+sampler-YCbCr immutable sampler, or acquire/ownership barriers are bound.
+Producer synchronization still needs a documented fence path. This step is
+not proof of correct video presentation and remains untested on Quest 3.
