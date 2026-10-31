@@ -114,6 +114,25 @@ void XrContext::createInstance() {
     std::printf("[Voxen] XR_FB_passthrough available: %s\n", passthroughEnabled_ ? "yes" : "no");
 #endif
     if (passthroughEnabled_) extensions.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
+    // Native video playback: compositor-owned Android Surface, not sampled
+    // through our Vulkan rendering pipeline. Both extensions are optional.
+    auto hasExtension=[&](const char* name) {
+        return std::any_of(available.begin(),available.end(),
+            [&](const auto& e){ return std::strcmp(e.extensionName,name)==0; });
+    };
+    videoSurfaceEnabled_=
+        hasExtension(XR_KHR_ANDROID_SURFACE_SWAPCHAIN_EXTENSION_NAME) &&
+        hasExtension(XR_KHR_COMPOSITION_LAYER_EQUIRECT2_EXTENSION_NAME);
+    if(videoSurfaceEnabled_) {
+        extensions.push_back(XR_KHR_ANDROID_SURFACE_SWAPCHAIN_EXTENSION_NAME);
+        extensions.push_back(XR_KHR_COMPOSITION_LAYER_EQUIRECT2_EXTENSION_NAME);
+    }
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO,"VoxenVideo",
+        "OpenXR Android Surface + Equirect2: %s",
+        videoSurfaceEnabled_?"enabled":"unavailable");
+#endif
+
     const bool handTrackingExtensionAvailable=std::any_of(available.begin(),available.end(),[](const auto& e){
         return std::strcmp(e.extensionName,XR_EXT_HAND_TRACKING_EXTENSION_NAME)==0;
     });
