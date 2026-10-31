@@ -180,28 +180,11 @@ void android_main(android_app* app) {
 
         __android_log_print(ANDROID_LOG_INFO, kTag, "Renderer initialized");
 
-        // Opt-in MP4 import smoke test. Keep out of the renderer until proper
-        // producer/consumer fence and descriptor-set integration is complete.
-        std::unique_ptr<voxen::video::AndroidVideoDecoder> videoProbe;
-        bool videoProbeDone = false;
-        // The image/background directory is already user-accessible via adb.
-        // A file named video-test.mp4 opts in to this smoke test.
-        if (vulkan.videoBufferImportEnabled()) {
-            const auto testPath = std::filesystem::path(
-                "/sdcard/Android/data/org.voxen.xr/files/Videos/video-test.mp4");
-            if (std::filesystem::is_regular_file(testPath)) {
-                videoProbe = std::make_unique<voxen::video::AndroidVideoDecoder>(
-                    app->activity->vm, app->activity->clazz);
-                if (!videoProbe->valid() || !videoProbe->open(testPath.string(), false)) {
-                    videoProbe.reset();
-                    __android_log_print(ANDROID_LOG_ERROR, "VoxenVideo",
-                        "MP4 smoke-test decoder initialization failed");
-                } else {
-                    __android_log_print(ANDROID_LOG_INFO, "VoxenVideo",
-                        "MP4 smoke-test armed: %s", testPath.c_str());
-                }
-            }
-        }
+        // Selection-driven decoder lifecycle; the Vulkan sampler path remains
+        // separate until external ownership/fence synchronization is verified.
+        std::unique_ptr<voxen::video::AndroidVideoDecoder> videoDecoder;
+        std::filesystem::path activeVideoPath;
+        unsigned importedVideoFrames = 0;
         __android_log_print(
             ANDROID_LOG_INFO,
             kTag,
@@ -233,28 +216,50 @@ void android_main(android_app* app) {
             }
 
             running = session.pollEvents();
-            if (videoProbe && !videoProbeDone) {
-                auto frame = videoProbe->acquireLatestFrame();
-                if (frame.buffer) {
-                    auto format = voxen::video::inspectVideoBuffer(
-                        vulkan.device(), frame.buffer);
-                    if (format.supported) {
-                        // Import only: no queue submission and no GPU sampling.
-                        voxen::video::AndroidVideoImage imported;
-                        const bool ok = imported.importBuffer(
-                            vulkan.physicalDevice(), vulkan.device(), frame.buffer);
-                        __android_log_print(ok ? ANDROID_LOG_INFO : ANDROID_LOG_ERROR,
-                            "VoxenVideo", "MP4 frame VkImage import: %s",
-                            ok ? "OK" : "FAILED");
-                        imported.reset();
+            // Renderer UI determines the active MP4. A selection change
+            // releases the previous decoder and opens the chosen clip.
+            const auto requestedVideo = renderer.selectedBackgroundVideo();
+            if(requestedVideo != activeVideoPath) {
+                if(videoDecoder) {
+                    videoDecoder->close();
+                    videoDecoder.reset();
+                }
+                activeVideoPath=requestedVideo;
+                importedVideoFrames=0;
+                if(!requestedVideo.empty() && vulkan.videoBufferImportEnabled() &&
+                   std::filesystem::is_regular_file(requestedVideo)) {
+                    videoDecoder=std::make_unique<voxen::video::AndroidVideoDecoder>(
+                        app->activity->vm,app->activity->clazz);
+                    if(!videoDecoder->valid() ||
+                       !videoDecoder->open(requestedVideo.string(),true)) {
+                        videoDecoder.reset();
+                        __android_log_print(ANDROID_LOG_ERROR,"VoxenVideo",
+                            "Could not open selected MP4: %s",requestedVideo.c_str());
                     } else {
-                        __android_log_print(ANDROID_LOG_WARN, "VoxenVideo",
-                            "Decoded frame is not Vulkan-sampleable");
+                        __android_log_print(ANDROID_LOG_INFO,"VoxenVideo",
+                            "Selected MP4 decoder started: %s",requestedVideo.c_str());
                     }
-                    videoProbe->releaseFrame(frame);
-                    videoProbeDone = true;
-                    videoProbe->close();
-                    videoProbe.reset();
+                }
+            }
+            if(videoDecoder) {
+                auto frame=videoDecoder->acquireLatestFrame();
+                if(frame.buffer) {
+                    // Diagnostics only until a rendering descriptor and external
+                    // producer fences are connected; never sample unsynchronized.
+                    if(importedVideoFrames==0) {
+                        const auto format=voxen::video::inspectVideoBuffer(
+                            vulkan.device(),frame.buffer);
+                        if(format.supported) {
+                            voxen::video::AndroidVideoImage image;
+                            const bool imported=image.importBuffer(
+                                vulkan.physicalDevice(),vulkan.device(),frame.buffer);
+                            __android_log_print(imported?ANDROID_LOG_INFO:ANDROID_LOG_ERROR,
+                                "VoxenVideo","Selected MP4 first frame import: %s",
+                                imported?"OK":"FAILED");
+                        }
+                    }
+                    ++importedVideoFrames;
+                    videoDecoder->releaseFrame(frame);
                 }
             }
             if(pollPanoramaImports(app))renderer.rescanPanoramaAssets();
