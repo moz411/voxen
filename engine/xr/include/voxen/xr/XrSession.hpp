@@ -2,6 +2,7 @@
 
 #include <array>
 #include <string>
+#include <voxen/scene/EnvironmentSurface.hpp>
 
 #include <vulkan/vulkan.h>
 #include <openxr/openxr.h>
@@ -44,7 +45,8 @@ public:
     void frame(voxen::render::XrSwapchainRenderer& renderer);
     void requestSceneRefresh();
 #ifdef __ANDROID__
-    bool openVideoSurface(const std::string& path, JavaVM* vm, jobject activity);
+    bool openVideoSurface(const std::string& path, JavaVM* vm, jobject activity,
+                          const voxen::scene::EnvironmentSurface* target = nullptr);
     void closeVideoSurface() noexcept;
 #endif
     void setScenePermissionGranted(bool granted);
@@ -75,6 +77,8 @@ private:
     PFN_xrCreateSwapchainAndroidSurfaceKHR createVideoSurface_ = nullptr;
 #endif
     bool videoSurfaceSupported_ = false;
+    bool videoPlaneActive_ = false;
+    voxen::scene::EnvironmentSurface videoPlane_{};
     ::XrSession session_ = XR_NULL_HANDLE;
     XrSpace stageSpace_ = XR_NULL_HANDLE;
     XrSpace localSpace_ = XR_NULL_HANDLE;
