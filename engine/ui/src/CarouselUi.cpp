@@ -113,6 +113,8 @@ void drawCarousel(CarouselState& state) {
 
 
         case 1:
+            if(ImGui::BeginTabBar("background-sources")) {
+            if(ImGui::BeginTabItem("IMAGES")) {
             ImGui::SeparatorText("IMAGES / PANORAMAS");
             if(ImGui::Button("USE PASSTHROUGH SOBEL")) state.panoramaSelected=-1;
             if (ImGui::Button("RESCAN PHOTOS")) state.panoramaRescanRequest=true;
@@ -127,6 +129,9 @@ void drawCarousel(CarouselState& state) {
             ImGui::SliderFloat("Horizontal coverage",&state.panoramaHorizontalDegrees,60.f,360.f,"%.0f deg");
             ImGui::SliderFloat("Vertical coverage",&state.panoramaVerticalDegrees,30.f,180.f,"%.0f deg");
 
+            ImGui::EndTabItem();
+            }
+            if(ImGui::BeginTabItem("VIDEOS")) {
             ImGui::SeparatorText("VIDEOS / MP4");
             if(ImGui::Button("RESCAN VIDEOS")) state.videoRescanRequest=true;
             ImGui::TextDisabled("ADB: /sdcard/Android/data/org.voxen.xr/files/Videos");
@@ -136,8 +141,11 @@ void drawCarousel(CarouselState& state) {
                     state.videoSelected=i;
             ImGui::EndChild();
             if(state.videoFiles.empty()) ImGui::TextDisabled("No MP4 found in Videos");
-            ImGui::TextDisabled("Video preview / placement: pending Vulkan render integration");
-            ImGui::Separator();
+            ImGui::TextWrapped("MP4 browsing only - Vulkan playback and projection are not connected yet.");
+            ImGui::EndTabItem();
+            }
+            if(ImGui::BeginTabItem("SHADERS")) {
+            ImGui::SeparatorText("WALL SHADERS");
             ImGui::Checkbox("Wall effect",&state.liquidRoom);
             static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","RAINBOW SPIRAL","MOBIUS SPIRAL","THEREMIN WAVE","GEOMETRIC KALEIDOSCOPE","CHROMATIC EDGES","COSMIC PALETTE","SYNTHWAVE SUNSET","OCEAN WAVES","UNIVERSE WITHIN","CYBERCITY","VORONOI FALL","TAN GLITCH"};
             ImGui::Checkbox("Different shader per wall",&state.cycleWallShaders);
@@ -163,6 +171,10 @@ void drawCarousel(CarouselState& state) {
             ImGui::Checkbox("Occlude walls with scene mesh",&state.sceneOcclusion);
             if(state.sceneOcclusion) ImGui::SliderFloat("Occlusion bias",&state.sceneDepthBias,0.0f,0.01f,"%.4f");
             ImGui::TextDisabled("Quest fast mode: nearest tracked walls");
+            ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
+            }
             break;
         case 2: {
             ImGui::TextUnformatted("AMBIENT SOUND");
