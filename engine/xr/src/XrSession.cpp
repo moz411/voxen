@@ -438,6 +438,10 @@ void XrSession::handleSessionStateChanged(const XrEventDataSessionStateChanged& 
         std::printf("[Voxen] OpenXR session begun\n");
 #endif
     } else if (state_ == XR_SESSION_STATE_STOPPING && running_) {
+#ifdef __ANDROID__
+        // MediaPlayer must stop writing into its Surface before xrEndSession.
+        closeVideoSurface();
+#endif
         if (passthrough_ != XR_NULL_HANDLE) checkXr(pausePassthrough_(passthrough_), "xrPassthroughPauseFB");
         checkXr(xrEndSession(session_), "xrEndSession");
         running_ = false;
