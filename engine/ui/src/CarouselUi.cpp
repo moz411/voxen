@@ -190,8 +190,38 @@ void drawCarousel(CarouselState& state) {
             ImGui::EndChild();
             if(state.detectedSurfaceIds.empty())
                 ImGui::TextDisabled("No tracked Meta planes available");
-            if(state.backgroundTargetSurface>=0)
-                ImGui::TextDisabled("Per-surface media rendering not connected yet");
+            if(state.backgroundTargetSurface>=0) {
+                const auto id=static_cast<std::uint64_t>(state.backgroundTargetSurface);
+                const auto existing=state.surfaceMedia.find(id);
+                if(existing!=state.surfaceMedia.end())
+                    ImGui::Text("Assigned: %s",existing->second.filename.c_str());
+                if(ImGui::Button("APPLY SELECTED MEDIA")) {
+                    CarouselState::AppliedMedia media{};
+                    media.kind=state.backgroundSourceKind;
+                    media.shaderMode=state.wallShaderMode;
+                    if(media.kind==1 && state.panoramaSelected>=0 &&
+                       static_cast<std::size_t>(state.panoramaSelected)<state.panoramaFiles.size())
+                        media.filename=state.panoramaFiles[state.panoramaSelected];
+                    else if(media.kind==2 && state.videoSelected>=0 &&
+                            static_cast<std::size_t>(state.videoSelected)<state.videoFiles.size())
+                        media.filename=state.videoFiles[state.videoSelected];
+                    else if(media.kind==3) media.filename="Shader";
+                    else media.filename="Passthrough";
+                    if(media.kind!=1 && media.kind!=2 || !media.filename.empty()) {
+                        state.surfaceMedia[id]=std::move(media);
+                        state.applyMediaRequest=true;
+                    }
+                }
+                ImGui::SameLine();
+                if(ImGui::Button("CLEAR ASSIGNMENT")) {
+                    state.surfaceMedia.erase(id);
+                    state.applyMediaRequest=true;
+                }
+                if(existing!=state.surfaceMedia.end() && existing->second.kind==2)
+                    ImGui::TextDisabled("Video projection GPU path pending");
+            }
+            if(!state.applyMediaStatus.empty())
+                ImGui::TextWrapped("%s",state.applyMediaStatus.c_str());
             if(state.backgroundSourceKind==3) {
                 ImGui::SliderFloat("Shader opacity",&state.liquidOpacity,0.f,0.6f);
                 ImGui::Checkbox("Scene mesh wireframe",&state.showSceneMesh);
