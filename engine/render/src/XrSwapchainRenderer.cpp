@@ -1971,6 +1971,14 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 const auto rank=static_cast<int>(it-shaderIds.begin());
                 activeMode=demoModes[(rank+cycleStep)%19];
             }
+            // Explicit per-surface shader overrides the global/cycling mode.
+            const auto assignment=imguiCarousel_.surfaceMedia.find(surface->id);
+            if(assignment!=imguiCarousel_.surfaceMedia.end()) {
+                if(assignment->second.kind==3)
+                    activeMode=assignment->second.shaderMode;
+                else if(assignment->second.kind==1 || assignment->second.kind==2)
+                    continue; // Do not draw an incorrect shader over requested media.
+            }
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,choosePipeline(activeMode));
             const Mat4 wallMvp=multiply(projView,surfaceModel(*surface));
             ProceduralPushConstants liquid{wallMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
@@ -2947,6 +2955,11 @@ void XrSwapchainRenderer::render(
         }
 #endif
         // Expose only tracked, physically sized Meta scene planes to the UI.
+        if(imguiCarousel_.applyMediaRequest) {
+            imguiCarousel_.applyMediaRequest=false;
+            imguiCarousel_.applyMediaStatus=
+                "Per-surface shader mapping updated; image/video projection pending.";
+        }
         imguiCarousel_.detectedSurfaceIds.clear();
         imguiCarousel_.detectedSurfaceLabels.clear();
         for(const auto& surface : environmentSurfaces_.surfaces()) {
