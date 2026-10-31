@@ -51,11 +51,9 @@ void drawCarousel(CarouselState& state) {
             if(state.voxenPaintEnabled) {
             ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : state.voxenPreset==4 ? "Animated deforming 3D sphere" : state.voxenPreset==5 ? "Twisting torus knot" : state.voxenPreset==6 ? "Spiky bloom" : state.voxenPreset==7 ? "Jellyfish bell" : state.voxenPreset==19 ? "Rotating Rubik cube with animated face turns" : state.voxenPreset==18 ? "Pulsating cube cloud with rotating lattice" : state.voxenPreset==17 ? "Smiling golden PBR creature with glossy eyes" : state.voxenPreset==16 ? "Animated goldfish with flowing fins and bubbles" : state.voxenPreset==15 ? "Floating one-eyed demon with charging fireball" : state.voxenPreset==14 ? "Animated stick figure with neon motion trails" : state.voxenPreset==13 ? "100-sphere evolving phyllotaxis spiral" : state.voxenPreset==12 ? "Animated fractal pyramid raymarch" : "Animated 12-segment earthworm");
             if(state.voxenPreset==2){
+                static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS"};
+                ImGui::Combo("Mandelbulb material",&state.mandelbulbMaterial,materials,3);
                 ImGui::Checkbox("Experimental 3D lighting",&state.mandelbulbLighting);
-                if(state.mandelbulbLighting){
-                    static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS"};
-                    ImGui::Combo("Mandelbulb material",&state.mandelbulbMaterial,materials,3);
-                }
             }
             if(state.voxenPreset>=4){
                 static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS","MATRIX","BUBBLE 3D","ANIME CEL","MANGA INK","FLOWING MARBLE","CELLULAR GLOW","FIRE","MAGMA LAVA","ASCII MORPH"};
