@@ -23,6 +23,8 @@ void drawCarousel(CarouselState& state) {
             ImGui::SeparatorText("OBJECTS / VOXENS + GLB");
             static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH","EARTHWORM","CLOUD","METABALLS","TENTACLE CREATURE","FRACTAL PYRAMID","PHYLLOTAXIS SPIRAL","STICKMAN ECHO","CACODEMON","GOLDEEN","PBR SMILE","PULSING CUBE CLOUD","RUBIK CUBE"};
             ImGui::BeginChild("objects-unified",ImVec2(0,170),true);
+            if(ImGui::BeginTabBar("object-media-tabs")) {
+            if(ImGui::BeginTabItem("VOXENS")) {
             for(int i=0;i<20;++i) {
                 const std::string label=std::string("[VOXEN] ")+presets[i]+"##vox"+std::to_string(i);
                 if(ImGui::Selectable(label.c_str(),state.voxenPaintEnabled && state.voxenPreset==i)) {
@@ -30,6 +32,9 @@ void drawCarousel(CarouselState& state) {
                     state.voxenPaintEnabled=true;
                 }
             }
+            ImGui::EndTabItem();
+            }
+            if(ImGui::BeginTabItem("GLB MODELS")) {
             for(int i=0;i<static_cast<int>(state.glbFiles.size());++i) {
                 const std::string label="[GLB] "+state.glbFiles[i]+"##model"+std::to_string(i);
                 if(ImGui::Selectable(label.c_str(),!state.voxenPaintEnabled && state.glbSelected==i)) {
@@ -37,6 +42,10 @@ void drawCarousel(CarouselState& state) {
                     state.voxenPaintEnabled=false;
                     state.glbPreviewRequest=true;
                 }
+            }
+            ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
             }
             ImGui::EndChild();
             if(state.voxenPaintEnabled) {
@@ -119,10 +128,15 @@ void drawCarousel(CarouselState& state) {
             static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","RAINBOW SPIRAL","MOBIUS SPIRAL","THEREMIN WAVE","GEOMETRIC KALEIDOSCOPE","CHROMATIC EDGES","COSMIC PALETTE","SYNTHWAVE SUNSET","OCEAN WAVES","UNIVERSE WITHIN","CYBERCITY","VORONOI FALL","TAN GLITCH"};
             static constexpr int modeIds[]={0,1,2,3,4,5,6,7,10,11,12,13,14,15,16,17,19,20,21,22};
             ImGui::BeginChild("background-unified",ImVec2(0,235),true);
+            if(ImGui::BeginTabBar("background-media-tabs")) {
+            if(ImGui::BeginTabItem("PASSTHROUGH")) {
             if(ImGui::Selectable("[MR] PASSTHROUGH SOBEL",state.backgroundSourceKind==0)) {
                 state.backgroundSourceKind=0;
                 state.panoramaSelected=-1;
             }
+            ImGui::EndTabItem();
+            }
+            if(ImGui::BeginTabItem("SHADERS")) {
             for(int i=0;i<20;++i) {
                 const std::string label=std::string("[SHADER] ")+effects[i]+"##bgsh"+std::to_string(i);
                 if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==3 &&
@@ -133,6 +147,9 @@ void drawCarousel(CarouselState& state) {
                     state.panoramaSelected=-1;
                 }
             }
+            ImGui::EndTabItem();
+            }
+            if(ImGui::BeginTabItem("IMAGES")) {
             for(int i=0;i<static_cast<int>(state.panoramaFiles.size());++i) {
                 const std::string label="[IMAGE] "+state.panoramaFiles[i]+"##bgi"+std::to_string(i);
                 if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==1 &&
@@ -142,6 +159,9 @@ void drawCarousel(CarouselState& state) {
                     state.videoSelected=-1;
                 }
             }
+            ImGui::EndTabItem();
+            }
+            if(ImGui::BeginTabItem("VIDEOS")) {
             for(int i=0;i<static_cast<int>(state.videoFiles.size());++i) {
                 const std::string label="[MP4] "+state.videoFiles[i]+"##bgv"+std::to_string(i);
                 if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==2 &&
@@ -150,6 +170,10 @@ void drawCarousel(CarouselState& state) {
                     state.videoSelected=i;
                     state.panoramaSelected=-1;
                 }
+            }
+            ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
             }
             ImGui::EndChild();
             if(state.backgroundSourceKind==2)
