@@ -17,7 +17,7 @@ public:
 
     // Device must have VK_ANDROID_external_memory_android_hardware_buffer and
     // samplerYcbcrConversion enabled. Returns false without leaking resources.
-    bool import(VkPhysicalDevice physicalDevice, VkDevice device, AHardwareBuffer* buffer);
+    bool importBuffer(VkPhysicalDevice physicalDevice, VkDevice device, AHardwareBuffer* buffer);
     void reset() noexcept;
     VkImage image() const noexcept { return image_; }
     VkImageView view() const noexcept { return view_; }
