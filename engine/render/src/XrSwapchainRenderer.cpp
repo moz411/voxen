@@ -168,6 +168,28 @@ void XrSwapchainRenderer::rescanGlbAssets() {
 }
 #endif
 
+std::filesystem::path XrSwapchainRenderer::selectedBackgroundVideo() const {
+#if defined(__ANDROID__) && defined(VOXEN_WITH_IMGUI)
+    const int i=imguiCarousel_.videoSelected;
+    if(imguiCarousel_.backgroundSourceKind==2 && i>=0 &&
+       static_cast<std::size_t>(i)<imguiCarousel_.videoFiles.size())
+        return std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/Videos") /
+            imguiCarousel_.videoFiles[static_cast<std::size_t>(i)];
+#endif
+    return {};
+}
+
+std::filesystem::path XrSwapchainRenderer::selectedWallVideo() const {
+#if defined(__ANDROID__) && defined(VOXEN_WITH_IMGUI)
+    const int i=imguiCarousel_.wallVideoSelected;
+    if(imguiCarousel_.wallSourceKind==2 && i>=0 &&
+       static_cast<std::size_t>(i)<imguiCarousel_.videoFiles.size())
+        return std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/Videos") /
+            imguiCarousel_.videoFiles[static_cast<std::size_t>(i)];
+#endif
+    return {};
+}
+
 void XrSwapchainRenderer::rescanPanoramaAssets() {
 #ifdef VOXEN_WITH_IMGUI
     const int oldIndex=imguiCarousel_.panoramaSelected;
