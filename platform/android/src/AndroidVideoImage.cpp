@@ -44,6 +44,33 @@ bool AndroidVideoImage::importBuffer(VkPhysicalDevice physicalDevice, VkDevice d
     if (!desc.width || !desc.height || !properties.memoryTypeBits) return false;
     const bool external = format.format == VK_FORMAT_UNDEFINED;
     if (external && !format.externalFormat) return false;
+
+    // Query the true descriptor multiplicity instead of guessing the count
+    // for a multi-plane external YCbCr combined image sampler.
+    VkPhysicalDeviceExternalImageFormatInfo externalImage{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO};
+    externalImage.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
+    VkPhysicalDeviceExternalFormatInfoANDROID externalInfo{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_FORMAT_INFO_ANDROID};
+    externalInfo.externalFormat = format.externalFormat;
+    externalImage.pNext = external ? &externalInfo : nullptr;
+    VkPhysicalDeviceImageFormatInfo2 formatInfo{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2};
+    formatInfo.pNext = &externalImage;
+    formatInfo.format = format.format;
+    formatInfo.type = VK_IMAGE_TYPE_2D;
+    formatInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    formatInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+    VkSamplerYcbcrConversionImageFormatProperties conversionProperties{
+        VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_IMAGE_FORMAT_PROPERTIES};
+    VkImageFormatProperties2 imageProperties{
+        VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2};
+    imageProperties.pNext = &conversionProperties;
+    if (vkGetPhysicalDeviceImageFormatProperties2(
+            physicalDevice, &formatInfo, &imageProperties) != VK_SUCCESS ||
+        !conversionProperties.combinedImageSamplerDescriptorCount) return false;
+    combinedSamplerDescriptorCount_ =
+        conversionProperties.combinedImageSamplerDescriptorCount;
     const uint32_t type = chooseMemoryType(physicalDevice, properties.memoryTypeBits);
     if (type == UINT32_MAX) return false;
     device_ = device;
@@ -159,6 +186,7 @@ void AndroidVideoImage::reset() noexcept {
     image_ = VK_NULL_HANDLE;
     memory_ = VK_NULL_HANDLE;
     device_ = VK_NULL_HANDLE;
+    combinedSamplerDescriptorCount_ = 0;
 }
 } // namespace voxen::video
 #endif
