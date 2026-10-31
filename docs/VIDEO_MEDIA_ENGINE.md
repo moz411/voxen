@@ -170,3 +170,32 @@ not proof of correct video presentation and remains untested on Quest 3.
 - **No video sampling or display yet.** This first-frame probe does not provide external producer fences, Vulkan ownership transfers, or an image-layout transition. The panorama pipeline and the rendering pipeline remain unchanged.
 - Before production: query the driver's exact `combinedImageSamplerDescriptorCount` for each video format, cache descriptors across frames and handle decoder reuse. The current pool capacity is a test fallback and must not be assumed sufficient universally.
 - The Android native build has not been executed in this environment. Validate using `./gradlew assembleDebug` and device Logcat before attempting rendering.
+
+## Reference implementation review: ThiyaMediaEngine
+
+Reference: https://github.com/ghimanshu383/ThiyaMediaEngine-Android_playerSDK
+
+Inspected upstream native sources:
+- `engine/src/main/cpp/MediaDecoder.cpp`: NDK `AImageReader_acquireNextImage` and frame handoff.
+- `engine/src/main/cpp/VideoProcessor.cpp`: hardware-buffer properties/import.
+- `engine/src/main/include/Util.h`: YCbCr sampler creation and explicit `VkImageMemoryBarrier` helpers.
+
+What Voxen now has:
+- Java MediaCodec → ImageReader → AHardwareBuffer, JNI ownership and VkImage import.
+- Native immutable YCbCr descriptor allocation (format-specific count).
+- Explicit, **non-destructive** GENERAL → SHADER_READ_ONLY layout barrier helper.
+
+What is **not** complete:
+- Producer-ready native fence (the Java ImageReader path does not currently
+  hand an acquire sync FD to Vulkan); external queue-family ownership handshake.
+- A persistent immutable sampler/layout + video-specific panorama pipeline.
+- A per-frame descriptor update or buffer-slot cache with stable lifetime.
+- Actual video projection on global sphere and individual detected Meta planes.
+- GPU release/producer hand-back and device validation.
+
+Do not use an UNDEFINED → SHADER_READ_ONLY transition for decoder-produced
+contents: UNDEFINED discards image contents. The helper records a barrier only;
+it does **not** resolve the producer fence or foreign ownership. It is not
+invoked by the render loop yet.
+
+Thiya's stated 4K/Mali results are not validation on Quest 3/Adreno.
