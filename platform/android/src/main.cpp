@@ -4,6 +4,8 @@
 
 #include <exception>
 #include <filesystem>
+#include <optional>
+#include <cstdint>
 #include <voxen/scene/SceneRepository.hpp>
 
 #include <voxen/core/Engine.hpp>
@@ -161,7 +163,8 @@ void android_main(android_app* app) {
             vulkan.graphicsQueueFamily(),
             xr.passthroughEnabled(),
             xr.sceneEnabled(),
-            sceneGranted);
+            sceneGranted,
+            xr.videoSurfaceEnabled());
         __android_log_print(ANDROID_LOG_INFO, kTag, "XR session initialized; initializing renderer");
         renderer.configureMusicJavaVm(app->activity->vm);
         renderer.initialize(
@@ -175,6 +178,11 @@ void android_main(android_app* app) {
             vulkan.graphicsQueueFamily());
 
         __android_log_print(ANDROID_LOG_INFO, kTag, "Renderer initialized");
+
+        // Selection-driven decoder lifecycle; the Vulkan sampler path remains
+        // separate until external ownership/fence synchronization is verified.
+        std::filesystem::path activeVideoPath;
+        std::uint64_t activeVideoSurfaceId=0;
         __android_log_print(
             ANDROID_LOG_INFO,
             kTag,
@@ -206,6 +214,27 @@ void android_main(android_app* app) {
             }
 
             running = session.pollEvents();
+            // The compositor owns the decoded Surface: no RGBA readback,
+            // no per-frame VkImage recreation and no queue idle stalls.
+            auto requestedVideo=renderer.selectedBackgroundVideo();
+            const auto planeVideo=requestedVideo.empty()
+                ? renderer.selectedSurfaceVideo() : std::nullopt;
+            const std::uint64_t targetId=planeVideo ? planeVideo->surface.id : 0;
+            if(planeVideo)requestedVideo=planeVideo->path;
+            if(!session.running()) {
+                // STOPPING destroys the swapchain; re-open after READY.
+                activeVideoPath.clear();
+                activeVideoSurfaceId=0;
+            } else if(requestedVideo!=activeVideoPath || targetId!=activeVideoSurfaceId) {
+                session.closeVideoSurface();
+                activeVideoPath=requestedVideo;
+                activeVideoSurfaceId=targetId;
+                if(!activeVideoPath.empty() &&
+                   std::filesystem::is_regular_file(activeVideoPath))
+                    session.openVideoSurface(activeVideoPath.string(),
+                        app->activity->vm,app->activity->clazz,
+                        planeVideo ? &planeVideo->surface : nullptr);
+            }
             if(pollPanoramaImports(app))renderer.rescanPanoramaAssets();
             if(renderer.consumePanoramaImportRequest())openPanoramaPicker(app);
             // Poll the permission state after Android handles the system dialog.

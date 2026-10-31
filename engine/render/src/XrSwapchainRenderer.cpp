@@ -118,6 +118,29 @@ void checkVk(VkResult result, const char* operation) {
     }
 }
 
+#ifdef __ANDROID__
+std::vector<std::string> scanVideoFiles() {
+    const std::filesystem::path folder =
+        "/sdcard/Android/data/org.voxen.xr/files/Videos";
+    std::vector<std::string> files;
+    try {
+        std::filesystem::create_directories(folder);
+        for (const auto& entry : std::filesystem::directory_iterator(folder)) {
+            if (!entry.is_regular_file() || entry.is_symlink()) continue;
+            std::string ext=entry.path().extension().string();
+            std::transform(ext.begin(),ext.end(),ext.begin(),[](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            if (ext == ".mp4") files.push_back(entry.path().filename().string());
+        }
+        std::sort(files.begin(),files.end());
+    } catch (const std::filesystem::filesystem_error&) {
+        files.clear();
+    }
+    return files;
+}
+#endif
+
 } // namespace
 
 
@@ -144,6 +167,46 @@ void XrSwapchainRenderer::rescanGlbAssets() {
     }
 }
 #endif
+
+std::filesystem::path XrSwapchainRenderer::selectedBackgroundVideo() const {
+#if defined(__ANDROID__) && defined(VOXEN_WITH_IMGUI)
+    const int i=imguiCarousel_.videoSelected;
+    if(imguiCarousel_.backgroundSourceKind==2 &&
+       imguiCarousel_.backgroundTargetSurface==-1 && i>=0 &&
+       static_cast<std::size_t>(i)<imguiCarousel_.videoFiles.size())
+        return std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/Videos") /
+            imguiCarousel_.videoFiles[static_cast<std::size_t>(i)];
+#endif
+    return {};
+}
+
+std::optional<XrSwapchainRenderer::SurfaceVideoSelection>
+XrSwapchainRenderer::selectedSurfaceVideo() const {
+#if defined(__ANDROID__) && defined(VOXEN_WITH_IMGUI)
+    for(const auto& surface : environmentSurfaces_.surfaces()) {
+        if(!surface.tracked || surface.halfExtents[0]<=0.05f ||
+            surface.halfExtents[1]<=0.05f) continue;
+        auto it=imguiCarousel_.surfaceMedia.find(surface.id);
+        if(it==imguiCarousel_.surfaceMedia.end() || it->second.kind!=2 ||
+           it->second.filename.empty()) continue;
+        const auto path=std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/Videos") /
+            std::filesystem::path(it->second.filename).filename();
+        return SurfaceVideoSelection{path,surface};
+    }
+#endif
+    return std::nullopt;
+}
+
+std::filesystem::path XrSwapchainRenderer::selectedWallVideo() const {
+#if defined(__ANDROID__) && defined(VOXEN_WITH_IMGUI)
+    const int i=imguiCarousel_.wallVideoSelected;
+    if(imguiCarousel_.wallSourceKind==2 && i>=0 &&
+       static_cast<std::size_t>(i)<imguiCarousel_.videoFiles.size())
+        return std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/Videos") /
+            imguiCarousel_.videoFiles[static_cast<std::size_t>(i)];
+#endif
+    return {};
+}
 
 void XrSwapchainRenderer::rescanPanoramaAssets() {
 #ifdef VOXEN_WITH_IMGUI
@@ -183,6 +246,9 @@ void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& roo
     panoramaRoot_=root / "Backgrounds";
 #endif
     rescanPanoramaAssets();
+#if defined(__ANDROID__) && defined(VOXEN_WITH_IMGUI)
+    imguiCarousel_.videoFiles=scanVideoFiles();
+#endif
     portalManager_ = std::make_unique<voxen::gallery::PortalManager>(*sceneRepository_);
     // Seed a real repository scene so gallery placement and walk-in work unchanged.
     if(!sceneRepository_->loadSceneMetadata(mechanicalCannonSceneId_)) {
@@ -1923,6 +1989,14 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 const auto rank=static_cast<int>(it-shaderIds.begin());
                 activeMode=demoModes[(rank+cycleStep)%19];
             }
+            // Explicit per-surface shader overrides the global/cycling mode.
+            const auto assignment=imguiCarousel_.surfaceMedia.find(surface->id);
+            if(assignment!=imguiCarousel_.surfaceMedia.end()) {
+                if(assignment->second.kind==3)
+                    activeMode=assignment->second.shaderMode;
+                else if(assignment->second.kind==1 || assignment->second.kind==2)
+                    continue; // Do not draw an incorrect shader over requested media.
+            }
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,choosePipeline(activeMode));
             const Mat4 wallMvp=multiply(projView,surfaceModel(*surface));
             ProceduralPushConstants liquid{wallMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
@@ -2805,6 +2879,28 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.voxenCount=static_cast<int>(voxens_.size());
         imguiCarousel_.musicReady=ambientMusic_.ready();
 #ifdef VOXEN_WITH_GLB_IMPORT
+        // Refresh external media catalogs automatically, without a UI rescan.
+        // Throttle filesystem scans to avoid doing I/O on every XR frame.
+        static auto lastMediaScan=std::chrono::steady_clock::time_point{};
+        const auto scanNow=std::chrono::steady_clock::now();
+        if(scanNow-lastMediaScan>=std::chrono::seconds(3)) {
+            lastMediaScan=scanNow;
+            rescanPanoramaAssets();
+#ifdef VOXEN_WITH_GLB_IMPORT
+            rescanGlbAssets();
+#endif
+#ifdef __ANDROID__
+            const auto previousIndex=imguiCarousel_.videoSelected;
+            const auto previousName=previousIndex>=0 &&
+                static_cast<std::size_t>(previousIndex)<imguiCarousel_.videoFiles.size()
+                ? imguiCarousel_.videoFiles[previousIndex] : std::string{};
+            imguiCarousel_.videoFiles=scanVideoFiles();
+            const auto found=std::find(imguiCarousel_.videoFiles.begin(),
+                imguiCarousel_.videoFiles.end(),previousName);
+            imguiCarousel_.videoSelected=found==imguiCarousel_.videoFiles.end()
+                ? -1 : static_cast<int>(found-imguiCarousel_.videoFiles.begin());
+#endif
+        }
         imguiCarousel_.glbFiles=glbAssetNames_;
         if(imguiCarousel_.glbPreviewRequest && !glbAssetPaths_.empty() && imguiCarousel_.glbSelected>=0 &&
            static_cast<size_t>(imguiCarousel_.glbSelected)<glbAssetPaths_.size()) {
@@ -2876,6 +2972,32 @@ void XrSwapchainRenderer::render(
             });
         }
 #endif
+        // Expose only tracked, physically sized Meta scene planes to the UI.
+        if(imguiCarousel_.applyMediaRequest) {
+            imguiCarousel_.applyMediaRequest=false;
+            imguiCarousel_.applyMediaStatus=
+                "Surface mapping updated (single MP4 OpenXR plane supported).";
+        }
+        imguiCarousel_.detectedSurfaceIds.clear();
+        imguiCarousel_.detectedSurfaceLabels.clear();
+        for(const auto& surface : environmentSurfaces_.surfaces()) {
+            if(!surface.tracked || surface.classification==voxen::scene::SurfaceClass::Unknown ||
+               surface.halfExtents[0]<=0.05f || surface.halfExtents[1]<=0.05f) continue;
+            const char* category=surface.classification==voxen::scene::SurfaceClass::Wall
+                ? "Wall" : surface.classification==voxen::scene::SurfaceClass::Floor
+                ? "Floor" : "Ceiling";
+            imguiCarousel_.detectedSurfaceIds.push_back(surface.id);
+            imguiCarousel_.detectedSurfaceLabels.push_back(
+                std::string(category)+" #"+std::to_string(surface.id)+" ("+
+                std::to_string(int(surface.halfExtents[0]*2.f*100.f))+" x "+
+                std::to_string(int(surface.halfExtents[1]*2.f*100.f))+" cm)");
+        }
+        if(imguiCarousel_.backgroundTargetSurface>=0 &&
+            std::find(imguiCarousel_.detectedSurfaceIds.begin(),
+                      imguiCarousel_.detectedSurfaceIds.end(),
+                      static_cast<std::uint64_t>(imguiCarousel_.backgroundTargetSurface))
+                ==imguiCarousel_.detectedSurfaceIds.end())
+            imguiCarousel_.backgroundTargetSurface=-1;
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         imguiCarousel_.savedSceneIds=sceneIds_;
@@ -3008,6 +3130,20 @@ void XrSwapchainRenderer::render(
                     } else imguiCarousel_.glbStatus="GLB decode / Vulkan upload failed";
                 }
             }
+        }
+#endif
+#ifdef __ANDROID__
+        if(imguiCarousel_.videoRescanRequest) {
+            imguiCarousel_.videoRescanRequest=false;
+            const auto selected=imguiCarousel_.videoSelected;
+            const std::string previous=selected>=0 &&
+                static_cast<std::size_t>(selected)<imguiCarousel_.videoFiles.size()
+                    ? imguiCarousel_.videoFiles[selected] : std::string{};
+            imguiCarousel_.videoFiles=scanVideoFiles();
+            const auto found=std::find(imguiCarousel_.videoFiles.begin(),
+                imguiCarousel_.videoFiles.end(),previous);
+            imguiCarousel_.videoSelected=found==imguiCarousel_.videoFiles.end()
+                ? -1 : static_cast<int>(found-imguiCarousel_.videoFiles.begin());
         }
 #endif
         if(imguiCarousel_.musicRescan){

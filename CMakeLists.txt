@@ -98,6 +98,7 @@ if(ANDROID)
     )
 
     target_include_directories(voxen PRIVATE
+        platform/android/include
         ${ANDROID_NDK}/sources/android/native_app_glue
     )
 

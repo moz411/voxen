@@ -4,6 +4,7 @@
 #include <string_view>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace voxen::ui {
 // UI and XR geometry are intentionally separate: controller rays must be
@@ -40,6 +41,21 @@ struct CarouselState {
     bool glbPlaceGallery=false;
     std::vector<std::string> glbFiles;
     std::string glbStatus;
+    int videoSelected = -1;
+    int backgroundSourceKind = 0; // 0 passthrough, 1 image, 2 video (pending render)
+    int wallSourceKind = 0; // 0 shader, 1 image, 2 video (pending render)
+    int wallImageSelected = -1;
+    int wallVideoSelected = -1;
+    // -1 = global sphere; otherwise stable detected surface ID.
+    std::int64_t backgroundTargetSurface = -1;
+    std::vector<std::uint64_t> detectedSurfaceIds;
+    std::vector<std::string> detectedSurfaceLabels;
+    struct AppliedMedia { int kind=0; std::string filename; int shaderMode=0; };
+    std::unordered_map<std::uint64_t, AppliedMedia> surfaceMedia;
+    bool applyMediaRequest=false;
+    std::string applyMediaStatus;
+    bool videoRescanRequest = false;
+    std::vector<std::string> videoFiles;
     bool panoramaImportRequest = false;
     bool panoramaRescanRequest = false;
     int panoramaSelected = -1;
@@ -105,7 +121,7 @@ struct CarouselState {
     bool gpuAvailable = false;
 };
 inline constexpr std::array<std::string_view, 4> pages = {
-    "VOXENS","BACKGROUNDS","MUSIC","SCENES"
+    "OBJECTS","BACKGROUNDS","MUSIC","SCENES"
 };
 // Caller owns ImGui frame lifecycle. Draws controls into ImDrawData; no XR
 // input/passthrough assumptions are hidden in this unit.

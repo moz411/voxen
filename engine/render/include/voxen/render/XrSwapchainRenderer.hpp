@@ -22,6 +22,7 @@
 #include <memory>
 #include <filesystem>
 #include <future>
+#include <optional>
 #include <voxen/render/PanoramaImage.hpp>
 #ifdef VOXEN_WITH_IMGUI
 #include <voxen/ui/CarouselUi.hpp>
@@ -71,6 +72,15 @@ public:
 #endif
     }
     void rescanPanoramaAssets();
+    // Resolved media selection for the Android video decoder. The renderer
+    // exposes intent, not ownership of decoder resources.
+    [[nodiscard]] std::filesystem::path selectedBackgroundVideo() const;
+    [[nodiscard]] std::filesystem::path selectedWallVideo() const;
+    struct SurfaceVideoSelection {
+        std::filesystem::path path;
+        voxen::scene::EnvironmentSurface surface;
+    };
+    [[nodiscard]] std::optional<SurfaceVideoSelection> selectedSurfaceVideo() const;
     bool saveCurrentScene();
     bool loadSavedScene(const voxen::gallery::SceneId& id);
     bool deleteSavedScene(const voxen::gallery::SceneId& id);

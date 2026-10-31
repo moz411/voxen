@@ -13,6 +13,43 @@ import java.util.UUID;
 
 /** Android document picker bridge. Call openPanoramaPicker() on the UI thread. */
 public final class VoxenActivity extends NativeActivity {
+    private android.media.MediaPlayer nativeVideoPlayer;
+    public synchronized boolean startNativeVideo(String path, android.view.Surface surface) {
+        stopNativeVideo();
+        try {
+            nativeVideoPlayer = new android.media.MediaPlayer();
+            nativeVideoPlayer.setDataSource(path);
+            nativeVideoPlayer.setSurface(surface);
+            nativeVideoPlayer.setLooping(true);
+            nativeVideoPlayer.setOnPreparedListener(player -> {
+                synchronized (VoxenActivity.this) {
+                    if (player == nativeVideoPlayer) {
+                        player.start();
+                        Log.i("VoxenVideo", "OpenXR Surface playback started: " + path);
+                    }
+                }
+            });
+            nativeVideoPlayer.setOnErrorListener((player, what, extra) -> {
+                Log.e("VoxenVideo", "MediaPlayer error what=" + what + " extra=" + extra);
+                return true;
+            });
+            nativeVideoPlayer.prepareAsync();
+            Log.i("VoxenVideo", "OpenXR Android Surface player preparing: " + path);
+            return true;
+        } catch (Exception ex) {
+            Log.e("VoxenVideo", "OpenXR Surface playback failed", ex);
+            stopNativeVideo();
+            return false;
+        }
+    }
+    public synchronized void stopNativeVideo() {
+        if(nativeVideoPlayer != null) {
+            try { nativeVideoPlayer.stop(); } catch (IllegalStateException ignored) {}
+            nativeVideoPlayer.release();
+            nativeVideoPlayer = null;
+        }
+    }
+
     private static final int PICK_PANORAMA = 4201;
     private final ArrayDeque<String> imported = new ArrayDeque<>();
 

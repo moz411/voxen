@@ -1,9 +1,15 @@
 #pragma once
 
 #include <array>
+#include <string>
+#include <voxen/scene/EnvironmentSurface.hpp>
 
-#include <openxr/openxr.h>
 #include <vulkan/vulkan.h>
+#include <openxr/openxr.h>
+#ifdef __ANDROID__
+#include <jni.h>
+#include <openxr/openxr_platform.h>
+#endif
 #include <voxen/xr/MetaSceneProvider.hpp>
 
 namespace voxen::render { class XrSwapchainRenderer; }
@@ -27,7 +33,8 @@ public:
         uint32_t queueFamilyIndex,
         bool enablePassthrough = false,
         bool enableScene = false,
-        bool scenePermissionGranted = true);
+        bool scenePermissionGranted = true,
+        bool enableVideoSurface = false);
     void shutdown() noexcept;
 
     // Drains runtime events. Returns false when the runtime asks the app to exit.
@@ -37,6 +44,11 @@ public:
     // until swapchains and the first stereo renderer are added.
     void frame(voxen::render::XrSwapchainRenderer& renderer);
     void requestSceneRefresh();
+#ifdef __ANDROID__
+    bool openVideoSurface(const std::string& path, JavaVM* vm, jobject activity,
+                          const voxen::scene::EnvironmentSurface* target = nullptr);
+    void closeVideoSurface() noexcept;
+#endif
     void setScenePermissionGranted(bool granted);
 
     [[nodiscard]] ::XrSession handle() const noexcept { return session_; }
@@ -58,6 +70,15 @@ private:
     PFN_xrDestroyHandTrackerEXT destroyHandTracker_=nullptr;
     PFN_xrLocateHandJointsEXT locateHandJoints_=nullptr;
     XrInstance instance_ = XR_NULL_HANDLE;
+#ifdef __ANDROID__
+    XrSwapchain videoSwapchain_ = XR_NULL_HANDLE;
+    jobject videoPlayer_ = nullptr;
+    JavaVM* videoJavaVm_ = nullptr;
+    PFN_xrCreateSwapchainAndroidSurfaceKHR createVideoSurface_ = nullptr;
+#endif
+    bool videoSurfaceSupported_ = false;
+    bool videoPlaneActive_ = false;
+    voxen::scene::EnvironmentSurface videoPlane_{};
     ::XrSession session_ = XR_NULL_HANDLE;
     XrSpace stageSpace_ = XR_NULL_HANDLE;
     XrSpace localSpace_ = XR_NULL_HANDLE;

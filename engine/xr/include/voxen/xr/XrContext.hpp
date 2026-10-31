@@ -27,6 +27,7 @@ public:
     [[nodiscard]] XrSystemId systemId() const noexcept { return systemId_; }
     [[nodiscard]] bool passthroughEnabled() const noexcept { return passthroughEnabled_; }
     [[nodiscard]] bool sceneEnabled() const noexcept { return sceneEnabled_; }
+    [[nodiscard]] bool videoSurfaceEnabled() const noexcept { return videoSurfaceEnabled_; }
     [[nodiscard]] bool initialized() const noexcept { return instance_ != XR_NULL_HANDLE; }
 
 private:
@@ -41,6 +42,7 @@ private:
     XrSystemId systemId_ = XR_NULL_SYSTEM_ID;
     bool passthroughEnabled_ = false;
     bool sceneEnabled_ = false;
+    bool videoSurfaceEnabled_ = false;
 };
 
 } // namespace voxen::xr

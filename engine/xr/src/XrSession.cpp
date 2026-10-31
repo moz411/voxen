@@ -43,12 +43,23 @@ void XrSession::initialize(
     uint32_t queueFamilyIndex,
     bool enablePassthrough,
     bool enableScene,
-    bool scenePermissionGranted) {
+    bool scenePermissionGranted,
+    bool enableVideoSurface) {
     if (session_ != XR_NULL_HANDLE) {
         throw std::logic_error("OpenXR session is already initialized");
     }
 
     instance_ = instance;
+    videoSurfaceSupported_=enableVideoSurface;
+#ifdef __ANDROID__
+    if(videoSurfaceSupported_) {
+        PFN_xrVoidFunction proc=nullptr;
+        if(XR_SUCCEEDED(xrGetInstanceProcAddr(instance_,
+            "xrCreateSwapchainAndroidSurfaceKHR",&proc)))
+            createVideoSurface_=reinterpret_cast<PFN_xrCreateSwapchainAndroidSurfaceKHR>(proc);
+        if(!createVideoSurface_)videoSurfaceSupported_=false;
+    }
+#endif
     enablePassthrough_ = enablePassthrough;
     enableScene_ = enableScene;
     scenePermissionGranted_ = scenePermissionGranted;
@@ -427,6 +438,10 @@ void XrSession::handleSessionStateChanged(const XrEventDataSessionStateChanged& 
         std::printf("[Voxen] OpenXR session begun\n");
 #endif
     } else if (state_ == XR_SESSION_STATE_STOPPING && running_) {
+#ifdef __ANDROID__
+        // MediaPlayer must stop writing into its Surface before xrEndSession.
+        closeVideoSurface();
+#endif
         if (passthrough_ != XR_NULL_HANDLE) checkXr(pausePassthrough_(passthrough_), "xrPassthroughPauseFB");
         checkXr(xrEndSession(session_), "xrEndSession");
         running_ = false;
@@ -515,7 +530,9 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
     std::array<XrCompositionLayerProjectionView, 2> projectionViews{};
     XrCompositionLayerPassthroughFB passthroughComposition{XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB};
     passthroughComposition.layerHandle = passthroughLayer_;
-    const XrCompositionLayerBaseHeader* layers[2]{};
+    XrCompositionLayerEquirect2KHR videoLayer{XR_TYPE_COMPOSITION_LAYER_EQUIRECT2_KHR};
+    XrCompositionLayerQuad videoQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    const XrCompositionLayerBaseHeader* layers[3]{};
     uint32_t layerCount = 0;
 
     if (frameState.shouldRender == XR_TRUE) {
@@ -573,6 +590,31 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
                     loggedComposition = true;
                 }
             }
+#ifdef __ANDROID__
+            if(videoSwapchain_!=XR_NULL_HANDLE) {
+                if(videoPlaneActive_) {
+                    videoQuad.space=localSpace_;
+                    videoQuad.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
+                    videoQuad.subImage.swapchain=videoSwapchain_;
+                    videoQuad.subImage.imageRect.extent={2048,1024};
+                    videoQuad.pose.position={videoPlane_.center[0],videoPlane_.center[1],videoPlane_.center[2]};
+                    videoQuad.pose.orientation={videoPlane_.orientation[0],videoPlane_.orientation[1],videoPlane_.orientation[2],videoPlane_.orientation[3]};
+                    videoQuad.size={2.f*videoPlane_.halfExtents[0],2.f*videoPlane_.halfExtents[1]};
+                    layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&videoQuad);
+                } else {
+                videoLayer.space=localSpace_;
+                videoLayer.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
+                videoLayer.subImage.swapchain=videoSwapchain_;
+                videoLayer.subImage.imageRect.extent={2048,1024};
+                videoLayer.pose.orientation.w=1.f;
+                videoLayer.radius=0.f; // infinite background sphere
+                videoLayer.centralHorizontalAngle=6.28318530718f;
+                videoLayer.upperVerticalAngle=1.57079632679f;
+                videoLayer.lowerVerticalAngle=-1.57079632679f;
+                layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&videoLayer);
+                }
+            }
+#endif
             layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer);
         }
     }
@@ -585,7 +627,95 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
     checkXr(xrEndFrame(session_, &endInfo), "xrEndFrame");
 }
 
+#ifdef __ANDROID__
+bool XrSession::openVideoSurface(const std::string& path, JavaVM* vm, jobject activity,
+                                 const voxen::scene::EnvironmentSurface* target) {
+    closeVideoSurface();
+    if(!videoSurfaceSupported_ || !createVideoSurface_ || !vm || !activity ||
+       path.empty() || session_==XR_NULL_HANDLE) return false;
+    JNIEnv* env=nullptr;
+    const bool attached=vm->GetEnv(reinterpret_cast<void**>(&env),JNI_VERSION_1_6)!=JNI_OK;
+    if(attached && vm->AttachCurrentThread(&env,nullptr)!=JNI_OK)return false;
+    XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+    info.usageFlags=XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+    info.width=2048; info.height=1024;
+    // Android surface swapchains require format/sampleCount/faceCount/
+    // arraySize/mipCount all zero (not ordinary Vulkan swapchain values).
+    jobject surface=nullptr;
+    XrResult status=createVideoSurface_(session_,&info,&videoSwapchain_,&surface);
+    bool ok=false;
+    if(XR_SUCCEEDED(status) && surface) {
+        jclass cls=env->GetObjectClass(activity);
+        jmethodID start=cls?env->GetMethodID(cls,"startNativeVideo",
+            "(Ljava/lang/String;Landroid/view/Surface;)Z"):nullptr;
+        jstring jpath=env->NewStringUTF(path.c_str());
+        if(start && jpath)
+            ok=env->CallBooleanMethod(activity,start,jpath,surface)==JNI_TRUE &&
+               !env->ExceptionCheck();
+        if(env->ExceptionCheck()) {env->ExceptionDescribe();env->ExceptionClear();}
+        if(jpath)env->DeleteLocalRef(jpath);
+        if(cls)env->DeleteLocalRef(cls);
+        // Surface is owned by the OpenXR runtime and destroyed with the swapchain.
+        // Do not DeleteLocalRef a reference whose JNI ownership was not specified.
+    }
+    if(attached)vm->DetachCurrentThread();
+    if(ok) {
+        videoPlaneActive_=target!=nullptr;
+        if(target) {
+            videoPlane_=*target;
+            __android_log_print(ANDROID_LOG_INFO,"VoxenVideo",
+                "Video quad target id=%llu size=%.2fx%.2f m tracked=%d",
+                static_cast<unsigned long long>(target->id),
+                target->halfExtents[0]*2.f,target->halfExtents[1]*2.f,
+                target->tracked?1:0);
+        }
+        videoJavaVm_=vm;
+        // Activity reference must outlive this JNI call.
+        bool retained=false;
+        JNIEnv* holder=nullptr;
+        const bool mustAttach=vm->GetEnv(reinterpret_cast<void**>(&holder),JNI_VERSION_1_6)!=JNI_OK;
+        if(!mustAttach || vm->AttachCurrentThread(&holder,nullptr)==JNI_OK) {
+            videoPlayer_=holder->NewGlobalRef(activity);
+            retained=videoPlayer_!=nullptr;
+            if(mustAttach)vm->DetachCurrentThread();
+        }
+        if(!retained) {ok=false;closeVideoSurface();}
+    }
+    else if(videoSwapchain_!=XR_NULL_HANDLE) {
+        xrDestroySwapchain(videoSwapchain_);videoSwapchain_=XR_NULL_HANDLE;
+    }
+    __android_log_print(ok?ANDROID_LOG_INFO:ANDROID_LOG_ERROR,"VoxenVideo",
+        "OpenXR Surface playback: %s (result=%d)",ok?"STARTED":"FAILED",status);
+    return ok;
+}
+void XrSession::closeVideoSurface() noexcept {
+    if(videoJavaVm_ && videoPlayer_) {
+        JNIEnv* env=nullptr;
+        const bool attached=videoJavaVm_->GetEnv(
+            reinterpret_cast<void**>(&env),JNI_VERSION_1_6)!=JNI_OK;
+        if(!attached || videoJavaVm_->AttachCurrentThread(&env,nullptr)==JNI_OK) {
+            jclass cls=env->GetObjectClass(videoPlayer_);
+            jmethodID stop=cls?env->GetMethodID(cls,"stopNativeVideo","()V"):nullptr;
+            if(stop)env->CallVoidMethod(videoPlayer_,stop);
+            if(env->ExceptionCheck()){env->ExceptionDescribe();env->ExceptionClear();}
+            if(cls)env->DeleteLocalRef(cls);
+            env->DeleteGlobalRef(videoPlayer_);
+            if(attached)videoJavaVm_->DetachCurrentThread();
+        }
+    }
+    videoPlayer_=nullptr;
+    videoJavaVm_=nullptr;
+    videoPlaneActive_=false;
+    if(videoSwapchain_!=XR_NULL_HANDLE) {
+        xrDestroySwapchain(videoSwapchain_);videoSwapchain_=XR_NULL_HANDLE;
+    }
+}
+#endif
+
 void XrSession::shutdown() noexcept {
+#ifdef __ANDROID__
+    closeVideoSurface();
+#endif
     metaScene_.shutdown();
     for(auto& tracker:handTrackers_) {
         if(tracker!=XR_NULL_HANDLE && destroyHandTracker_)destroyHandTracker_(tracker);
