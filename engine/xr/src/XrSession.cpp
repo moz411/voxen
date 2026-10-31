@@ -531,6 +531,7 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
     XrCompositionLayerPassthroughFB passthroughComposition{XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB};
     passthroughComposition.layerHandle = passthroughLayer_;
     XrCompositionLayerEquirect2KHR videoLayer{XR_TYPE_COMPOSITION_LAYER_EQUIRECT2_KHR};
+    XrCompositionLayerQuad videoQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
     const XrCompositionLayerBaseHeader* layers[3]{};
     uint32_t layerCount = 0;
 
@@ -591,6 +592,16 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
             }
 #ifdef __ANDROID__
             if(videoSwapchain_!=XR_NULL_HANDLE) {
+                if(videoPlaneActive_) {
+                    videoQuad.space=localSpace_;
+                    videoQuad.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
+                    videoQuad.subImage.swapchain=videoSwapchain_;
+                    videoQuad.subImage.imageRect.extent={2048,1024};
+                    videoQuad.pose.position={videoPlane_.center[0],videoPlane_.center[1],videoPlane_.center[2]};
+                    videoQuad.pose.orientation={videoPlane_.orientation[0],videoPlane_.orientation[1],videoPlane_.orientation[2],videoPlane_.orientation[3]};
+                    videoQuad.size={2.f*videoPlane_.halfExtents[0],2.f*videoPlane_.halfExtents[1]};
+                    layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&videoQuad);
+                } else {
                 videoLayer.space=localSpace_;
                 videoLayer.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
                 videoLayer.subImage.swapchain=videoSwapchain_;
@@ -601,6 +612,7 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
                 videoLayer.upperVerticalAngle=1.57079632679f;
                 videoLayer.lowerVerticalAngle=-1.57079632679f;
                 layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&videoLayer);
+                }
             }
 #endif
             layers[layerCount++] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer);
@@ -616,7 +628,8 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
 }
 
 #ifdef __ANDROID__
-bool XrSession::openVideoSurface(const std::string& path, JavaVM* vm, jobject activity) {
+bool XrSession::openVideoSurface(const std::string& path, JavaVM* vm, jobject activity,
+                                 const voxen::scene::EnvironmentSurface* target) {
     closeVideoSurface();
     if(!videoSurfaceSupported_ || !createVideoSurface_ || !vm || !activity ||
        path.empty() || session_==XR_NULL_HANDLE) return false;
@@ -647,6 +660,8 @@ bool XrSession::openVideoSurface(const std::string& path, JavaVM* vm, jobject ac
     }
     if(attached)vm->DetachCurrentThread();
     if(ok) {
+        videoPlaneActive_=target!=nullptr;
+        if(target)videoPlane_=*target;
         videoJavaVm_=vm;
         // Activity reference must outlive this JNI call.
         bool retained=false;
@@ -683,6 +698,7 @@ void XrSession::closeVideoSurface() noexcept {
     }
     videoPlayer_=nullptr;
     videoJavaVm_=nullptr;
+    videoPlaneActive_=false;
     if(videoSwapchain_!=XR_NULL_HANDLE) {
         xrDestroySwapchain(videoSwapchain_);videoSwapchain_=XR_NULL_HANDLE;
     }
