@@ -111,3 +111,10 @@ If importing fails, capture the whole VoxenVideo log.
 no decoder-acquire fence integration, no GPU completion fence, no audio. The
 smoke test deliberately creates/imports/destroys only one image and issues
 no GPU commands. Do not treat it as a video player.
+
+## UI navigation update
+
+- The `OBJECTS` carousel page contains two tabs: procedural `VOXENS` and imported `GLB MODELS`.
+- The `BACKGROUNDS` page lists `.mp4` files from `/sdcard/Android/data/org.voxen.xr/files/Videos`, with a manual rescan command.
+- Selecting a video currently changes only the UI state; it does **not** activate playback or projection. The standalone opt-in smoke test still uses `Videos/video-test.mp4`.
+- Next milestone: a synchronized sampled-video image in a real renderer descriptor set, followed by panorama/wall projection.
