@@ -65,7 +65,8 @@ With an MP4 in `Android/data/org.voxen.xr/files/Videos/`, choose its
 
 Expected logs:
 - `OpenXR Android Surface + Equirect2: enabled`
-- `OpenXR Surface player started: ...`
+- `OpenXR Android Surface player preparing: ...`
+- `OpenXR Surface playback started: ...`
 - `OpenXR Surface playback: STARTED (result=0)`
 
 If `unavailable`, collect the runtime extensions; if `FAILED`,
