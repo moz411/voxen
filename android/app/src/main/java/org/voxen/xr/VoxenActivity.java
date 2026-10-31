@@ -28,8 +28,12 @@ public final class VoxenActivity extends NativeActivity {
                 previewRetriever.setDataSource(path);
                 previewPath = path;
             }
+            String durationText = previewRetriever.extractMetadata(
+                    MediaMetadataRetriever.METADATA_KEY_DURATION);
+            long durationUs = durationText == null ? 0L : Long.parseLong(durationText) * 1000L;
+            long loopedTimeUs = durationUs > 0L ? Math.floorMod(timeUs, durationUs) : Math.max(0L, timeUs);
             Bitmap bitmap = previewRetriever.getScaledFrameAtTime(
-                    Math.max(0L, timeUs), MediaMetadataRetriever.OPTION_CLOSEST,
+                    loopedTimeUs, MediaMetadataRetriever.OPTION_CLOSEST,
                     512, 256);
             if (bitmap == null) return null;
             int[] argb = new int[512 * 256];
