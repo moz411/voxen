@@ -53,3 +53,29 @@ implemented and profiled.
   is hardware-accelerated on the device.
 
 Do not merge to main before the JNI/Vulkan bridge and device tests.
+
+
+## Vulkan import module (new, experimental)
+
+`platform/android/src/AndroidVideoImage.cpp` now provides an **explicit,
+non-rendering** import of an `AHardwareBuffer` as a Vulkan sampled image.
+It creates dedicated imported memory, a YCbCr conversion, image view and
+sampler, and owns their destruction. The Android `Image` and its native
+buffer reference remain owned by `AndroidVideoDecoder::Frame`.
+
+**Important:** creation of a VkImage is not evidence that its content is safe
+for sampling. Before actual rendering, implement and validate:
+
+- Codec/producer acquire fence semantics, Android buffer external queue-family
+  ownership, and matching Vulkan barriers/layout transitions.
+- GPU completion fences before `AndroidVideoDecoder::releaseFrame()` and
+  `AndroidVideoImage::reset()`. Never destroy image/view while in flight.
+- Descriptor-set lifetime and sampler-YCbCr immutable sampler requirements.
+- Queue pacing/backpressure: max 3 outstanding ImageReader images; reused
+  buffers and bounded Vulkan imported-image cache.
+- Test decoder-produced `PRIVATE` buffers on Quest 3; Vulkan import can fail
+  based on hardware/format/extension support.
+- Validate Android SDK/NDK compilation and vendor runtime behavior.
+
+Current behavior is **not yet active** in Voxen's render loop. No video playback
+or image display has been validated on Quest 3.
