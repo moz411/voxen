@@ -183,10 +183,14 @@ void VulkanContext::initialize(XrInstance xrInstance, XrSystemId systemId) {
         throw std::runtime_error("vkCreateDevice through OpenXR failed with VkResult " + std::to_string(vkResult));
     }
 
+#ifdef __ANDROID__
+    videoBufferImportEnabled_ = videoAvailable;
+#endif
     vkGetDeviceQueue(device_, graphicsQueueFamily_, 0, &graphicsQueue_);
 }
 
 void VulkanContext::shutdown() noexcept {
+    videoBufferImportEnabled_ = false;
     if (device_ != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(device_);
         vkDestroyDevice(device_, nullptr);
