@@ -1709,6 +1709,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,11) :
             std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
         v.speed=imguiCarousel_.voxenSpeed;
+        v.motionEnabled=imguiCarousel_.motionEnabled;
         v.velocity={dir[0]*imguiCarousel_.motionSpeed,
                     dir[1]*imguiCarousel_.motionSpeed,
                     dir[2]*imguiCarousel_.motionSpeed};
@@ -2577,6 +2578,7 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
             const float phase=orbitPhase_+6.2831853f*float(i)/float(std::max(size_t(1),voxens_.size()));
             const float co=std::cos(phase),si=std::sin(phase);
             auto& v=voxens_[i];
+            if(!v.motionEnabled)continue;
             if(imguiCarousel_.orbitRandomAxis) {
                 // Deterministic per-object tilted plane (constant over time).
                 const float tilt=0.35f+0.95f*std::sin(float(i+1)*2.399963f);
@@ -2633,6 +2635,7 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
         }
     }
     for(auto& v:voxens_){
+        if(!v.motionEnabled)continue;
         if(gravity) v.velocity[1]-=9.81f*dt;
         for(int k=0;k<3;++k){
             v.velocity[k]=std::clamp(v.velocity[k],-kMaxSpeed,kMaxSpeed);
@@ -3201,7 +3204,8 @@ void XrSwapchainRenderer::render(
         std::clamp(std::chrono::duration<float>(physicsNow-lastPhysicsFrame_).count(),0.f,0.1f);
     lastPhysicsFrame_=physicsNow;
     advanceHandProjectiles(physicsDt);
-    if(imguiCarousel_.motionEnabled){
+    if(std::any_of(voxens_.begin(),voxens_.end(),
+        [](const auto& v){return v.motionEnabled;})){
         physicsAccumulator_=std::min(physicsAccumulator_+physicsDt,0.1f);
         constexpr float step=1.f/60.f;
         for(int steps=0;physicsAccumulator_>=step && steps<6;++steps){
