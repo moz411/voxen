@@ -2213,10 +2213,11 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 drawSegment(hand.joints[knuckles[i]],hand.joints[knuckles[i+1]],0.014f);
         }
     }
-    if(voxenPlasmaPipeline_!=VK_NULL_HANDLE && voxenSpheresPipeline_!=VK_NULL_HANDLE &&
-       voxenMandelbulbPipeline_!=VK_NULL_HANDLE && voxenAttractorPipeline_!=VK_NULL_HANDLE && voxenFractalPyramidPipeline_!=VK_NULL_HANDLE && voxenPhyllotaxisPipeline_!=VK_NULL_HANDLE && voxenStickmanEchoPipeline_!=VK_NULL_HANDLE && voxenCacodemonPipeline_!=VK_NULL_HANDLE && voxenGoldeenPipeline_!=VK_NULL_HANDLE && voxenPbrSmilePipeline_!=VK_NULL_HANDLE && voxenCubeCloudPipeline_!=VK_NULL_HANDLE && voxenRubikCubePipeline_!=VK_NULL_HANDLE && organicSpherePipeline_!=VK_NULL_HANDLE && torusKnotPipeline_!=VK_NULL_HANDLE && spikeBloomPipeline_!=VK_NULL_HANDLE && jellyfishPipeline_!=VK_NULL_HANDLE && tentacleCreaturePipeline_!=VK_NULL_HANDLE && earthwormPipeline_!=VK_NULL_HANDLE && cloudPipeline_!=VK_NULL_HANDLE && metaballsPipeline_!=VK_NULL_HANDLE){
+    // Render each preset independently: one unavailable effect must not
+    // suppress every other Voxen in the scene.
+    {
         auto paintPlasma=[&](const PlasmaVoxen& v){
-            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+            const VkPipeline effectPipeline=
                 v.preset==1 ? voxenSpheresPipeline_ :
                 v.preset==2 ? (
 #ifdef VOXEN_WITH_IMGUI
@@ -2225,7 +2226,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 voxenMandelbulbPipeline_) :
                 v.preset==3 ? voxenAttractorPipeline_ : v.preset==4 ? organicSpherePipeline_ :
                 v.preset==5 ? torusKnotPipeline_ : v.preset==6 ? spikeBloomPipeline_ :
-                v.preset==7 ? jellyfishPipeline_ : v.preset==8 ? earthwormPipeline_ : v.preset==9 ? cloudPipeline_ : v.preset==10 ? metaballsPipeline_ : v.preset==11 ? tentacleCreaturePipeline_ : v.preset==12 ? voxenFractalPyramidPipeline_ : v.preset==13 ? voxenPhyllotaxisPipeline_ : v.preset==14 ? voxenStickmanEchoPipeline_ : v.preset==15 ? voxenCacodemonPipeline_ : v.preset==16 ? voxenGoldeenPipeline_ : v.preset==17 ? voxenPbrSmilePipeline_ : v.preset==18 ? voxenCubeCloudPipeline_ : v.preset==19 ? voxenRubikCubePipeline_ : voxenPlasmaPipeline_);
+                v.preset==7 ? jellyfishPipeline_ : v.preset==8 ? earthwormPipeline_ : v.preset==9 ? cloudPipeline_ : v.preset==10 ? metaballsPipeline_ : v.preset==11 ? tentacleCreaturePipeline_ : v.preset==12 ? voxenFractalPyramidPipeline_ : v.preset==13 ? voxenPhyllotaxisPipeline_ : v.preset==14 ? voxenStickmanEchoPipeline_ : v.preset==15 ? voxenCacodemonPipeline_ : v.preset==16 ? voxenGoldeenPipeline_ : v.preset==17 ? voxenPbrSmilePipeline_ : v.preset==18 ? voxenCubeCloudPipeline_ : v.preset==19 ? voxenRubikCubePipeline_ : voxenPlasmaPipeline_;
+            if(effectPipeline==VK_NULL_HANDLE)return;
+            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,effectPipeline);
             const Mat4 mvp=multiply(projView,modelMatrix(
                 v.position[0],v.position[1],v.scale,v.position[2],0.f));
             // For Mandelbulbs, pack material into the otherwise unchanged float slot.
