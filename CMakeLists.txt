@@ -95,6 +95,7 @@ if(ANDROID)
     add_library(voxen SHARED
         platform/android/src/main.cpp
         platform/android/src/AndroidVideoDecoder.cpp
+        platform/android/src/AndroidVideoBuffer.cpp
         ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
     )
 
