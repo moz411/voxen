@@ -161,52 +161,41 @@ void drawCarousel(CarouselState& state) {
                 ImGui::SliderFloat("Horizontal coverage",&state.panoramaHorizontalDegrees,60.f,360.f,"%.0f deg");
                 ImGui::SliderFloat("Vertical coverage",&state.panoramaVerticalDegrees,30.f,180.f,"%.0f deg");
             }
-            ImGui::SeparatorText("WALLS");
-            ImGui::Checkbox("Wall effect",&state.liquidRoom);
-            ImGui::BeginChild("wall-media-unified",ImVec2(0,100),true);
-            for(int i=0;i<20;++i) {
-                const std::string label=std::string("[SHADER] ")+effects[i]+"##wsh"+std::to_string(i);
-                if(ImGui::Selectable(label.c_str(),state.wallSourceKind==0 &&
-                                      state.wallShaderMode==modeIds[i])) {
-                    state.wallSourceKind=0;
-                    state.wallShaderMode=modeIds[i];
-                    state.liquidRoom=true;
-                }
+            ImGui::SeparatorText("APPLY TO");
+            if(ImGui::Selectable("GLOBAL SPHERE",state.backgroundTargetSurface==-1)) {
+                state.backgroundTargetSurface=-1;
             }
-            for(int i=0;i<static_cast<int>(state.panoramaFiles.size());++i) {
-                const std::string label="[IMAGE] "+state.panoramaFiles[i]+"##wi"+std::to_string(i);
-                if(ImGui::Selectable(label.c_str(),state.wallSourceKind==1 &&
-                                      state.wallImageSelected==i)) {
-                    state.wallSourceKind=1;
-                    state.wallImageSelected=i;
-                }
-            }
-            for(int i=0;i<static_cast<int>(state.videoFiles.size());++i) {
-                const std::string label="[MP4] "+state.videoFiles[i]+"##wv"+std::to_string(i);
-                if(ImGui::Selectable(label.c_str(),state.wallSourceKind==2 &&
-                                      state.wallVideoSelected==i)) {
-                    state.wallSourceKind=2;
-                    state.wallVideoSelected=i;
+            ImGui::BeginChild("tracked-meta-surfaces",ImVec2(0,138),true);
+            for(std::size_t i=0;i<state.detectedSurfaceIds.size();++i) {
+                const auto id=state.detectedSurfaceIds[i];
+                const std::string label=state.detectedSurfaceLabels[i]+"##surface"+std::to_string(id);
+                if(ImGui::Selectable(label.c_str(),
+                   state.backgroundTargetSurface>=0 &&
+                   static_cast<std::uint64_t>(state.backgroundTargetSurface)==id)) {
+                    state.backgroundTargetSurface=static_cast<std::int64_t>(id);
+                    // Preserve existing wall shader rendering when a shader is
+                    // selected. Image and video surface projection remain pending.
+                    if(state.backgroundSourceKind==3) {
+                        state.wallSourceKind=0;
+                        state.liquidRoom=true;
+                    } else if(state.backgroundSourceKind==1) {
+                        state.wallSourceKind=1;
+                        state.wallImageSelected=state.panoramaSelected;
+                    } else if(state.backgroundSourceKind==2) {
+                        state.wallSourceKind=2;
+                        state.wallVideoSelected=state.videoSelected;
+                    }
                 }
             }
             ImGui::EndChild();
-            if(state.wallSourceKind!=0)
-                ImGui::TextDisabled("Wall media projection is not implemented yet");
-            if(state.wallSourceKind==0) {
-                ImGui::Checkbox("Different shader per wall",&state.cycleWallShaders);
-                if(state.cycleWallShaders)
-                    ImGui::SliderFloat("Change every (seconds)",&state.wallCycleSeconds,10.f,90.f,"%.0f");
-                if(state.wallShaderMode==1) {
-                    ImGui::ColorEdit3("Wall color",state.wallColor);
-                    ImGui::SliderFloat("Solid opacity",&state.wallSolidOpacity,0.1f,1.f);
-                } else ImGui::SliderFloat("Opacity",&state.liquidOpacity,0.f,0.6f);
+            if(state.detectedSurfaceIds.empty())
+                ImGui::TextDisabled("No tracked Meta planes available");
+            if(state.backgroundTargetSurface>=0)
+                ImGui::TextDisabled("Per-surface media rendering not connected yet");
+            if(state.backgroundSourceKind==3) {
+                ImGui::SliderFloat("Shader opacity",&state.liquidOpacity,0.f,0.6f);
+                ImGui::Checkbox("Scene mesh wireframe",&state.showSceneMesh);
             }
-            ImGui::SliderInt("Max walls",&state.maxLiquidWalls,1,8);
-            ImGui::Checkbox("Floor & ceiling",&state.includeFloorCeiling);
-            ImGui::Checkbox("Scene mesh wireframe",&state.showSceneMesh);
-            ImGui::Checkbox("Occlude walls with scene mesh",&state.sceneOcclusion);
-            if(state.sceneOcclusion)
-                ImGui::SliderFloat("Occlusion bias",&state.sceneDepthBias,0.f,0.01f,"%.4f");
             break;
         }
         case 2: {
