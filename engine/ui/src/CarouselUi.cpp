@@ -23,13 +23,19 @@ void drawCarousel(CarouselState& state) {
             ImGui::SeparatorText("OBJECTS / VOXENS + GLB");
             static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH","EARTHWORM","CLOUD","METABALLS","TENTACLE CREATURE","FRACTAL PYRAMID","PHYLLOTAXIS SPIRAL","STICKMAN ECHO","CACODEMON","GOLDEEN","PBR SMILE","PULSING CUBE CLOUD","RUBIK CUBE"};
             ImGui::BeginChild("objects-unified",ImVec2(0,170),true);
+            if(ImGui::BeginTabBar("object-media-tabs")) {
+            if(ImGui::BeginTabItem("VOXENS")) {
             for(int i=0;i<20;++i) {
+                if(i==14 || i==18)continue; // Removed from catalog, keep stable IDs for saved scenes.
                 const std::string label=std::string("[VOXEN] ")+presets[i]+"##vox"+std::to_string(i);
                 if(ImGui::Selectable(label.c_str(),state.voxenPaintEnabled && state.voxenPreset==i)) {
                     state.voxenPreset=i;
                     state.voxenPaintEnabled=true;
                 }
             }
+            ImGui::EndTabItem();
+            }
+            if(ImGui::BeginTabItem("GLB MODELS")) {
             for(int i=0;i<static_cast<int>(state.glbFiles.size());++i) {
                 const std::string label="[GLB] "+state.glbFiles[i]+"##model"+std::to_string(i);
                 if(ImGui::Selectable(label.c_str(),!state.voxenPaintEnabled && state.glbSelected==i)) {
@@ -38,15 +44,23 @@ void drawCarousel(CarouselState& state) {
                     state.glbPreviewRequest=true;
                 }
             }
+            ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
+            }
             ImGui::EndChild();
             if(state.voxenPaintEnabled) {
             ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : state.voxenPreset==4 ? "Animated deforming 3D sphere" : state.voxenPreset==5 ? "Twisting torus knot" : state.voxenPreset==6 ? "Spiky bloom" : state.voxenPreset==7 ? "Jellyfish bell" : state.voxenPreset==19 ? "Rotating Rubik cube with animated face turns" : state.voxenPreset==18 ? "Pulsating cube cloud with rotating lattice" : state.voxenPreset==17 ? "Smiling golden PBR creature with glossy eyes" : state.voxenPreset==16 ? "Animated goldfish with flowing fins and bubbles" : state.voxenPreset==15 ? "Floating one-eyed demon with charging fireball" : state.voxenPreset==14 ? "Animated stick figure with neon motion trails" : state.voxenPreset==13 ? "100-sphere evolving phyllotaxis spiral" : state.voxenPreset==12 ? "Animated fractal pyramid raymarch" : "Animated 12-segment earthworm");
+            if(state.voxenPreset==0 || state.voxenPreset==1 ||
+               state.voxenPreset>=12) {
+                static constexpr const char* volumes[]={"CUBE","SPHERE","OCTAHEDRON","CONE","CYLINDER"};
+                ImGui::Combo("Material volume",&state.flatVoxenVolume,volumes,5);
+                ImGui::TextDisabled("Preview and placement use the selected volume");
+            }
             if(state.voxenPreset==2){
+                static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS"};
+                ImGui::Combo("Mandelbulb material",&state.mandelbulbMaterial,materials,3);
                 ImGui::Checkbox("Experimental 3D lighting",&state.mandelbulbLighting);
-                if(state.mandelbulbLighting){
-                    static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS"};
-                    ImGui::Combo("Mandelbulb material",&state.mandelbulbMaterial,materials,3);
-                }
             }
             if(state.voxenPreset>=4){
                 static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS","MATRIX","BUBBLE 3D","ANIME CEL","MANGA INK","FLOWING MARBLE","CELLULAR GLOW","FIRE","MAGMA LAVA","ASCII MORPH"};
@@ -62,7 +76,8 @@ void drawCarousel(CarouselState& state) {
             ImGui::SliderFloat("Speed",&state.voxenSpeed,0.1f,3.f);
             ImGui::Separator();
             ImGui::TextUnformatted("FREE FLOAT / PHYSICS");
-            ImGui::Checkbox("Enable motion",&state.motionEnabled);
+            ImGui::Checkbox("Animate next placed Voxen",&state.motionEnabled);
+            ImGui::TextDisabled("Motion toggle is captured when placing each Voxen");
             static constexpr const char* motionModes[]={"FREE FLOAT","SWARM / BOIDS","ROTATION"};
             ImGui::Combo("Motion mode",&state.motionMode,motionModes,3);
             if(state.motionMode==2){
@@ -119,10 +134,15 @@ void drawCarousel(CarouselState& state) {
             static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","RAINBOW SPIRAL","MOBIUS SPIRAL","THEREMIN WAVE","GEOMETRIC KALEIDOSCOPE","CHROMATIC EDGES","COSMIC PALETTE","SYNTHWAVE SUNSET","OCEAN WAVES","UNIVERSE WITHIN","CYBERCITY","VORONOI FALL","TAN GLITCH"};
             static constexpr int modeIds[]={0,1,2,3,4,5,6,7,10,11,12,13,14,15,16,17,19,20,21,22};
             ImGui::BeginChild("background-unified",ImVec2(0,235),true);
+            if(ImGui::BeginTabBar("background-media-tabs")) {
+            if(ImGui::BeginTabItem("PASSTHROUGH")) {
             if(ImGui::Selectable("[MR] PASSTHROUGH SOBEL",state.backgroundSourceKind==0)) {
                 state.backgroundSourceKind=0;
                 state.panoramaSelected=-1;
             }
+            ImGui::EndTabItem();
+            }
+            if(ImGui::BeginTabItem("SHADERS")) {
             for(int i=0;i<20;++i) {
                 const std::string label=std::string("[SHADER] ")+effects[i]+"##bgsh"+std::to_string(i);
                 if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==3 &&
@@ -133,6 +153,9 @@ void drawCarousel(CarouselState& state) {
                     state.panoramaSelected=-1;
                 }
             }
+            ImGui::EndTabItem();
+            }
+            if(ImGui::BeginTabItem("IMAGES")) {
             for(int i=0;i<static_cast<int>(state.panoramaFiles.size());++i) {
                 const std::string label="[IMAGE] "+state.panoramaFiles[i]+"##bgi"+std::to_string(i);
                 if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==1 &&
@@ -142,6 +165,9 @@ void drawCarousel(CarouselState& state) {
                     state.videoSelected=-1;
                 }
             }
+            ImGui::EndTabItem();
+            }
+            if(ImGui::BeginTabItem("VIDEOS")) {
             for(int i=0;i<static_cast<int>(state.videoFiles.size());++i) {
                 const std::string label="[MP4] "+state.videoFiles[i]+"##bgv"+std::to_string(i);
                 if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==2 &&
@@ -150,6 +176,10 @@ void drawCarousel(CarouselState& state) {
                     state.videoSelected=i;
                     state.panoramaSelected=-1;
                 }
+            }
+            ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
             }
             ImGui::EndChild();
             if(state.backgroundSourceKind==2)
