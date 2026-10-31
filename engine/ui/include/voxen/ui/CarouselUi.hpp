@@ -45,6 +45,10 @@ struct CarouselState {
     int wallSourceKind = 0; // 0 shader, 1 image, 2 video (pending render)
     int wallImageSelected = -1;
     int wallVideoSelected = -1;
+    // -1 = global sphere; otherwise stable detected surface ID.
+    std::int64_t backgroundTargetSurface = -1;
+    std::vector<std::uint64_t> detectedSurfaceIds;
+    std::vector<std::string> detectedSurfaceLabels;
     bool videoRescanRequest = false;
     std::vector<std::string> videoFiles;
     bool panoramaImportRequest = false;
