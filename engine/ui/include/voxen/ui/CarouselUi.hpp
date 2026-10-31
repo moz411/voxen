@@ -4,6 +4,7 @@
 #include <string_view>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace voxen::ui {
 // UI and XR geometry are intentionally separate: controller rays must be
@@ -49,6 +50,10 @@ struct CarouselState {
     std::int64_t backgroundTargetSurface = -1;
     std::vector<std::uint64_t> detectedSurfaceIds;
     std::vector<std::string> detectedSurfaceLabels;
+    struct AppliedMedia { int kind=0; std::string filename; int shaderMode=0; };
+    std::unordered_map<std::uint64_t, AppliedMedia> surfaceMedia;
+    bool applyMediaRequest=false;
+    std::string applyMediaStatus;
     bool videoRescanRequest = false;
     std::vector<std::string> videoFiles;
     bool panoramaImportRequest = false;
