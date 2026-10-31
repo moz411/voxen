@@ -21,9 +21,20 @@ public final class VoxenActivity extends NativeActivity {
             nativeVideoPlayer.setDataSource(path);
             nativeVideoPlayer.setSurface(surface);
             nativeVideoPlayer.setLooping(true);
-            nativeVideoPlayer.prepare();
-            nativeVideoPlayer.start();
-            Log.i("VoxenVideo", "OpenXR Android Surface player started: " + path);
+            nativeVideoPlayer.setOnPreparedListener(player -> {
+                synchronized (VoxenActivity.this) {
+                    if (player == nativeVideoPlayer) {
+                        player.start();
+                        Log.i("VoxenVideo", "OpenXR Surface playback started: " + path);
+                    }
+                }
+            });
+            nativeVideoPlayer.setOnErrorListener((player, what, extra) -> {
+                Log.e("VoxenVideo", "MediaPlayer error what=" + what + " extra=" + extra);
+                return true;
+            });
+            nativeVideoPlayer.prepareAsync();
+            Log.i("VoxenVideo", "OpenXR Android Surface player preparing: " + path);
             return true;
         } catch (Exception ex) {
             Log.e("VoxenVideo", "OpenXR Surface playback failed", ex);
