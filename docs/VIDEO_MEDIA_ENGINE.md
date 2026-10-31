@@ -31,8 +31,11 @@ available and MP4 playback is disabled.
   swapchain, create the new one and start the new MP4.
 - On XR STOPPING: stop producing frames **before** `xrEndSession`.
 - On XR READY after stopping: re-open the selected video when running.
-- **Not yet implemented:** projecting videos onto individual Meta walls,
-  multiple parallel video sources, audio mixing with the existing music engine,
+- Tracked Meta wall/floor/ceiling assignments can use a single OpenXR quad
+  layer using the detected center, orientation and physical half-extents.
+  Only one assigned surface video is presented at a time; global sphere
+  selection takes precedence. Surface assignments remain in memory only.
+- **Not yet implemented:** multiple parallel video sources, audio mixing with the existing music engine,
   file-specific dimension/orientation mapping, seeking and playback controls.
 
 ## Cleanup
@@ -59,6 +62,12 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 adb logcat -v time -s VoxenVideo:V Voxen:V AndroidRuntime:E
 ```
+
+To test a Meta plane: choose a tracked wall/floor/ceiling in BACKGROUNDS,
+select an MP4, press APPLY SELECTED MEDIA, then leave the global sphere
+video selection inactive. The layer uses the physical plane rectangle.
+If nothing is visible, inspect the surface's tracked pose and facing
+(quaternion orientation +Z), and ensure a video assignment is present.
 
 With an MP4 in `Android/data/org.voxen.xr/files/Videos/`, choose its
 `[MP4]` entry in Backgrounds and set Apply to `GLOBAL SPHERE`.
