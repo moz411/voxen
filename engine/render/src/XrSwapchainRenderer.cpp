@@ -2860,8 +2860,20 @@ void XrSwapchainRenderer::render(
         if(scanNow-lastMediaScan>=std::chrono::seconds(3)) {
             lastMediaScan=scanNow;
             rescanPanoramaAssets();
+#ifdef VOXEN_WITH_GLB_IMPORT
             rescanGlbAssets();
+#endif
+#ifdef __ANDROID__
+            const auto previousIndex=imguiCarousel_.videoSelected;
+            const auto previousName=previousIndex>=0 &&
+                static_cast<std::size_t>(previousIndex)<imguiCarousel_.videoFiles.size()
+                ? imguiCarousel_.videoFiles[previousIndex] : std::string{};
             imguiCarousel_.videoFiles=scanVideoFiles();
+            const auto found=std::find(imguiCarousel_.videoFiles.begin(),
+                imguiCarousel_.videoFiles.end(),previousName);
+            imguiCarousel_.videoSelected=found==imguiCarousel_.videoFiles.end()
+                ? -1 : static_cast<int>(found-imguiCarousel_.videoFiles.begin());
+#endif
         }
         imguiCarousel_.glbFiles=glbAssetNames_;
         if(imguiCarousel_.glbPreviewRequest && !glbAssetPaths_.empty() && imguiCarousel_.glbSelected>=0 &&
