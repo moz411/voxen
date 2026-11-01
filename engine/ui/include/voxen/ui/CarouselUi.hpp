@@ -49,6 +49,8 @@ struct CarouselState {
     // -1 = global sphere; otherwise stable detected surface ID.
     std::int64_t backgroundTargetSurface = -1;
     std::vector<std::uint64_t> detectedSurfaceIds;
+    // Multi-selection is independent of media: one preset can target many planes.
+    std::vector<std::uint64_t> selectedSurfaceIds;
     std::vector<std::string> detectedSurfaceLabels;
     struct AppliedMedia { int kind=0; std::string filename; int shaderMode=0; };
     std::unordered_map<std::uint64_t, AppliedMedia> surfaceMedia;
