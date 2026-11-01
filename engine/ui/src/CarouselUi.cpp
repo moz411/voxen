@@ -199,9 +199,13 @@ void drawCarousel(CarouselState& state) {
             for(std::size_t i=0;i<state.detectedSurfaceIds.size();++i) {
                 const auto id=state.detectedSurfaceIds[i];
                 const std::string label=state.detectedSurfaceLabels[i]+"##surface"+std::to_string(id);
-                if(ImGui::Selectable(label.c_str(),
-                   state.backgroundTargetSurface>=0 &&
-                   static_cast<std::uint64_t>(state.backgroundTargetSurface)==id)) {
+                const bool checked=std::find(state.selectedSurfaceIds.begin(),
+                    state.selectedSurfaceIds.end(),id)!=state.selectedSurfaceIds.end();
+                if(ImGui::Selectable(label.c_str(),checked)) {
+                    if(checked) {
+                        state.selectedSurfaceIds.erase(std::remove(state.selectedSurfaceIds.begin(),
+                            state.selectedSurfaceIds.end(),id),state.selectedSurfaceIds.end());
+                    } else state.selectedSurfaceIds.push_back(id);
                     state.backgroundTargetSurface=static_cast<std::int64_t>(id);
                     // Preserve existing wall shader rendering when a shader is
                     // selected. Image and video surface projection remain pending.
@@ -219,12 +223,17 @@ void drawCarousel(CarouselState& state) {
             }
             ImGui::EndChild();
             if(state.detectedSurfaceIds.empty())
-                ImGui::TextDisabled("No tracked Meta planes available");
-            if(state.backgroundTargetSurface>=0) {
-                const auto id=static_cast<std::uint64_t>(state.backgroundTargetSurface);
-                const auto existing=state.surfaceMedia.find(id);
-                if(existing!=state.surfaceMedia.end())
-                    ImGui::Text("Assigned: %s",existing->second.filename.c_str());
+                ImGui::TextDisabled("No Meta planes with valid bounds available");
+            if(ImGui::Button("SELECT ALL")) state.selectedSurfaceIds=state.detectedSurfaceIds;
+            ImGui::SameLine();
+            if(ImGui::Button("SELECT NONE")) state.selectedSurfaceIds.clear();
+            ImGui::Text("Selected surfaces: %zu",state.selectedSurfaceIds.size());
+            if(!state.selectedSurfaceIds.empty()) {
+                if(state.selectedSurfaceIds.size()==1) {
+                    const auto existing=state.surfaceMedia.find(state.selectedSurfaceIds.front());
+                    if(existing!=state.surfaceMedia.end())
+                        ImGui::Text("Assigned: %s",existing->second.filename.c_str());
+                }
                 if(ImGui::Button("APPLY SELECTED MEDIA")) {
                     CarouselState::AppliedMedia media{};
                     media.kind=state.backgroundSourceKind;
@@ -238,19 +247,17 @@ void drawCarousel(CarouselState& state) {
                     else if(media.kind==3) media.filename="Shader";
                     else media.filename="Passthrough";
                     if(media.kind!=1 && media.kind!=2 || !media.filename.empty()) {
-                        state.surfaceMedia[id]=std::move(media);
+                        for(const auto id:state.selectedSurfaceIds)state.surfaceMedia[id]=media;
                         state.applyMediaRequest=true;
                     }
                 }
                 ImGui::SameLine();
                 if(ImGui::Button("CLEAR ASSIGNMENT")) {
-                    state.surfaceMedia.erase(id);
+                    for(const auto id:state.selectedSurfaceIds)state.surfaceMedia.erase(id);
                     state.applyMediaRequest=true;
                 }
-                const auto currentAssignment=state.surfaceMedia.find(id);
-                if(currentAssignment!=state.surfaceMedia.end() &&
-                   currentAssignment->second.kind==2)
-                    ImGui::TextDisabled("MP4 via OpenXR quad (one active surface at a time)");
+                if(state.backgroundSourceKind==2)
+                    ImGui::TextDisabled("MP4 playback currently supports one active plane only");
             }
             if(!state.applyMediaStatus.empty())
                 ImGui::TextWrapped("%s",state.applyMediaStatus.c_str());
