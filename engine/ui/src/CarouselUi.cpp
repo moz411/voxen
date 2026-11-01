@@ -162,9 +162,13 @@ void drawCarousel(CarouselState& state) {
                                       state.panoramaSelected==i)) {
                     state.backgroundSourceKind=1;
                     state.panoramaSelected=i;
+                    state.panoramaSlideshow=false;
                     state.videoSelected=-1;
                 }
             }
+            ImGui::Separator();
+            ImGui::Checkbox("SLIDESHOW (all images)",&state.panoramaSlideshow);
+            ImGui::SliderFloat("Slide duration (seconds)",&state.panoramaSlideshowSeconds,5.f,120.f,"%.0f s");
             ImGui::EndTabItem();
             }
             if(ImGui::BeginTabItem("VIDEOS")) {
