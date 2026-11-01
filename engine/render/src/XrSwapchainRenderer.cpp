@@ -3026,7 +3026,7 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.detectedSurfaceIds.clear();
         imguiCarousel_.detectedSurfaceLabels.clear();
         for(const auto& surface : environmentSurfaces_.surfaces()) {
-            if(!surface.tracked || surface.classification==voxen::scene::SurfaceClass::Unknown ||
+            if(surface.classification==voxen::scene::SurfaceClass::Unknown ||
                surface.halfExtents[0]<=0.05f || surface.halfExtents[1]<=0.05f) continue;
             const char* category=surface.classification==voxen::scene::SurfaceClass::Wall
                 ? "Wall" : surface.classification==voxen::scene::SurfaceClass::Floor
@@ -3035,8 +3035,17 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.detectedSurfaceLabels.push_back(
                 std::string(category)+" #"+std::to_string(surface.id)+" ("+
                 std::to_string(int(surface.halfExtents[0]*2.f*100.f))+" x "+
-                std::to_string(int(surface.halfExtents[1]*2.f*100.f))+" cm)");
+                std::to_string(int(surface.halfExtents[1]*2.f*100.f))+" cm)"+
+                 (surface.tracked ? "" : " [tracking lost]"));
         }
+        // Keep selections across transient OpenXR tracking loss.
+        imguiCarousel_.selectedSurfaceIds.erase(
+            std::remove_if(imguiCarousel_.selectedSurfaceIds.begin(),
+                imguiCarousel_.selectedSurfaceIds.end(),
+                [&](std::uint64_t id) {
+                    return std::find(imguiCarousel_.detectedSurfaceIds.begin(),
+                        imguiCarousel_.detectedSurfaceIds.end(),id)==imguiCarousel_.detectedSurfaceIds.end();
+                }),imguiCarousel_.selectedSurfaceIds.end());
         if(imguiCarousel_.backgroundTargetSurface>=0 &&
             std::find(imguiCarousel_.detectedSurfaceIds.begin(),
                       imguiCarousel_.detectedSurfaceIds.end(),
