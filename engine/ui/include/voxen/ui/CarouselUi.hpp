@@ -59,6 +59,8 @@ struct CarouselState {
     bool panoramaImportRequest = false;
     bool panoramaRescanRequest = false;
     int panoramaSelected = -1;
+    bool panoramaSlideshow = false;
+    float panoramaSlideshowSeconds = 15.f;
     float panoramaYawDegrees = 0.f;
     float panoramaHorizontalDegrees = 220.f;
     float panoramaVerticalDegrees = 75.f;

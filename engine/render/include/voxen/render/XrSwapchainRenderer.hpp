@@ -192,6 +192,8 @@ private:
     std::filesystem::path panoramaRoot_;
     std::vector<std::string> panoramaNames_;
     int panoramaDecodedSelection_=-1;
+    std::chrono::steady_clock::time_point panoramaSlideReadyAt_{};
+    int panoramaSlideReadyIndex_=-1;
     VkDescriptorSetLayout panoramaSetLayout_=VK_NULL_HANDLE;
     VkPipelineLayout panoramaPipelineLayout_=VK_NULL_HANDLE;
     VkPipeline panoramaPipeline_=VK_NULL_HANDLE;

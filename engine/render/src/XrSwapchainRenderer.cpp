@@ -231,7 +231,9 @@ void XrSwapchainRenderer::rescanPanoramaAssets() {
         const auto found=std::find(panoramaNames_.begin(),panoramaNames_.end(),oldName);
         imguiCarousel_.panoramaSelected=oldName.empty() || found==panoramaNames_.end()
             ? -1 : static_cast<int>(found-panoramaNames_.begin());
-        panoramaDecodedSelection_=-2;
+        // Preserve the loaded texture when a rescan leaves the selection unchanged.
+        if(imguiCarousel_.panoramaSelected!=oldIndex)
+            panoramaDecodedSelection_=-2;
 #endif
     } catch(const std::exception&) {
         panoramaNames_.clear();
@@ -2969,6 +2971,9 @@ void XrSwapchainRenderer::render(
             rescanPanoramaAssets();
         }
         imguiCarousel_.panoramaFiles=panoramaNames_;
+        if(imguiCarousel_.panoramaSlideshow && imguiCarousel_.backgroundSourceKind==1 &&
+           imguiCarousel_.panoramaSelected<0 && !panoramaNames_.empty())
+            imguiCarousel_.panoramaSelected=0;
 #ifdef VOXEN_WITH_GLB_IMPORT
         // Never decode/downscale on the XR render thread. A single worker
         // decodes at a time; rapid selection changes discard stale results.
@@ -2982,6 +2987,8 @@ void XrSwapchainRenderer::render(
                         panoramaFadeStart_=std::chrono::steady_clock::now();
                         panoramaFadeActive_=true;
                         imguiCarousel_.panoramaStatus="Panorama ready";
+                        panoramaSlideReadyAt_=std::chrono::steady_clock::now();
+                        panoramaSlideReadyIndex_=panoramaDecodeIndex_;
                     } else imguiCarousel_.panoramaStatus="Panorama GPU upload failed";
                 }
             } catch(const std::exception& error) {
@@ -2993,6 +3000,7 @@ void XrSwapchainRenderer::render(
 #endif
         if(imguiCarousel_.panoramaSelected!=panoramaDecodedSelection_) {
             panoramaDecodedSelection_=imguiCarousel_.panoramaSelected;
+            panoramaSlideReadyIndex_=-1;
 #ifdef VOXEN_WITH_GLB_IMPORT
             panoramaFadeActive_=false;
             if(device_)vkDeviceWaitIdle(device_);
@@ -3015,6 +3023,18 @@ void XrSwapchainRenderer::render(
             panoramaDecodeFuture_=std::async(std::launch::async,[file,limit] {
                 return decodePanoramaImage(file,limit,16ull*1024ull*1024ull);
             });
+        }
+        // Advance only after the current image has finished decoding/uploading.
+        // This avoids cycling while a panorama is still loading and prevents
+        // outdated asynchronous results from driving the slideshow.
+        if(imguiCarousel_.panoramaSlideshow && imguiCarousel_.backgroundSourceKind==1 &&
+           imguiCarousel_.backgroundTargetSurface==-1 && panoramaNames_.size()>1 &&
+           panoramaTexture_.descriptor && !panoramaDecodeFuture_.valid() &&
+           panoramaSlideReadyIndex_==imguiCarousel_.panoramaSelected &&
+           std::chrono::duration<float>(std::chrono::steady_clock::now()-panoramaSlideReadyAt_).count()
+                >=imguiCarousel_.panoramaSlideshowSeconds) {
+            imguiCarousel_.panoramaSelected=(imguiCarousel_.panoramaSelected+1)%static_cast<int>(panoramaNames_.size());
+            panoramaSlideReadyIndex_=-1;
         }
 #endif
         // Expose only tracked, physically sized Meta scene planes to the UI.
