@@ -2971,6 +2971,9 @@ void XrSwapchainRenderer::render(
             rescanPanoramaAssets();
         }
         imguiCarousel_.panoramaFiles=panoramaNames_;
+        if(imguiCarousel_.panoramaSlideshow && imguiCarousel_.backgroundSourceKind==1 &&
+           imguiCarousel_.panoramaSelected<0 && !panoramaNames_.empty())
+            imguiCarousel_.panoramaSelected=0;
 #ifdef VOXEN_WITH_GLB_IMPORT
         // Never decode/downscale on the XR render thread. A single worker
         // decodes at a time; rapid selection changes discard stale results.
