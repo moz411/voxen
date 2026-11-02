@@ -1,5 +1,6 @@
 #include <voxen/audio/SpectrumAnalyzer.hpp>
 #include <voxen/animation_timeline.h>
+#include <voxen/SceneClock.hpp>
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -21,6 +22,16 @@ int main() {
     analyzer.reset();
     assert(analyzer.analyze(nullptr, 0, 1, 48000).rms == 0.f);
 
+    animation::SceneClock clock;
+    clock.setLoop(4.0, true);
+    clock.update(5.5);
+    assert(std::abs(clock.seconds() - 1.5) < 0.0001);
+    clock.syncToAudio(2.25);
+    assert(std::abs(clock.seconds() - 2.25) < 0.0001);
+    clock.pause(true);
+    clock.update(1.0);
+    assert(std::abs(clock.seconds() - 2.25) < 0.0001);
+    clock.pause(false);
     const std::vector<animation::Keyframe> keys{
         {0., 0.f, animation::Interpolation::Linear},
         {2., 10.f, animation::Interpolation::Linear}
