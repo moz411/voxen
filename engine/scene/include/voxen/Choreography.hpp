@@ -1,6 +1,9 @@
 #pragma once
 #include <voxen/animation_timeline.h>
 #include <array>
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
