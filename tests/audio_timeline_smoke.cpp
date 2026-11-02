@@ -33,6 +33,20 @@ int main() {
     assert(low.onset > 0.f);
     const auto steady = analyzer.analyze(pcm.data(), pcm.size(), 1, 48000);
     assert(steady.onset < 0.00001f);
+    // Verify a high-frequency stereo tone lands in the treble band.
+    std::array<float, audio::SpectrumAnalyzer::Window * 2> stereo{};
+    for (std::size_t i = 0; i < audio::SpectrumAnalyzer::Window; ++i) {
+        const float tone = 0.5f * std::sin(2.f * pi * 6000.f * static_cast<float>(i) / 48000.f);
+        stereo[2 * i] = tone;
+        stereo[2 * i + 1] = tone;
+    }
+    analyzer.reset();
+    const auto high = analyzer.analyze(stereo.data(), audio::SpectrumAnalyzer::Window, 2, 48000);
+    assert(high.treble > high.mid && high.treble > high.bass);
+    // Silence must produce zero energy, including after a loud frame.
+    pcm.fill(0.f);
+    const auto quiet = analyzer.analyze(pcm.data(), pcm.size(), 1, 48000);
+    assert(quiet.rms == 0.f && quiet.bass == 0.f && quiet.mid == 0.f && quiet.treble == 0.f);
     analyzer.reset();
     assert(analyzer.analyze(nullptr, 0, 1, 48000).rms == 0.f);
 
