@@ -2,6 +2,7 @@
 #include <voxen/audio/PcmRingBuffer.hpp>
 #include <voxen/animation_timeline.h>
 #include <voxen/SceneClock.hpp>
+#include <voxen/Choreography.hpp>
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -34,6 +35,19 @@ int main() {
     analyzer.reset();
     assert(analyzer.analyze(nullptr, 0, 1, 48000).rms == 0.f);
 
+    animation::Choreography choreography;
+    choreography.durationSeconds = 2.0;
+    choreography.pingPong = true;
+    animation::ChannelTrack position;
+    position.channel = animation::Channel::PositionX;
+    position.keys = {{0., 0.f}, {2., 10.f}};
+    choreography.tracks.push_back(position);
+    const animation::AnimatedValues base;
+    const animation::AudioFeatures silence;
+    assert(std::abs(choreography.evaluate(1., base, silence)[animation::Channel::PositionX] - 5.f) < 0.0001f);
+    assert(std::abs(choreography.evaluate(3., base, silence)[animation::Channel::PositionX] - 5.f) < 0.0001f);
+    assert(choreography.evaluate(4., base, silence)[animation::Channel::PositionX] == 0.f);
+    assert(base[animation::Channel::PositionX] == 0.f);
     animation::SceneClock clock;
     clock.setLoop(4.0, true);
     clock.update(5.5);
