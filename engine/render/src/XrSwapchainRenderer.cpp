@@ -2986,8 +2986,8 @@ void XrSwapchainRenderer::render(
                     if(loadPanoramaGpu(std::move(decoded))) {
                         panoramaFadeStart_=std::chrono::steady_clock::now();
                         // Slideshow switches should not fade from pure white.
-                        // Keep a gentle short dissolve-in while a full
-                        // texture-to-texture crossfade is not available.
+                        // Show the decoded image immediately instead of flashing white;
+                        // a real two-texture crossfade requires retaining both GPU textures.
                         panoramaFadeActive_=!imguiCarousel_.panoramaSlideshow;
                         imguiCarousel_.panoramaStatus="Panorama ready";
                         panoramaSlideReadyAt_=std::chrono::steady_clock::now();
