@@ -1,4 +1,5 @@
 #include <voxen/audio/SpectrumAnalyzer.hpp>
+#include <voxen/audio/PcmRingBuffer.hpp>
 #include <voxen/animation_timeline.h>
 #include <voxen/SceneClock.hpp>
 #include <array>
@@ -8,6 +9,17 @@
 
 int main() {
     using namespace voxen;
+    audio::PcmRingBuffer<8> queue;
+    const float source[] = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+    float target[8]{};
+    assert(queue.write(source, 6) == 6);
+    assert(queue.read(target, 4) == 4);
+    assert(target[0] == 1.f && target[3] == 4.f);
+    assert(queue.write(source, 6) == 6);
+    assert(queue.read(target, 8) == 8);
+    assert(target[0] == 5.f && target[1] == 6.f && target[2] == 1.f);
+    assert(queue.size() == 0);
+
     constexpr float pi = 3.14159265358979323846f;
     std::array<float, audio::SpectrumAnalyzer::Window> pcm{};
     for (std::size_t i = 0; i < pcm.size(); ++i)
