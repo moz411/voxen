@@ -3,6 +3,7 @@
 #include <voxen/animation_timeline.h>
 #include <voxen/SceneClock.hpp>
 #include <voxen/Choreography.hpp>
+#include <voxen/AudioEnvelope.hpp>
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -35,6 +36,15 @@ int main() {
     analyzer.reset();
     assert(analyzer.analyze(nullptr, 0, 1, 48000).rms == 0.f);
 
+    animation::AudioEnvelope envelope;
+    animation::AudioFeatures loud;
+    loud.bass = 1.f;
+    const float attack = envelope.update(loud, 0.05, true).bass;
+    assert(attack > 0.f && attack < 1.f);
+    const float release = envelope.update(loud, 0.05, false).bass;
+    assert(release < attack && release > 0.f);
+    envelope.reset();
+    assert(envelope.current().bass == 0.f);
     animation::Choreography choreography;
     choreography.durationSeconds = 2.0;
     choreography.pingPong = true;
