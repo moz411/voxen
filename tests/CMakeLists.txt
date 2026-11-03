@@ -9,3 +9,11 @@ foreach(test_name IN ITEMS scene_ids_smoke scene_repository_smoke runtime_snapsh
     target_include_directories(${test_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../engine/audio/include)
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
+
+# Compile the decoder timeline on host as well; Android MediaCodec is guarded.
+add_executable(mp3_feature_timeline_smoke
+    ${CMAKE_CURRENT_SOURCE_DIR}/mp3_feature_timeline_smoke.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../engine/audio/src/Mp3FeatureTimeline.cpp)
+target_include_directories(mp3_feature_timeline_smoke PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../engine/audio/include)
+add_test(NAME mp3_feature_timeline_smoke COMMAND mp3_feature_timeline_smoke)
