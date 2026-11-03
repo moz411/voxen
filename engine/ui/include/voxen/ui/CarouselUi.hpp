@@ -106,6 +106,7 @@ struct CarouselState {
     bool collideRoomMesh = true;
     // Particle editor parameters are intentionally separate from legacy Voxen IDs.
     // No placement is allowed until the Vulkan emitter pipeline is implemented.
+    bool particlePaintEnabled = false;
     int particlePreset = 0; // 0 Smoke, 1 Snow, 2 Stars
     float particleDensity = 1.f;
     float particleLifetime = 4.f;
