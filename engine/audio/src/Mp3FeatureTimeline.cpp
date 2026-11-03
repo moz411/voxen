@@ -7,6 +7,8 @@
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaExtractor.h>
 #include <media/NdkMediaFormat.h>
+#include <android/log.h>
+#define FFTLOG(...) __android_log_print(ANDROID_LOG_INFO,"VoxenFFT",__VA_ARGS__)
 #endif
 
 namespace voxen::audio {
@@ -47,8 +49,10 @@ SpectrumFeatures Mp3FeatureTimeline::at(double seconds) const {
 void Mp3FeatureTimeline::decode(std::string path) {
 #ifdef __ANDROID__
     AMediaExtractor* extractor = AMediaExtractor_new();
-    if (!extractor) return;
-    if (AMediaExtractor_setDataSource(extractor, path.c_str()) != AMEDIA_OK) {
+    if (!extractor) { FFTLOG("extractor allocation failed"); return; }
+    const media_status_t sourceStatus = AMediaExtractor_setDataSource(extractor, path.c_str());
+    if (sourceStatus != AMEDIA_OK) {
+        FFTLOG("setDataSource failed status=%d path=%s",int(sourceStatus),path.c_str());
         AMediaExtractor_delete(extractor); return;
     }
     AMediaCodec* codec = nullptr;
@@ -72,13 +76,15 @@ void Mp3FeatureTimeline::decode(std::string path) {
         }
         if (format) AMediaFormat_delete(format);
     }
-    if (!codec) { AMediaExtractor_delete(extractor); return; }
+    if (!codec) { FFTLOG("no supported audio decoder for %s",path.c_str()); AMediaExtractor_delete(extractor); return; }
+    FFTLOG("decoder started rate=%d channels=%d",rate,channels);
     SpectrumAnalyzer analyzer;
     std::array<float, SpectrumAnalyzer::Window> window{};
     size_t filled = 0;
     uint64_t sampleIndex = 0;
     bool inputEnd = false, outputEnd = false;
     std::vector<Frame> result;
+    bool reportedOutput = false;
     // One feature point per 1024 samples (~21 ms at 48 kHz).
     // Cap analysis at two hours to bound memory for malformed media.
     const uint64_t maxSamples = static_cast<uint64_t>(rate) * 7200u;
@@ -120,6 +126,7 @@ void Mp3FeatureTimeline::decode(std::string path) {
                 AMediaFormat_getInt32(output, "pcm-encoding", &encoding);
                 AMediaFormat_delete(output);
             }
+            if (!reportedOutput) { FFTLOG("output encoding=%d size=%d offset=%d capacity=%zu channels=%d",encoding,info.size,info.offset,capacity,channels); reportedOutput=true; }
             if (data && encoding == 2 && info.offset >= 0 && info.size > 0 &&
                 static_cast<size_t>(info.offset) + static_cast<size_t>(info.size) <= capacity) {
                 const uint8_t* bytes = data + info.offset;
@@ -157,6 +164,7 @@ void Mp3FeatureTimeline::decode(std::string path) {
     AMediaCodec_stop(codec);
     AMediaCodec_delete(codec);
     AMediaExtractor_delete(extractor);
+    FFTLOG("decoder completed samples=%llu pending=%zu",static_cast<unsigned long long>(sampleIndex),result.size());
     if (!stopRequested_.load(std::memory_order_acquire) && !result.empty()) {
         std::lock_guard lock(mutex_);
         frames_.insert(frames_.end(), result.begin(), result.end());
