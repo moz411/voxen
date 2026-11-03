@@ -46,6 +46,23 @@ void drawCarousel(CarouselState& state) {
             }
             ImGui::EndTabItem();
             }
+            if(ImGui::BeginTabItem("PARTICLES")) {
+                static constexpr const char* particleNames[]={"SMOKE","SNOW","STARS"};
+                ImGui::TextDisabled("Open Brush-inspired emitters (renderer pending)");
+                for(int i=0;i<3;++i) {
+                    ImGui::PushID(i);
+                    if(ImGui::Selectable(particleNames[i],state.particlePreset==i))
+                        state.particlePreset=i;
+                    ImGui::PopID();
+                }
+                ImGui::Separator();
+                ImGui::SliderFloat("Particle density",&state.particleDensity,0.1f,2.f);
+                ImGui::SliderFloat("Particle lifetime (s)",&state.particleLifetime,0.5f,12.f);
+                ImGui::SliderFloat("Particle turbulence",&state.particleTurbulence,0.f,2.f);
+                ImGui::Checkbox("Particle FFT reaction",&state.particleAudioReactive);
+                ImGui::TextDisabled("Preview/placement disabled until Vulkan integration");
+                ImGui::EndTabItem();
+            }
             ImGui::EndTabBar();
             }
             ImGui::EndChild();
