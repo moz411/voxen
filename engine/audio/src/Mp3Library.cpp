@@ -126,4 +126,25 @@ void Mp3Library::update(int selection,bool playing,float volume){
     (void)selection;(void)playing;(void)volume;
 #endif
 }
+double Mp3Library::playbackSeconds() const noexcept {
+#ifdef __ANDROID__
+    if (!player_ || !wasPlaying_) return -1.0;
+    JNIEnv* env = envFor(vm_);
+    if (!env) return -1.0;
+    jclass cls = env->GetObjectClass(player_);
+    if (!cls) return -1.0;
+    jmethodID method = env->GetMethodID(cls, "getCurrentPosition", "()I");
+    if (!method || !check(env)) {
+        env->DeleteLocalRef(cls);
+        return -1.0;
+    }
+    const jint position = env->CallIntMethod(player_, method);
+    const bool ok = check(env);
+    env->DeleteLocalRef(cls);
+    return ok && position >= 0 ? static_cast<double>(position) / 1000.0 : -1.0;
+#else
+    return -1.0;
+#endif
+}
+
 }

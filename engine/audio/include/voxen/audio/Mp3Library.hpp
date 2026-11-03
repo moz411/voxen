@@ -13,6 +13,8 @@ public:
     void shutdown() noexcept;
     void refresh();
     void update(int selection,bool playing,float volume);
+    // Position of the active Android MediaPlayer in seconds; -1 if unavailable.
+    [[nodiscard]] double playbackSeconds() const noexcept;
     [[nodiscard]] const std::vector<std::string>& titles() const noexcept{return titles_;}
     [[nodiscard]] const std::string& error() const noexcept{return error_;}
 private:
