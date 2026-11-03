@@ -16,6 +16,7 @@ public:
     void update(int selection,bool playing,float volume);
     // Position of the active Android MediaPlayer in seconds; -1 if unavailable.
     [[nodiscard]] double playbackSeconds() const noexcept;
+    [[nodiscard]] bool analysisReady() const noexcept { return featureTimeline_.ready(); }
     [[nodiscard]] SpectrumFeatures currentFeatures() const {
         return wasPlaying_ ? featureTimeline_.at(playbackSeconds()) : SpectrumFeatures{};
     }
