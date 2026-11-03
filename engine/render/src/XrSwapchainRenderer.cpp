@@ -2293,9 +2293,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         };
         // Prototype emitters: deterministic animated procedural particles.
         // Uses existing Vulkan pipelines (cloud/sphere/spike) to avoid new
-        // shader dependencies. Presets 20..22 remain stable in scene storage.
+        // shader dependencies. Presets 20..26 remain stable in scene storage.
         auto drawEmitter=[&](const PlasmaVoxen& emitter){
-            const int count=std::clamp(int(24.f*emitter.density),8,48);
+            const int count=std::clamp(int(18.f*emitter.density),8,36);
             const float t=seconds*std::max(0.1f,emitter.speed);
             auto hash=[](float n){return std::sin(n*127.1f)*43758.5453f
                 -std::floor(std::sin(n*127.1f)*43758.5453f);};
@@ -2305,22 +2305,32 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 const float radius=std::sqrt(hash(id*2.3f))*emitter.scale*1.8f;
                 const float phase=hash(id*3.1f);
                 const float age=std::fmod(t*(emitter.preset==21?0.16f:0.11f)+phase,1.f);
+                const int kind=emitter.preset-20; // Smoke Snow Stars Embers Bubbles Fireflies Dust
                 PlasmaVoxen p=emitter;
-                p.preset=emitter.preset==20?9:(emitter.preset==21?4:6);
+                p.preset=kind==0?9:(kind==1||kind==4?4:6);
                 p.position[0]+=std::cos(a)*radius+std::sin(t*0.6f+id)*0.07f;
                 p.position[2]+=std::sin(a)*radius+std::cos(t*0.5f+id)*0.07f;
-                p.position[1]+=(emitter.preset==21 ? (1.f-age) : age)
-                    *emitter.scale*3.f;
-                p.scale=emitter.scale*(emitter.preset==20?0.24f:0.09f)
-                    *(emitter.preset==20?0.6f+age:1.f);
-                p.hue=emitter.preset==20?0.58f:(emitter.preset==21?0.56f:0.14f);
+                const float drift=std::sin(t*1.4f+id*2.7f);
+                const float height=(kind==1 ? (1.f-age) :
+                    kind==5 ? 0.45f+0.35f*drift :
+                    kind==6 ? 0.5f+0.3f*std::sin(t*0.7f+id) : age);
+                p.position[1]+=height*emitter.scale*3.f;
+                if(kind==4 || kind==5 || kind==6){
+                    p.position[0]+=drift*emitter.scale*0.55f;
+                    p.position[2]+=std::cos(t+id)*emitter.scale*0.35f;
+                }
+                p.scale=emitter.scale*(kind==0?0.24f:kind==4?0.16f:0.09f)
+                    *(kind==0?0.6f+age:kind==5?0.7f+0.5f*std::sin(t*3.f+id):1.f);
+                p.hue=kind==0?0.58f:kind==1?0.56f:kind==2?0.14f:
+                    kind==3?0.06f:kind==4?0.53f:kind==5?0.20f:
+                    emitter.hue+0.2f*std::sin(t+id);
                 p.density=std::max(0.3f,emitter.density);
                 p.material=0;
                 paintPlasma(p);
             }
         };
         for(const auto& v:voxens_) {
-            if(v.preset>=20 && v.preset<=22)drawEmitter(v);
+            if(v.preset>=20 && v.preset<=26)drawEmitter(v);
             else paintPlasma(v);
         }
         // Reuse the existing procedural GPU Spike Bloom pipeline (preset 6).
@@ -2388,7 +2398,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 std::clamp(imguiCarousel_.voxenMaterial,0,11) :
                 std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
             preview.lodLevel=1; // Stable medium LOD for Mandelbulb preview.
-            if(preview.preset>=20 && preview.preset<=22)drawEmitter(preview);
+            if(preview.preset>=20 && preview.preset<=26)drawEmitter(preview);
             else paintPlasma(preview);
         }
 
