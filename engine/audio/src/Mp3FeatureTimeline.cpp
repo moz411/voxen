@@ -31,7 +31,8 @@ SpectrumFeatures Mp3FeatureTimeline::at(double seconds) const {
     const auto it = std::lower_bound(frames_.begin(), frames_.end(), seconds,
         [](const Frame& f, double t) { return f.seconds < t; });
     if (it == frames_.begin()) return it->features;
-    if (it == frames_.end()) return frames_.back().features;
+    if (it == frames_.end())
+        return seconds - frames_.back().seconds < 0.10 ? frames_.back().features : SpectrumFeatures{};
     const auto& a = *(it - 1);
     const auto& b = *it;
     const float w = static_cast<float>(std::clamp((seconds - a.seconds) /
