@@ -168,6 +168,7 @@ add_library(voxen_engine STATIC
     $<$<BOOL:${VOXEN_WITH_GLB_IMPORT}>:${CMAKE_CURRENT_SOURCE_DIR}/render/src/GlbGpuPreview.cpp>
     audio/src/AmbientMusic.cpp
     audio/src/Mp3Library.cpp
+    audio/src/Mp3FeatureTimeline.cpp
     xr/src/XrContext.cpp
     xr/src/XrSession.cpp
     xr/src/MetaSceneProvider.cpp
@@ -189,7 +190,7 @@ target_include_directories(voxen_engine
 
 target_compile_definitions(voxen_engine PUBLIC XR_USE_GRAPHICS_API_VULKAN)
 if(ANDROID)
-    target_link_libraries(voxen_engine PUBLIC aaudio)
+    target_link_libraries(voxen_engine PUBLIC aaudio mediandk)
     target_compile_definitions(voxen_engine PUBLIC XR_USE_PLATFORM_ANDROID)
 elseif(WIN32)
     target_compile_definitions(voxen_engine PUBLIC XR_USE_PLATFORM_WIN32)
