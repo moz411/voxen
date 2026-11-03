@@ -8,6 +8,12 @@
 #include <media/NdkMediaExtractor.h>
 #include <media/NdkMediaFormat.h>
 #include <android/log.h>
+#include <cerrno>
+#include <climits>
+#include <cstring>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #define FFTLOG(...) __android_log_print(ANDROID_LOG_INFO,"VoxenFFT",__VA_ARGS__)
 #endif
 
@@ -50,11 +56,28 @@ void Mp3FeatureTimeline::decode(std::string path) {
 #ifdef __ANDROID__
     AMediaExtractor* extractor = AMediaExtractor_new();
     if (!extractor) { FFTLOG("extractor allocation failed"); return; }
-    const media_status_t sourceStatus = AMediaExtractor_setDataSource(extractor, path.c_str());
-    if (sourceStatus != AMEDIA_OK) {
-        FFTLOG("setDataSource failed status=%d path=%s",int(sourceStatus),path.c_str());
+    // MediaExtractor's path-based overload is not reliable for app-specific
+    // external storage on Quest. Open as the app and hand the fd to Android.
+    const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        FFTLOG("open MP3 failed errno=%d (%s) path=%s",errno,strerror(errno),path.c_str());
         AMediaExtractor_delete(extractor); return;
     }
+    struct stat st{};
+    if (fstat(fd, &st) != 0 || st.st_size <= 0) {
+        FFTLOG("MP3 fstat failed errno=%d size=%lld",errno,static_cast<long long>(st.st_size));
+        close(fd);
+        AMediaExtractor_delete(extractor); return;
+    }
+    const media_status_t sourceStatus =
+        AMediaExtractor_setDataSourceFd(extractor, fd, 0, static_cast<int64_t>(st.st_size));
+    close(fd); // Extractor retains its own reference after successful setup.
+    if (sourceStatus != AMEDIA_OK) {
+        FFTLOG("setDataSourceFd failed status=%d size=%lld path=%s",
+               int(sourceStatus),static_cast<long long>(st.st_size),path.c_str());
+        AMediaExtractor_delete(extractor); return;
+    }
+    FFTLOG("MP3 opened via fd size=%lld",static_cast<long long>(st.st_size));
     AMediaCodec* codec = nullptr;
     int32_t rate = 0, channels = 0;
     for (size_t i = 0; i < AMediaExtractor_getTrackCount(extractor); ++i) {
