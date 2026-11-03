@@ -75,6 +75,17 @@ struct CarouselState {
     bool musicRescan = false;
     std::vector<std::string> musicFiles;
     std::string musicError;
+    bool audioReactiveEnabled = true;
+    float audioReactiveSensitivity = 3.f;
+    bool audioReactiveSpeed = true;
+    bool audioReactiveHue = true;
+    bool audioReactiveDensity = true;
+    bool audioReactiveReady = false;
+    float audioReactiveRms = 0.f;
+    float audioReactiveBass = 0.f;
+    float audioReactiveMid = 0.f;
+    float audioReactiveTreble = 0.f;
+    float audioReactiveOnset = 0.f;
     bool visible = false; // Gallery startup has no carousel.
     bool liquidRoom = false;
     float liquidOpacity = 0.42f;
