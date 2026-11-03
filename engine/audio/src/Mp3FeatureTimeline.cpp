@@ -137,6 +137,14 @@ void Mp3FeatureTimeline::decode(std::stop_token token, std::string path) {
                         result.push_back({static_cast<double>(sampleIndex - window.size()/2) / rate,
                             analyzer.analyze(window.data(), window.size(), 1, rate)});
                         filled = 0;
+                        // Publish incrementally so playback reacts before the
+                        // entire MP3 has been decoded. Never wait for EOF.
+                        if (result.size() >= 256) {
+                            std::lock_guard lock(mutex_);
+                            frames_.insert(frames_.end(), result.begin(), result.end());
+                            result.clear();
+                            ready_.store(true, std::memory_order_release);
+                        }
                     }
                 }
             }
@@ -149,7 +157,7 @@ void Mp3FeatureTimeline::decode(std::stop_token token, std::string path) {
     AMediaExtractor_delete(extractor);
     if (!token.stop_requested() && !result.empty()) {
         std::lock_guard lock(mutex_);
-        frames_ = std::move(result);
+        frames_.insert(frames_.end(), result.begin(), result.end());
         ready_.store(true, std::memory_order_release);
     }
 #else
