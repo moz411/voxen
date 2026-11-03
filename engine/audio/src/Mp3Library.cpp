@@ -59,6 +59,7 @@ void Mp3Library::refresh(){
     selected_=-1;
 }
 void Mp3Library::shutdown() noexcept {
+    featureTimeline_.stop();
 #ifdef __ANDROID__
     JNIEnv* env=envFor(vm_);
     if(env&&player_){
@@ -108,6 +109,7 @@ void Mp3Library::update(int selection,bool playing,float volume){
         env->DeleteLocalRef(cls);
         if(!good){error_="MP3 could not be opened or decoded";shutdown();return;}
         selected_=selection;
+        featureTimeline_.start(paths_[selection]);
     }
     if(!player_)return;
     jclass cls=env->GetObjectClass(player_);

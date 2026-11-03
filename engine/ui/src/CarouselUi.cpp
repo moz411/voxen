@@ -287,6 +287,24 @@ void drawCarousel(CarouselState& state) {
             ImGui::SliderFloat("Music volume",&state.musicVolume,0.f,1.f);
             ImGui::TextDisabled(state.musicSource==0 ? "Procedural ambient loops" : "MP3 playlist / loop enabled");
             if(state.musicSource==0&&!state.musicReady)ImGui::TextDisabled("Audio output unavailable");
+            ImGui::Separator();
+            ImGui::TextUnformatted("AUDIO REACTIVE");
+            ImGui::Checkbox("Enable MP3 reactions",&state.audioReactiveEnabled);
+            if(state.musicSource!=1)ImGui::TextDisabled("Select MP3 FILES to analyze music");
+            ImGui::BeginDisabled(!state.audioReactiveEnabled || state.musicSource!=1);
+            ImGui::SliderFloat("Sensitivity",&state.audioReactiveSensitivity,0.f,12.f,"%.1fx");
+            ImGui::Checkbox("Animate speed (bass)",&state.audioReactiveSpeed);
+            ImGui::Checkbox("Animate hue (mid)",&state.audioReactiveHue);
+            ImGui::Checkbox("Animate density (RMS)",&state.audioReactiveDensity);
+            ImGui::EndDisabled();
+            if(state.musicSource==1 && state.musicPlaying && !state.audioReactiveReady)
+                ImGui::TextDisabled("Decoding MP3 / waiting for FFT...");
+            ImGui::TextDisabled("FFT levels (before sensitivity)");
+            ImGui::ProgressBar(std::clamp(state.audioReactiveBass*12.f,0.f,1.f),ImVec2(-1,0),"Bass");
+            ImGui::ProgressBar(std::clamp(state.audioReactiveMid*12.f,0.f,1.f),ImVec2(-1,0),"Mid");
+            ImGui::ProgressBar(std::clamp(state.audioReactiveTreble*12.f,0.f,1.f),ImVec2(-1,0),"Treble");
+            ImGui::ProgressBar(std::clamp(state.audioReactiveRms*3.f,0.f,1.f),ImVec2(-1,0),"RMS");
+
             break;
         }
         case 3: {

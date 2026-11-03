@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <voxen/audio/Mp3FeatureTimeline.hpp>
 #include <vector>
 #ifdef __ANDROID__
 #include <jni.h>
@@ -15,6 +16,10 @@ public:
     void update(int selection,bool playing,float volume);
     // Position of the active Android MediaPlayer in seconds; -1 if unavailable.
     [[nodiscard]] double playbackSeconds() const noexcept;
+    [[nodiscard]] bool analysisReady() const noexcept { return featureTimeline_.ready(); }
+    [[nodiscard]] SpectrumFeatures currentFeatures() const {
+        return wasPlaying_ ? featureTimeline_.at(playbackSeconds()) : SpectrumFeatures{};
+    }
     [[nodiscard]] const std::vector<std::string>& titles() const noexcept{return titles_;}
     [[nodiscard]] const std::string& error() const noexcept{return error_;}
 private:
@@ -22,6 +27,7 @@ private:
     JavaVM* vm_=nullptr;
     jobject player_=nullptr; // GlobalRef to android.media.MediaPlayer
 #endif
+    Mp3FeatureTimeline featureTimeline_;
     std::vector<std::string> paths_,titles_;
     std::string error_;
     int selected_=-1;
