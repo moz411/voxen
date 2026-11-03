@@ -12,7 +12,7 @@
 namespace voxen::audio {
 void Mp3FeatureTimeline::stop() {
     if (worker_.joinable()) {
-        worker_.request_stop();
+        stopRequested_.store(true, std::memory_order_release);
         worker_.join();
     }
     std::lock_guard lock(mutex_);
@@ -22,7 +22,8 @@ void Mp3FeatureTimeline::stop() {
 void Mp3FeatureTimeline::start(const std::string& path) {
     stop();
     if (path.empty()) return;
-    worker_ = std::jthread([this, path](std::stop_token token) { decode(token, path); });
+    stopRequested_.store(false, std::memory_order_release);
+    worker_ = std::thread([this, path] { decode(path); });
 }
 SpectrumFeatures Mp3FeatureTimeline::at(double seconds) const {
     if (!ready_.load(std::memory_order_acquire) || !std::isfinite(seconds) || seconds < 0.0) return {};
@@ -43,7 +44,7 @@ SpectrumFeatures Mp3FeatureTimeline::at(double seconds) const {
             a.features.treble + (b.features.treble - a.features.treble) * w,
             a.features.onset + (b.features.onset - a.features.onset) * w};
 }
-void Mp3FeatureTimeline::decode(std::stop_token token, std::string path) {
+void Mp3FeatureTimeline::decode(std::string path) {
 #ifdef __ANDROID__
     AMediaExtractor* extractor = AMediaExtractor_new();
     if (!extractor) return;
@@ -81,7 +82,7 @@ void Mp3FeatureTimeline::decode(std::stop_token token, std::string path) {
     // One feature point per 1024 samples (~21 ms at 48 kHz).
     // Cap analysis at two hours to bound memory for malformed media.
     const uint64_t maxSamples = static_cast<uint64_t>(rate) * 7200u;
-    while (!token.stop_requested() && !outputEnd && sampleIndex < maxSamples) {
+    while (!stopRequested_.load(std::memory_order_acquire) && !outputEnd && sampleIndex < maxSamples) {
         if (!inputEnd) {
             const ssize_t index = AMediaCodec_dequeueInputBuffer(codec, 1000);
             if (index >= 0) {
@@ -162,7 +163,7 @@ void Mp3FeatureTimeline::decode(std::stop_token token, std::string path) {
         ready_.store(true, std::memory_order_release);
     }
 #else
-    (void)token; (void)path;
+    (void)path;
 #endif
 }
 } // namespace voxen::audio
