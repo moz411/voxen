@@ -22,10 +22,11 @@ public:
     [[nodiscard]] bool ready() const noexcept { return ready_.load(); }
 private:
     struct Frame { double seconds; SpectrumFeatures features; };
-    void decode(std::stop_token token, std::string path);
+    void decode(std::string path);
     mutable std::mutex mutex_;
     std::vector<Frame> frames_;
-    std::jthread worker_;
+    std::thread worker_;
+    std::atomic<bool> stopRequested_{false};
     std::atomic<bool> ready_{false};
 };
 } // namespace voxen::audio
