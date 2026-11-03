@@ -49,9 +49,9 @@ void drawCarousel(CarouselState& state) {
             ImGui::EndTabItem();
             }
             if(ImGui::BeginTabItem("PARTICLES")) {
-                static constexpr const char* particleNames[]={"SMOKE","SNOW","STARS"};
+                static constexpr const char* particleNames[]={"SMOKE","SNOW","STARS","EMBERS","BUBBLES","FIREFLIES","MAGIC DUST"};
                 ImGui::TextDisabled("Open Brush-inspired emitters (renderer pending)");
-                for(int i=0;i<3;++i) {
+                for(int i=0;i<7;++i) {
                     ImGui::PushID(i);
                     if(ImGui::Selectable(particleNames[i],state.particlePaintEnabled && state.particlePreset==i)) {
                         state.particlePreset=i;
