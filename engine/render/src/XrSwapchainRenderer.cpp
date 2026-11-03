@@ -2221,8 +2221,21 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     // The expensive decode/FFT runs off the XR render thread; Vulkan only
     // receives a few scalar modulation values in existing push constants.
     const auto musicFeatures = mp3Library_.currentFeatures();
-    const float musicPulse = std::clamp(musicFeatures.rms * 2.5f, 0.f, 0.35f);
-    const float musicBass = std::clamp(musicFeatures.bass * 8.f, 0.f, 0.25f);
+    float musicPulse = 0.f, musicBass = 0.f, musicMid = 0.f;
+#ifdef VOXEN_WITH_IMGUI
+    const bool reactive = imguiCarousel_.audioReactiveEnabled &&
+        imguiCarousel_.musicSource == 1 && imguiCarousel_.musicPlaying &&
+        mp3Library_.analysisReady();
+    const float sensitivity = std::clamp(imguiCarousel_.audioReactiveSensitivity,0.f,12.f);
+    if(reactive) {
+        if(imguiCarousel_.audioReactiveDensity)
+            musicPulse = std::clamp(musicFeatures.rms * sensitivity,0.f,0.5f);
+        if(imguiCarousel_.audioReactiveSpeed)
+            musicBass = std::clamp(musicFeatures.bass * sensitivity * 4.f,0.f,0.8f);
+        if(imguiCarousel_.audioReactiveHue)
+            musicMid = std::clamp(musicFeatures.mid * sensitivity * 4.f,0.f,0.5f);
+    }
+#endif
     // Render each preset independently: one unavailable effect must not
     // suppress every other Voxen in the scene.
     {
@@ -2244,7 +2257,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             // For Mandelbulbs, pack material into the otherwise unchanged float slot.
             // Density remains in [0.3,2.0], while material uses multiples of 4.
             const float packedDensity=v.preset==2 ? v.density+4.0f*float(v.material) : v.density;
-            ProceduralPushConstants pc{mvp,{seconds,v.speed*(1.f+musicBass),v.hue+(v.preset>=4?float(v.material):0.f)+musicPulse*0.08f,v.preset>=4 ? std::clamp(v.density*0.20f+musicPulse*0.12f,0.06f,0.40f) : packedDensity}};
+            ProceduralPushConstants pc{mvp,{seconds,v.speed*(1.f+musicBass),v.hue+(v.preset>=4?float(v.material):0.f)+musicMid*0.12f,v.preset>=4 ? std::clamp(v.density*0.20f+musicPulse*0.12f,0.06f,0.40f) : packedDensity}};
             const bool flatSurface=(v.preset==0 || v.preset==1 || v.preset>=12);
             if(flatSurface) {
                 VolumePushConstants volume{};
@@ -3072,6 +3085,14 @@ void XrSwapchainRenderer::render(
                       static_cast<std::uint64_t>(imguiCarousel_.backgroundTargetSurface))
                 ==imguiCarousel_.detectedSurfaceIds.end())
             imguiCarousel_.backgroundTargetSurface=-1;
+        const auto fft = mp3Library_.currentFeatures();
+        const bool fftPlaying = imguiCarousel_.musicSource==1 && imguiCarousel_.musicPlaying;
+        imguiCarousel_.audioReactiveReady = fftPlaying && mp3Library_.analysisReady();
+        imguiCarousel_.audioReactiveRms = fftPlaying ? fft.rms : 0.f;
+        imguiCarousel_.audioReactiveBass = fftPlaying ? fft.bass : 0.f;
+        imguiCarousel_.audioReactiveMid = fftPlaying ? fft.mid : 0.f;
+        imguiCarousel_.audioReactiveTreble = fftPlaying ? fft.treble : 0.f;
+        imguiCarousel_.audioReactiveOnset = fftPlaying ? fft.onset : 0.f;
         imguiCarousel_.musicFiles=mp3Library_.titles();
         imguiCarousel_.musicError=mp3Library_.error();
         imguiCarousel_.savedSceneIds=sceneIds_;
