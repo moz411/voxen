@@ -1703,14 +1703,16 @@ void XrSwapchainRenderer::updateControllerInteraction(
             -2.f*(q.y*q.z-q.w*q.x),
             -(1.f-2.f*(q.x*q.x+q.y*q.y))};
         PlasmaVoxen v;
-        v.preset=imguiCarousel_.voxenPreset;
+        v.preset=imguiCarousel_.particlePaintEnabled
+            ? 20+imguiCarousel_.particlePreset : imguiCarousel_.voxenPreset;
         v.flatVolume=imguiCarousel_.flatVoxenVolume;
         v.position={pose.position.x+0.25f*dir[0],
                     pose.position.y+0.25f*dir[1],
                     pose.position.z+0.25f*dir[2]};
         v.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
         v.hue=imguiCarousel_.voxenHue;
-        v.density=imguiCarousel_.voxenDensity;
+        v.density=imguiCarousel_.particlePaintEnabled
+            ? imguiCarousel_.particleDensity : imguiCarousel_.voxenDensity;
         v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,11) :
             std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
         v.speed=imguiCarousel_.voxenSpeed;
@@ -2289,7 +2291,38 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 vkCmdDraw(commandBuffer_,vertices,1,0,0);
             }
         };
-        for(const auto& v:voxens_)paintPlasma(v);
+        // Prototype emitters: deterministic animated procedural particles.
+        // Uses existing Vulkan pipelines (cloud/sphere/spike) to avoid new
+        // shader dependencies. Presets 20..22 remain stable in scene storage.
+        auto drawEmitter=[&](const PlasmaVoxen& emitter){
+            const int count=std::clamp(int(24.f*emitter.density),8,48);
+            const float t=seconds*std::max(0.1f,emitter.speed);
+            auto hash=[](float n){return std::sin(n*127.1f)*43758.5453f
+                -std::floor(std::sin(n*127.1f)*43758.5453f);};
+            for(int i=0;i<count;++i){
+                const float id=float(i+1);
+                const float a=hash(id*1.7f)*6.2831853f;
+                const float radius=std::sqrt(hash(id*2.3f))*emitter.scale*1.8f;
+                const float phase=hash(id*3.1f);
+                const float age=std::fmod(t*(emitter.preset==21?0.16f:0.11f)+phase,1.f);
+                PlasmaVoxen p=emitter;
+                p.preset=emitter.preset==20?9:(emitter.preset==21?4:6);
+                p.position[0]+=std::cos(a)*radius+std::sin(t*0.6f+id)*0.07f;
+                p.position[2]+=std::sin(a)*radius+std::cos(t*0.5f+id)*0.07f;
+                p.position[1]+=(emitter.preset==21 ? (1.f-age) : age)
+                    *emitter.scale*3.f;
+                p.scale=emitter.scale*(emitter.preset==20?0.24f:0.09f)
+                    *(emitter.preset==20?0.6f+age:1.f);
+                p.hue=emitter.preset==20?0.58f:(emitter.preset==21?0.56f:0.14f);
+                p.density=std::max(0.3f,emitter.density);
+                p.material=0;
+                paintPlasma(p);
+            }
+        };
+        for(const auto& v:voxens_) {
+            if(v.preset>=20 && v.preset<=22)drawEmitter(v);
+            else paintPlasma(v);
+        }
         // Reuse the existing procedural GPU Spike Bloom pipeline (preset 6).
         // Loaded miniature spike ball follows each tracked index tip.
         if(immersiveSceneActive_ && !editingMode()) {
@@ -2340,20 +2373,23 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const float dy=-2.f*(q.y*q.z-q.w*q.x);
             const float dz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
             PlasmaVoxen preview;
-            preview.preset=imguiCarousel_.voxenPreset;
+            preview.preset=imguiCarousel_.particlePaintEnabled
+                ? 20+imguiCarousel_.particlePreset : imguiCarousel_.voxenPreset;
             preview.flatVolume=imguiCarousel_.flatVoxenVolume;
             preview.position={pose.position.x+0.25f*dx,
                               pose.position.y+0.25f*dy,
                               pose.position.z+0.25f*dz};
             preview.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
             preview.hue=imguiCarousel_.voxenHue;
-            preview.density=imguiCarousel_.voxenDensity;
+            preview.density=imguiCarousel_.particlePaintEnabled
+                ? imguiCarousel_.particleDensity : imguiCarousel_.voxenDensity;
             preview.speed=imguiCarousel_.voxenSpeed;
             preview.material=preview.preset>=4 ?
                 std::clamp(imguiCarousel_.voxenMaterial,0,11) :
                 std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
             preview.lodLevel=1; // Stable medium LOD for Mandelbulb preview.
-            paintPlasma(preview);
+            if(preview.preset>=20 && preview.preset<=22)drawEmitter(preview);
+            else paintPlasma(preview);
         }
 
 #endif
