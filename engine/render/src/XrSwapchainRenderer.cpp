@@ -2217,6 +2217,12 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 drawSegment(hand.joints[knuckles[i]],hand.joints[knuckles[i+1]],0.014f);
         }
     }
+    // Sample the decoded MP3 timeline at MediaPlayer's actual playback time.
+    // The expensive decode/FFT runs off the XR render thread; Vulkan only
+    // receives a few scalar modulation values in existing push constants.
+    const auto musicFeatures = mp3Library_.currentFeatures();
+    const float musicPulse = std::clamp(musicFeatures.rms * 2.5f, 0.f, 0.35f);
+    const float musicBass = std::clamp(musicFeatures.bass * 8.f, 0.f, 0.25f);
     // Render each preset independently: one unavailable effect must not
     // suppress every other Voxen in the scene.
     {
@@ -2238,7 +2244,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             // For Mandelbulbs, pack material into the otherwise unchanged float slot.
             // Density remains in [0.3,2.0], while material uses multiples of 4.
             const float packedDensity=v.preset==2 ? v.density+4.0f*float(v.material) : v.density;
-            ProceduralPushConstants pc{mvp,{seconds,v.speed,v.hue+(v.preset>=4?float(v.material):0.f),v.preset>=4 ? std::clamp(v.density*0.20f,0.06f,0.40f) : packedDensity}};
+            ProceduralPushConstants pc{mvp,{seconds,v.speed*(1.f+musicBass),v.hue+(v.preset>=4?float(v.material):0.f)+musicPulse*0.08f,v.preset>=4 ? std::clamp(v.density*0.20f+musicPulse*0.12f,0.06f,0.40f) : packedDensity}};
             const bool flatSurface=(v.preset==0 || v.preset==1 || v.preset>=12);
             if(flatSurface) {
                 VolumePushConstants volume{};
