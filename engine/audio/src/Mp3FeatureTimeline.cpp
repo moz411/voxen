@@ -157,7 +157,7 @@ void Mp3FeatureTimeline::decode(std::string path) {
     AMediaCodec_stop(codec);
     AMediaCodec_delete(codec);
     AMediaExtractor_delete(extractor);
-    if (!token.stop_requested() && !result.empty()) {
+    if (!stopRequested_.load(std::memory_order_acquire) && !result.empty()) {
         std::lock_guard lock(mutex_);
         frames_.insert(frames_.end(), result.begin(), result.end());
         ready_.store(true, std::memory_order_release);
