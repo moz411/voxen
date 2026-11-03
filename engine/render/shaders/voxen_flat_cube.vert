@@ -59,6 +59,11 @@ void main() {
         if(face<2)uv=pos.xy*2.0;
         else if(face<4)uv=pos.xz*2.0;
         else uv=pos.zy*2.0;
+        // Flat effects were authored for a circular [-1,1] billboard and
+        // several discard fragments outside radius ~1. A full-size square
+        // face therefore loses its corners (or most of the surface for
+        // more restrictive masks). Fit the complete face inside that disc.
+        uv*=0.68;
     }
     gl_Position=pc.mvp*vec4(pos,1.0);
 }
