@@ -1374,7 +1374,7 @@ void XrSwapchainRenderer::createPipeline() {
         if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &galleryCylinderPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &galleryCylinderPipeline_ || &out == &galleryCylinderMatrixPipeline_ || &out == &galleryCylinderOceanPipeline_ || &out == &galleryCylinderLiquidPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -1468,6 +1468,9 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
     buildPipeline(fractalVert, fractalVertSize, galleryPortalFrag, galleryPortalFragSize, galleryPortalPipeline_);
     buildPipeline(galleryCylinderVert, galleryCylinderVertSize, galleryCylinderFrag, galleryCylinderFragSize, galleryCylinderPipeline_);
+    buildPipeline(galleryCylinderVert, galleryCylinderVertSize, matrixRainFrag, matrixRainFragSize, galleryCylinderMatrixPipeline_);
+    buildPipeline(galleryCylinderVert, galleryCylinderVertSize, oceanWavesFrag, oceanWavesFragSize, galleryCylinderOceanPipeline_);
+    buildPipeline(galleryCylinderVert, galleryCylinderVertSize, liquidRoomFrag, liquidRoomFragSize, galleryCylinderLiquidPipeline_);
     buildPipeline(cubeVert, cubeVertSize, mechanicalCannonFrag, mechanicalCannonFragSize, mechanicalCannonPipeline_);
 #ifdef VOXEN_WITH_IMGUI
     buildPipeline(fractalVert, fractalVertSize, imguiPanelFrag, imguiPanelFragSize, imguiPanelPipeline_);
@@ -2160,7 +2163,16 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const float shaderPreset=p.surface.kind==voxen::gallery::PortalSurfaceKind::Procedural
                 ? float(p.surface.proceduralShaderMode) : preset;
             const float selected=(selectedPortalId_ && p.id==*selectedPortalId_) ? 1.5f : 1.f;
-            ProceduralPushConstants pc{mvp,{seconds,selected,shaderPreset,
+            const bool useBackground=p.surface.kind==voxen::gallery::PortalSurfaceKind::Procedural;
+            const int shaderMode=((p.surface.proceduralShaderMode%3)+3)%3;
+            VkPipeline pipeline=galleryCylinderPipeline_;
+            if(useBackground) {
+                pipeline=shaderMode==0?galleryCylinderMatrixPipeline_:
+                    shaderMode==1?galleryCylinderOceanPipeline_:galleryCylinderLiquidPipeline_;
+            }
+            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);
+            ProceduralPushConstants pc{mvp,{seconds,useBackground?1.f:selected,
+                useBackground?1.f:shaderPreset,
                 float(static_cast<int>(p.surface.kind))}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -3720,6 +3732,9 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (carouselPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,carouselPipeline_,nullptr); carouselPipeline_=VK_NULL_HANDLE; }
     if (galleryPortalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryPortalPipeline_,nullptr); galleryPortalPipeline_=VK_NULL_HANDLE; }
     if (galleryCylinderPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderPipeline_,nullptr); galleryCylinderPipeline_=VK_NULL_HANDLE; }
+    if (galleryCylinderMatrixPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderMatrixPipeline_,nullptr); galleryCylinderMatrixPipeline_=VK_NULL_HANDLE; }
+    if (galleryCylinderOceanPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderOceanPipeline_,nullptr); galleryCylinderOceanPipeline_=VK_NULL_HANDLE; }
+    if (galleryCylinderLiquidPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderLiquidPipeline_,nullptr); galleryCylinderLiquidPipeline_=VK_NULL_HANDLE; }
     if (mechanicalCannonPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,mechanicalCannonPipeline_,nullptr); mechanicalCannonPipeline_=VK_NULL_HANDLE; }
 #ifdef VOXEN_WITH_IMGUI
     if (imguiPanelPipeline_ != VK_NULL_HANDLE) {vkDestroyPipeline(device_,imguiPanelPipeline_,nullptr);imguiPanelPipeline_=VK_NULL_HANDLE;}
