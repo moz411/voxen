@@ -87,6 +87,7 @@
 #include "mandelbrotZoomFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "galleryPortalFrag.spv.hpp"
+#include <voxen/scene/PortalCylinderInteraction.hpp>
 #include "mechanicalCannonFrag.spv.hpp"
 #include "imguiPanelFrag.spv.hpp"
 #include "panoramaVert.spv.hpp"
@@ -439,8 +440,8 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         else {
             const auto& pos=it->localPose.positionMeters;
             const float x=headPosition.x-pos[0],y=headPosition.y-pos[1],z=headPosition.z-pos[2];
-            const float rearmRadius=0.42f*std::clamp(it->scale,0.1f,4.f);
-            if(x*x+y*y+z*z>rearmRadius*rearmRadius) {
+            const float rearmRadius=0.57f*std::clamp(it->scale,0.1f,4.f);
+            if(x*x+z*z>rearmRadius*rearmRadius || std::abs(y)>1.0f*std::clamp(it->scale,0.1f,4.f)) {
                 suppressedPortalId_.reset();
                 galleryEntryCandidate_.reset();
 #ifdef __ANDROID__
@@ -456,8 +457,8 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         if(it==portals.end()) { leaveImmersiveScene(); return; }
         const auto& p=it->localPose.positionMeters;
         const float dx=headPosition.x-p[0],dy=headPosition.y-p[1],dz=headPosition.z-p[2];
-        const float radius=0.30f*std::clamp(it->scale,0.1f,4.f);
-        if(dx*dx+dy*dy+dz*dz<=radius*radius) {
+        if(voxen::gallery::insidePortalCylinder(it->localPose,it->scale,
+                {headPosition.x,headPosition.y,headPosition.z},0.46f,0.88f)) {
             galleryExitSince_={};
             return;
         }
@@ -476,9 +477,9 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         if(suppressedPortalId_ && portal.id==*suppressedPortalId_)continue;
         const auto& p=portal.localPose.positionMeters;
         const float dx=headPosition.x-p[0],dy=headPosition.y-p[1],dz=headPosition.z-p[2];
-        const float d2=dx*dx+dy*dy+dz*dz;
-        const float radius=0.25f*std::clamp(portal.scale,0.1f,4.f);
-        if(d2<radius*radius && d2<bestDistance2) {
+        const float d2=dx*dx+dz*dz;
+        if(voxen::gallery::insidePortalCylinder(portal.localPose,portal.scale,
+                {headPosition.x,headPosition.y,headPosition.z}) && d2<bestDistance2) {
             inside=&portal;
             bestDistance2=d2;
         }
