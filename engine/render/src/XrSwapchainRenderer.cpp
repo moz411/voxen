@@ -3168,7 +3168,46 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.sceneImmersive=immersiveSceneActive_;
         imguiCarousel_.visiblePortalCount=visibleGalleryPortals().size();
         imguiCarousel_.scenePortalSelected=selectedPortalId_.has_value();
+        // The saved-scenes selection owns the cylinder options: no second
+        // selection gesture is required when there is a matching placement.
+        if(portalManager_ && imguiCarousel_.selectedScene>=0 &&
+           static_cast<std::size_t>(imguiCarousel_.selectedScene)<sceneIds_.size()) {
+            const auto portals=portalManager_->visible();
+            const auto& sceneId=sceneIds_[imguiCarousel_.selectedScene];
+            const auto it=std::find_if(portals.begin(),portals.end(),
+                [&](const voxen::gallery::VisiblePortal& p){return p.sceneId==sceneId;});
+            if(it!=portals.end()) {
+                selectedPortalId_=it->id;
+                imguiCarousel_.scenePortalSelected=true;
+            } else imguiCarousel_.scenePortalSelected=false;
+        }
         voxen::ui::drawCarousel(imguiCarousel_);
+        if(portalManager_ && selectedPortalId_) {
+            if(imguiCarousel_.sceneSurfaceApply) {
+                imguiCarousel_.sceneSurfaceApply=false;
+                voxen::gallery::PortalSurface surface;
+                surface.kind=static_cast<voxen::gallery::PortalSurfaceKind>(
+                    std::clamp(imguiCarousel_.sceneSurfaceKind,0,2));
+                surface.proceduralShaderMode=imguiCarousel_.sceneProceduralMode;
+                if(surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
+                   imguiCarousel_.scenePictureIndex>=0 &&
+                   static_cast<std::size_t>(imguiCarousel_.scenePictureIndex)<imguiCarousel_.panoramaFiles.size())
+                    surface.pictureFilename=imguiCarousel_.panoramaFiles[imguiCarousel_.scenePictureIndex];
+                imguiCarousel_.sceneStatus=portalManager_->setSurface(*selectedPortalId_,surface)
+                    ?"Cylinder surface saved":"Cannot save cylinder surface";
+            }
+            if(imguiCarousel_.sceneAudioApply) {
+                imguiCarousel_.sceneAudioApply=false;
+                voxen::gallery::PortalAudio audio;
+                audio.audibleRadiusMeters=imguiCarousel_.sceneAudioRadius;
+                audio.gain=imguiCarousel_.sceneAudioGain;
+                const int idx=imguiCarousel_.sceneAudioIndex-1;
+                if(idx>=0 && static_cast<std::size_t>(idx)<imguiCarousel_.musicFiles.size())
+                    audio.filename=imguiCarousel_.musicFiles[idx];
+                imguiCarousel_.sceneStatus=portalManager_->setAudio(*selectedPortalId_,audio)
+                    ?"Cylinder audio saved":"Cannot save cylinder audio";
+            }
+        }
 #ifdef VOXEN_WITH_GLB_IMPORT
         if(imguiCarousel_.voxenPaintEnabled && glbPreview_)glbPreview_=false;
 #endif
