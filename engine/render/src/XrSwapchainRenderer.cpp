@@ -1915,17 +1915,17 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     if ((liquidEnabled || hasExplicitWallShader) &&
         (hasExplicitWallShader || wallShaderMode!=0 || liquidOpacity>0.001f) &&
         liquidRoomPipeline_ != VK_NULL_HANDLE && solidWallPipeline_ != VK_NULL_HANDLE && matrixRainPipeline_ != VK_NULL_HANDLE && heppGlowPipeline_ != VK_NULL_HANDLE && phiFieldPipeline_ != VK_NULL_HANDLE && soundDemoPipeline_ != VK_NULL_HANDLE && midnightRidePipeline_ != VK_NULL_HANDLE && rainbowSpiralPipeline_ != VK_NULL_HANDLE && mobiusSpiralPipeline_ != VK_NULL_HANDLE && thereminWavePipeline_ != VK_NULL_HANDLE && geometricKaleidoscopePipeline_ != VK_NULL_HANDLE && mandelbrotZoomPipeline_ != VK_NULL_HANDLE && chromaticEdgesPipeline_ != VK_NULL_HANDLE && cosmicPalettePipeline_ != VK_NULL_HANDLE && synthwaveSunsetPipeline_ != VK_NULL_HANDLE && oceanWavesPipeline_ != VK_NULL_HANDLE && universeWithinPipeline_ != VK_NULL_HANDLE && cyberCityPipeline_ != VK_NULL_HANDLE && voronoiFallPipeline_ != VK_NULL_HANDLE && tanGlitchPipeline_ != VK_NULL_HANDLE) {
-        // Stable slots are based on scene anchor IDs, not eye-specific
-        // distance ordering. Both eyes therefore show the same effect per wall.
-        std::vector<uint64_t> shaderIds;
-        for(const auto& candidate:environmentSurfaces_.surfaces()) {
-            if(candidate.tracked && candidate.classification!=voxen::scene::SurfaceClass::Unknown)
-                shaderIds.push_back(candidate.id);
+        // One slideshow shader shared by all unassigned surfaces and both eyes.
+        // Keep solid diagnostic out of the rotation.
+        constexpr int demoModes[]={0,2,3,4,5,6,7,10,11,12,13,14,15,16,17,19,20,21,22};
+        constexpr int modeCount=static_cast<int>(sizeof(demoModes)/sizeof(demoModes[0]));
+        int slideshowMode=wallShaderMode;
+        if(cycleWallShaders) {
+            const auto first=std::find(std::begin(demoModes),std::end(demoModes),wallShaderMode);
+            const int start=first==std::end(demoModes)?0:static_cast<int>(first-std::begin(demoModes));
+            const auto step=static_cast<std::uint64_t>(std::floor(seconds / wallCycleSeconds));
+            slideshowMode=demoModes[(start+static_cast<int>(step%modeCount))%modeCount];
         }
-        std::sort(shaderIds.begin(),shaderIds.end());
-        shaderIds.erase(std::unique(shaderIds.begin(),shaderIds.end()),shaderIds.end());
-        const int cycleStep=static_cast<int>(std::floor(seconds / wallCycleSeconds));
-        constexpr int demoModes[]={0,2,3,4,5,6,7,10,11,12,13,14,15,16,17,19,20,21,22}; // omit solid diagnostic
         auto choosePipeline=[&](int mode)->VkPipeline {
             switch(mode){
                 case 1:return solidWallPipeline_;
@@ -2011,11 +2011,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         }
         for(const auto* surface:selected) {
             int activeMode=wallShaderMode;
-            if(cycleWallShaders){
-                auto it=std::lower_bound(shaderIds.begin(),shaderIds.end(),surface->id);
-                const auto rank=static_cast<int>(it-shaderIds.begin());
-                activeMode=demoModes[(rank+cycleStep)%19];
-            }
+            if(cycleWallShaders) activeMode=slideshowMode;
             // Explicit per-surface shader overrides the global/cycling mode.
             const auto assignment=imguiCarousel_.surfaceMedia.find(surface->id);
             if(assignment!=imguiCarousel_.surfaceMedia.end()) {
@@ -2041,9 +2037,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             vkCmdDraw(commandBuffer_,6,1,0,0);
             wallRendered=true;
         }
-        if(liquidEnabled && !wallRendered && !cycleWallShaders && wallShaderMode==0 &&
-           !hasExplicitWallShader) {
-            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,liquidRoomPipeline_);
+        if(liquidEnabled && !wallRendered && !hasExplicitWallShader) {
+            const int fallbackMode=cycleWallShaders?slideshowMode:wallShaderMode;
+            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,choosePipeline(fallbackMode));
             const Mat4 planeMvp=multiply(projView,
                 modelMatrix(0.0F,-0.35F,0.65F,-2.25F,0.0F));
             ProceduralPushConstants liquid{planeMvp,{seconds,globalSpeed,1.0F,liquidOpacity}};
