@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -51,18 +52,18 @@ inline bool valid(const SavedRuntime& r) {
        r.panoramaHorizontalDegrees < 60.f || r.panoramaHorizontalDegrees > 360.f ||
        r.panoramaVerticalDegrees < 30.f || r.panoramaVerticalDegrees > 180.f)
         return false;
-    if (r.sceneKind<0 || r.sceneKind>1 || r.voxens.size()>256 || r.musicSource<0 || r.musicSource>1 ||
+    if (r.sceneKind<0 || r.sceneKind>1 || r.voxens.size()>4096 || r.musicSource<0 || r.musicSource>1 ||
         r.musicTrack<0 || r.musicTrack>2 || r.musicFile<0 ||
         !std::isfinite(r.musicVolume) || r.musicVolume<0 || r.musicVolume>1 ||
-        r.motionMode<0 || r.motionMode>2 ||
+        r.motionMode<0 || r.motionMode>255 ||
         !std::isfinite(r.orbitRadius) || r.orbitRadius<0.4f || r.orbitRadius>5.f ||
         !std::isfinite(r.orbitSpeed) || r.orbitSpeed<0.1f || r.orbitSpeed>3.f ||
         !std::isfinite(r.liquidOpacity) || r.liquidOpacity<0 || r.liquidOpacity>1 ||
-        r.wallShaderMode<0 || r.wallShaderMode>9 ||
+        r.wallShaderMode<0 || r.wallShaderMode>255 ||
         !std::isfinite(r.wallCycleSeconds) || r.wallCycleSeconds<1 || r.wallCycleSeconds>300 ||
         !std::isfinite(r.motionBounce) || r.motionBounce<0 || r.motionBounce>1) return false;
     for (const auto& v:r.voxens) {
-        if (v.preset<0 || v.preset>11 || v.material<0 || v.material>8 ||
+        if (v.preset<0 || v.preset>4095 || v.material<0 || v.material>4095 ||
             !std::isfinite(v.scale) || v.scale<=0 || v.scale>10 ||
             !std::isfinite(v.hue) || !std::isfinite(v.density) || !std::isfinite(v.speed) ||
             v.hue<0 || v.hue>1 || v.density<=0 || v.density>10 || v.speed<=0 || v.speed>10) return false;
@@ -70,6 +71,46 @@ inline bool valid(const SavedRuntime& r) {
         for(float x:v.velocity) if(!std::isfinite(x)) return false;
     }
     return true;
+}
+// Normalize live editor state before persistence. Rendering presets evolve faster
+// than the snapshot format; a malformed setting must not invalidate an entire scene.
+inline bool sanitizeForSave(SavedRuntime& r) {
+    if (r.voxens.size()>4096) return false;
+    auto finiteOr=[](float value,float fallback) {
+        return std::isfinite(value) ? value : fallback;
+    };
+    // Invalid paths are not persisted; a missing panorama is preferable to data loss.
+    if (r.panoramaFile.size()>128 || r.panoramaFile.find('/')!=std::string::npos ||
+        r.panoramaFile.find('\\\\')!=std::string::npos ||
+        r.panoramaFile.find("..")!=std::string::npos ||
+        r.panoramaFile.find_first_of(" \\t\\r\\n")!=std::string::npos)
+        r.panoramaFile.clear();
+    r.panoramaYawDegrees=std::clamp(finiteOr(r.panoramaYawDegrees,0.f),-180.f,180.f);
+    r.panoramaHorizontalDegrees=std::clamp(finiteOr(r.panoramaHorizontalDegrees,220.f),60.f,360.f);
+    r.panoramaVerticalDegrees=std::clamp(finiteOr(r.panoramaVerticalDegrees,75.f),30.f,180.f);
+    r.musicSource=std::clamp(r.musicSource,0,1);
+    r.musicTrack=std::clamp(r.musicTrack,0,2);
+    r.musicFile=std::max(0,r.musicFile);
+    r.musicVolume=std::clamp(finiteOr(r.musicVolume,.45f),0.f,1.f);
+    r.sceneKind=std::clamp(r.sceneKind,0,1);
+    r.motionMode=std::clamp(r.motionMode,0,255);
+    r.orbitRadius=std::clamp(finiteOr(r.orbitRadius,1.5f),.4f,5.f);
+    r.orbitSpeed=std::clamp(finiteOr(r.orbitSpeed,.8f),.1f,3.f);
+    r.liquidOpacity=std::clamp(finiteOr(r.liquidOpacity,.42f),0.f,1.f);
+    r.wallShaderMode=std::clamp(r.wallShaderMode,0,255);
+    r.wallCycleSeconds=std::clamp(finiteOr(r.wallCycleSeconds,30.f),1.f,300.f);
+    r.motionBounce=std::clamp(finiteOr(r.motionBounce,.82f),0.f,1.f);
+    for (auto& v:r.voxens) {
+        v.preset=std::clamp(v.preset,0,4095);
+        v.material=std::clamp(v.material,0,4095);
+        v.scale=std::clamp(finiteOr(v.scale,.18f),.001f,10.f);
+        v.hue=std::clamp(finiteOr(v.hue,.52f),0.f,1.f);
+        v.density=std::clamp(finiteOr(v.density,1.f),.001f,10.f);
+        v.speed=std::clamp(finiteOr(v.speed,1.f),.001f,10.f);
+        for (float& x:v.position) x=finiteOr(x,0.f);
+        for (float& x:v.velocity) x=finiteOr(x,0.f);
+    }
+    return valid(r);
 }
 inline std::string encodeRuntime(const SavedRuntime& r) {
     if (!valid(r)) return {};
@@ -96,10 +137,10 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
     return out.str();
 }
 inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
-    if(data.size()>65536) return std::nullopt;
+    if(data.size()>1048576) return std::nullopt;
     std::istringstream in(data);
     std::string magic; int version=0; std::size_t count=0;
-    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version!=1 && version!=2 && version!=3 && version!=4 && version!=5) || count>256)
+    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version!=1 && version!=2 && version!=3 && version!=4 && version!=5) || count>4096)
         return std::nullopt;
     SavedRuntime r;
     if(version>=3 && !(in>>r.sceneKind))return std::nullopt;
