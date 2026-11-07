@@ -2155,8 +2155,11 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const auto preview=scenePreviewCache_.find(p.sceneId);
             const float preset=preview==scenePreviewCache_.end()?0.f:
                 float(preview->second.materialPreset%8u);
+            const float shaderPreset=p.surface.kind==voxen::gallery::PortalSurfaceKind::Procedural
+                ? float(p.surface.proceduralShaderMode) : preset;
             const float selected=(selectedPortalId_ && p.id==*selectedPortalId_) ? 1.5f : 1.f;
-            ProceduralPushConstants pc{mvp,{seconds,selected,preset,0.f}};
+            ProceduralPushConstants pc{mvp,{seconds,selected,shaderPreset,
+                float(static_cast<int>(p.surface.kind))}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,sizeof(pc),&pc);
