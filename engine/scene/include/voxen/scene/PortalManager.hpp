@@ -188,6 +188,26 @@ public:
         return false;
     }
 
+    // Update the selected cylinder's material without replacing its scene or pose.
+    // The caller supplies an existing Pictures filename or procedural mode.
+    [[nodiscard]] bool setSurface(const InstanceId& id, const PortalSurface& surface) {
+        if(!localized_ || !gallery_)return false;
+        if(surface.pictureFilename.size()>255 ||
+           surface.pictureFilename.find('/')!=std::string::npos ||
+           surface.pictureFilename.find('\\')!=std::string::npos ||
+           surface.pictureFilename==".." ||
+           (surface.kind==PortalSurfaceKind::Picture && surface.pictureFilename.empty()))
+            return false;
+        auto it=std::find_if(gallery_->placements.begin(),gallery_->placements.end(),
+            [&](const Placement& p){return p.id==id;});
+        if(it==gallery_->placements.end())return false;
+        const auto previous=it->surface;
+        it->surface=surface;
+        if(repository_.saveGallery(*gallery_))return true;
+        it->surface=previous;
+        return false;
+    }
+
     [[nodiscard]] bool erase(const InstanceId& id) {
         if(!localized_ || !gallery_) return false;
         auto it=std::find_if(gallery_->placements.begin(),gallery_->placements.end(),
