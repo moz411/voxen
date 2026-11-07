@@ -1282,6 +1282,17 @@ void XrSwapchainRenderer::createPipeline() {
         checkVk(vkCreatePipelineLayout(device_,&layout,nullptr,&panoramaPipelineLayout_),
                 "panorama pipeline layout");
     }
+    {
+        VkPushConstantRange range{};
+        range.stageFlags=VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT;
+        range.size=sizeof(ProceduralPushConstants);
+        VkPipelineLayoutCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        info.setLayoutCount=1;
+        info.pSetLayouts=&panoramaSetLayout_;
+        info.pushConstantRangeCount=1;
+        info.pPushConstantRanges=&range;
+        checkVk(vkCreatePipelineLayout(device_,&info,nullptr,&galleryPicturePipelineLayout_),"gallery picture layout");
+    }
     // Shared render pass and push constants.
     auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
                              const std::uint8_t* fb, std::size_t fsz,
@@ -1409,6 +1420,7 @@ void XrSwapchainRenderer::createPipeline() {
         if(&out==&glbTexturedPipeline_)pi.layout=glbTexturePipelineLayout_;
 #endif
         if(&out==&panoramaPipeline_)pi.layout=panoramaPipelineLayout_;
+        if(&out==&galleryCylinderPicturePipeline_)pi.layout=galleryPicturePipelineLayout_;
         pi.renderPass=renderPass_;
         checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &out), "vkCreateGraphicsPipelines");
         vkDestroyShaderModule(device_, fs, nullptr);
@@ -1468,6 +1480,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
     buildPipeline(fractalVert, fractalVertSize, galleryPortalFrag, galleryPortalFragSize, galleryPortalPipeline_);
     buildPipeline(galleryCylinderVert, galleryCylinderVertSize, galleryCylinderFrag, galleryCylinderFragSize, galleryCylinderPipeline_);
+    buildPipeline(galleryCylinderVert, galleryCylinderVertSize, galleryCylinderPictureFrag, galleryCylinderPictureFragSize, galleryCylinderPicturePipeline_);
     buildPipeline(galleryCylinderVert, galleryCylinderVertSize, matrixRainFrag, matrixRainFragSize, galleryCylinderMatrixPipeline_);
     buildPipeline(galleryCylinderVert, galleryCylinderVertSize, oceanWavesFrag, oceanWavesFragSize, galleryCylinderOceanPipeline_);
     buildPipeline(galleryCylinderVert, galleryCylinderVertSize, liquidRoomFrag, liquidRoomFragSize, galleryCylinderLiquidPipeline_);
@@ -2169,6 +2182,14 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             if(useBackground) {
                 pipeline=shaderMode==0?galleryCylinderMatrixPipeline_:
                     shaderMode==1?galleryCylinderOceanPipeline_:galleryCylinderLiquidPipeline_;
+            }
+            const bool textured=p.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
+                galleryPictureTexture_.descriptor &&
+                p.surface.pictureFilename==galleryPictureLoadedFilename_;
+            if(textured) {
+                pipeline=galleryCylinderPicturePipeline_;
+                vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    galleryPicturePipelineLayout_,0,1,&galleryPictureTexture_.descriptor,0,nullptr);
             }
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);
             ProceduralPushConstants pc{mvp,{seconds,useBackground?1.f:selected,
@@ -3731,6 +3752,8 @@ void XrSwapchainRenderer::shutdown() noexcept {
     meshWireVertexCount_=0;
     if (carouselPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,carouselPipeline_,nullptr); carouselPipeline_=VK_NULL_HANDLE; }
     if (galleryPortalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryPortalPipeline_,nullptr); galleryPortalPipeline_=VK_NULL_HANDLE; }
+    if (galleryCylinderPicturePipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderPicturePipeline_,nullptr); galleryCylinderPicturePipeline_=VK_NULL_HANDLE; }
+    if (galleryPicturePipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device_,galleryPicturePipelineLayout_,nullptr); galleryPicturePipelineLayout_=VK_NULL_HANDLE; }
     if (galleryCylinderPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderPipeline_,nullptr); galleryCylinderPipeline_=VK_NULL_HANDLE; }
     if (galleryCylinderMatrixPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderMatrixPipeline_,nullptr); galleryCylinderMatrixPipeline_=VK_NULL_HANDLE; }
     if (galleryCylinderOceanPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderOceanPipeline_,nullptr); galleryCylinderOceanPipeline_=VK_NULL_HANDLE; }
