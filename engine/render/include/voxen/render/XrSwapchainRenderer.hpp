@@ -319,6 +319,7 @@ private:
     std::map<std::array<int,3>,std::vector<uint32_t>> roomCollisionGrid_;
     VkPipeline carouselPipeline_ = VK_NULL_HANDLE;
     VkPipeline galleryPortalPipeline_ = VK_NULL_HANDLE;
+    VkPipeline galleryCylinderPipeline_ = VK_NULL_HANDLE;
     VkPipeline mechanicalCannonPipeline_ = VK_NULL_HANDLE;
     bool mechanicalCannonPreview_ = false;
     std::chrono::steady_clock::time_point mechanicalCannonStart_{};
