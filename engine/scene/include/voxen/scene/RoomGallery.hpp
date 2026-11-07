@@ -42,6 +42,12 @@ struct PortalSurface {
     int proceduralShaderMode = 0; // Existing background shader selection.
 };
 
+struct PortalAudio {
+    std::string filename; // Existing audio library filename; empty disables audio.
+    float audibleRadiusMeters = 3.0f;
+    float gain = 0.65f;
+};
+
 struct Placement {
     InstanceId id;
     SceneId sceneId;
@@ -49,6 +55,7 @@ struct Placement {
     float scale = 1.f;
     PortalGeometry geometry = PortalGeometry::Cylinder;
     PortalSurface surface{};
+    PortalAudio audio{};
 };
 
 struct RoomGallery {
