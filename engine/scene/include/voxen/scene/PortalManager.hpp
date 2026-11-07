@@ -3,6 +3,7 @@
 #include <voxen/scene/SceneIds.hpp>
 #include <voxen/scene/SceneRepository.hpp>
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <utility>
