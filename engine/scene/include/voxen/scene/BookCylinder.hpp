@@ -44,7 +44,7 @@ inline std::vector<BookCylinderVertex> makeBookCylinderVertices(
     for (std::uint32_t i = 0; i < segments; ++i) {
         auto a = vertex(i, 0.5f), b = vertex(i + 1, 0.5f);
         auto c = vertex(i, -0.5f), d = vertex(i + 1, -0.5f);
-        vertices.insert(vertices.end(), {a, c, b, b, c, d});
+        vertices.insert(vertices.end(), {a, b, c, b, d, c});
     }
     return vertices;
 }
