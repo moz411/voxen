@@ -289,5 +289,56 @@ bool XrSwapchainRenderer::loadPanoramaGpu(PanoramaImage&& decoded) {
         return false;
     }
 }
+void XrSwapchainRenderer::releaseGalleryPictureGpu() noexcept {
+    if(!device_)return;
+    if(galleryPictureTexture_.sampler)vkDestroySampler(device_,galleryPictureTexture_.sampler,nullptr);
+    if(galleryPictureTexture_.view)vkDestroyImageView(device_,galleryPictureTexture_.view,nullptr);
+    if(galleryPictureTexture_.image)vkDestroyImage(device_,galleryPictureTexture_.image,nullptr);
+    if(galleryPictureTexture_.memory)vkFreeMemory(device_,galleryPictureTexture_.memory,nullptr);
+    galleryPictureTexture_={};
+    if(galleryPictureDescriptorPool_)vkDestroyDescriptorPool(device_,galleryPictureDescriptorPool_,nullptr);
+    galleryPictureDescriptorPool_=VK_NULL_HANDLE;
+}
+bool XrSwapchainRenderer::loadGalleryPictureGpu(PanoramaImage&& decoded) {
+    if(!device_ || !panoramaSetLayout_ || !commandPool_)return false;
+    GlbTexture incoming{};
+    VkDescriptorPool pool=VK_NULL_HANDLE;
+    try {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenPanorama","Uploading %dx%d (%.1f MiB RGBA8)",decoded.width,decoded.height,decoded.rgba.size()/1048576.0);
+#endif
+        voxen::scene::gltf::EmbeddedImage image;
+        image.width=decoded.width;
+        image.height=decoded.height;
+        image.rgba=std::move(decoded.rgba);
+        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1};
+        VkDescriptorPoolCreateInfo info{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        info.maxSets=1;
+        info.poolSizeCount=1;
+        info.pPoolSizes=&size;
+        checked(vkCreateDescriptorPool(device_,&info,nullptr,&pool),"Panorama descriptor pool");
+        uploadTexture(device_,physicalDevice_,queue_,commandPool_,panoramaSetLayout_,
+                      pool,image,incoming.image,incoming.memory,incoming.view,
+                      incoming.sampler,incoming.descriptor);
+        checked(vkDeviceWaitIdle(device_),"Gallery Picture replace GPU texture");
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenPanorama","GPU upload finished");
+#endif
+        releaseGalleryPictureGpu();
+        galleryPictureTexture_=incoming;
+        galleryPictureDescriptorPool_=pool;
+        return true;
+    } catch(const std::exception& e) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_ERROR,"VoxenPanorama","Load failed: %s",e.what());
+#endif
+        if(incoming.sampler)vkDestroySampler(device_,incoming.sampler,nullptr);
+        if(incoming.view)vkDestroyImageView(device_,incoming.view,nullptr);
+        if(incoming.image)vkDestroyImage(device_,incoming.image,nullptr);
+        if(incoming.memory)vkFreeMemory(device_,incoming.memory,nullptr);
+        if(pool)vkDestroyDescriptorPool(device_,pool,nullptr);
+        return false;
+    }
+}
 } // namespace voxen::render
 #endif
