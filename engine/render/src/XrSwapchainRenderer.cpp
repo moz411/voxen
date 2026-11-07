@@ -3179,6 +3179,25 @@ void XrSwapchainRenderer::render(
             if(it!=portals.end()) {
                 selectedPortalId_=it->id;
                 imguiCarousel_.scenePortalSelected=true;
+                if(imguiCarousel_.scenePortalSettingsId!=it->id) {
+                    imguiCarousel_.scenePortalSettingsId=it->id;
+                    imguiCarousel_.sceneSurfaceKind=static_cast<int>(it->surface.kind);
+                    imguiCarousel_.sceneProceduralMode=it->surface.proceduralShaderMode;
+                    imguiCarousel_.scenePictureIndex=0;
+                    for(std::size_t j=0;j<imguiCarousel_.panoramaFiles.size();++j)
+                        if(imguiCarousel_.panoramaFiles[j]==it->surface.pictureFilename) {
+                            imguiCarousel_.scenePictureIndex=static_cast<int>(j);
+                            break;
+                        }
+                    imguiCarousel_.sceneAudioIndex=0;
+                    for(std::size_t j=0;j<imguiCarousel_.musicFiles.size();++j)
+                        if(imguiCarousel_.musicFiles[j]==it->audio.filename) {
+                            imguiCarousel_.sceneAudioIndex=static_cast<int>(j)+1;
+                            break;
+                        }
+                    imguiCarousel_.sceneAudioRadius=it->audio.audibleRadiusMeters;
+                    imguiCarousel_.sceneAudioGain=it->audio.gain;
+                }
             } else {
                 selectedPortalId_.reset();
                 imguiCarousel_.scenePortalSelected=false;
