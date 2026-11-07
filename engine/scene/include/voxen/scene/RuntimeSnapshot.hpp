@@ -31,6 +31,7 @@ struct SavedRuntime {
     float liquidOpacity = .42f;
     int wallShaderMode = 0;
     bool cycleWallShaders = false;
+    bool differentShaderPerSurface = false;
     float wallCycleSeconds = 30.f;
     bool motionEnabled = false;
     int motionMode = 0;
@@ -116,7 +117,7 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
     if (!valid(r)) return {};
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<float>::max_digits10);
-    out << "VOXEN_RUNTIME 5\n" << r.voxens.size() << '\n';
+    out << "VOXEN_RUNTIME 6\n" << r.voxens.size() << '\n';
     out << r.sceneKind << '\n';
     out << (r.panoramaFile.empty() ? "-" : r.panoramaFile) << ' '
         << r.panoramaYawDegrees << ' ' << r.panoramaHorizontalDegrees << ' '
@@ -126,7 +127,8 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
         << r.motionMode << ' ' << r.motionGravity << ' ' << r.motionBounce << ' '
         << r.orbitRadius << ' ' << r.orbitSpeed << ' ' << r.orbitRandomAxis << '\n';
     out << r.liquidRoom << ' ' << r.liquidOpacity << ' ' << r.wallShaderMode << ' '
-        << r.cycleWallShaders << ' ' << r.wallCycleSeconds << '\n';
+        << r.cycleWallShaders << ' ' << r.wallCycleSeconds << ' '
+        << r.differentShaderPerSurface << '\n';
     for(const auto& v:r.voxens) {
         out << v.preset << ' ' << v.material << ' ' << v.scale << ' ' << v.hue
             << ' ' << v.density << ' ' << v.speed;
@@ -140,7 +142,7 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
     if(data.size()>1048576) return std::nullopt;
     std::istringstream in(data);
     std::string magic; int version=0; std::size_t count=0;
-    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version!=1 && version!=2 && version!=3 && version!=4 && version!=5) || count>4096)
+    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version<1 || version>6) || count>4096)
         return std::nullopt;
     SavedRuntime r;
     if(version>=3 && !(in>>r.sceneKind))return std::nullopt;
@@ -155,6 +157,7 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
     if(version>=5 && !(in>>r.orbitRadius>>r.orbitSpeed>>r.orbitRandomAxis))return std::nullopt;
     if(version>=2 && !(in>>r.liquidRoom>>r.liquidOpacity>>r.wallShaderMode
                        >>r.cycleWallShaders>>r.wallCycleSeconds))return std::nullopt;
+    if(version>=6 && !(in>>r.differentShaderPerSurface))return std::nullopt;
     for(std::size_t i=0;i<count;++i) {
         SavedVoxen v;
         if(!(in>>v.preset>>v.material>>v.scale>>v.hue>>v.density>>v.speed))
