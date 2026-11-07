@@ -172,10 +172,21 @@ void drawCarousel(CarouselState& state) {
                                       state.wallShaderMode==modeIds[i])) {
                     state.backgroundSourceKind=3;
                     state.wallShaderMode=modeIds[i];
+                    state.cycleWallShaders=false; // manual selection stops slideshow
                     state.liquidRoom=true;
                     state.panoramaSelected=-1;
                 }
             }
+            ImGui::Separator();
+            if(ImGui::Checkbox("SLIDESHOW (all shaders)",&state.cycleWallShaders) &&
+               state.cycleWallShaders) {
+                state.backgroundSourceKind=3;
+                state.liquidRoom=true;
+                state.panoramaSelected=-1;
+            }
+            ImGui::SliderFloat("Shader duration (seconds)",&state.wallCycleSeconds,
+                               10.f,90.f,"%.0f s");
+            ImGui::TextDisabled("Cycles the same shader on all unassigned Meta surfaces");
             ImGui::EndTabItem();
             }
             if(ImGui::BeginTabItem("IMAGES")) {
