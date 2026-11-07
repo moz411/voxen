@@ -47,7 +47,7 @@ struct Placement {
     SceneId sceneId;
     Pose roomLocalPose; // Valid only after the corresponding persistent room anchor is localized.
     float scale = 1.f;
-    PortalGeometry geometry = PortalGeometry::Sphere; // Existing placements remain spheres.
+    PortalGeometry geometry = PortalGeometry::Cylinder;
     PortalSurface surface{};
 };
 
