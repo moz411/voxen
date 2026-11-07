@@ -59,6 +59,7 @@ struct VisiblePortal {
     float scale=1.f;
     PortalGeometry geometry=PortalGeometry::Cylinder;
     PortalSurface surface{};
+    PortalAudio audio{};
 };
 
 class PortalManager {
@@ -104,7 +105,7 @@ public:
         if (!localized_ || !gallery_) return out;
         for(const auto& p:gallery_->placements) {
             out.push_back({p.id,p.sceneId,
-                           compose(localized_->anchorInLocal,p.roomLocalPose),p.scale,p.geometry,p.surface});
+                           compose(localized_->anchorInLocal,p.roomLocalPose),p.scale,p.geometry,p.surface,p.audio});
         }
         return out;
     }
@@ -205,6 +206,24 @@ public:
         it->surface=surface;
         if(repository_.saveGallery(*gallery_))return true;
         it->surface=previous;
+        return false;
+    }
+
+    [[nodiscard]] bool setAudio(const InstanceId& id, const PortalAudio& audio) {
+        if(!localized_ || !gallery_ || audio.filename.size()>255 ||
+           audio.filename.find('/')!=std::string::npos ||
+           audio.filename.find('\\')!=std::string::npos ||
+           !std::isfinite(audio.audibleRadiusMeters) ||
+           audio.audibleRadiusMeters<0.5f || audio.audibleRadiusMeters>20.f ||
+           !std::isfinite(audio.gain) || audio.gain<0.f || audio.gain>1.f)
+            return false;
+        auto it=std::find_if(gallery_->placements.begin(),gallery_->placements.end(),
+            [&](const Placement& p){return p.id==id;});
+        if(it==gallery_->placements.end())return false;
+        const auto previous=it->audio;
+        it->audio=audio;
+        if(repository_.saveGallery(*gallery_))return true;
+        it->audio=previous;
         return false;
     }
 
