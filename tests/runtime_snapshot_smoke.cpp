@@ -9,9 +9,12 @@ int main() {
     v.material=2;
     r.voxens.push_back(v);
     r.musicSource=1; r.musicVolume=.6f; r.motionEnabled=true;
+    r.cycleWallShaders=true;
+    r.differentShaderPerSurface=true;
     auto bytes=encodeRuntime(r);
     auto loaded=decodeRuntime(bytes);
     assert(loaded && loaded->voxens.size()==1);
+    assert(loaded->cycleWallShaders && loaded->differentShaderPerSurface);
     assert(loaded->voxens[0].position==v.position);
     assert(loaded->voxens[0].velocity==v.velocity);
     assert(loaded->voxens[0].material==2);
@@ -23,6 +26,10 @@ int main() {
     assert(cannonLoaded && cannonLoaded->sceneKind==1 && cannonLoaded->voxens.empty());
     // Old saved scenes remain compatible after introducing runtime v3.
     assert(decodeRuntime("VOXEN_RUNTIME 2\n0\n0 0 0 0.45 0 0 0 0 0.82\n0 0.42 0 0 30\n"));
+    // V5 payloads default to uniform per-surface behavior.
+    const std::string v5 = "VOXEN_RUNTIME 5\n0\n0\n- 0 220 75\n0 0 0 0.45 0 0 0 0 0.82 1.5 0.8 0\n0 0.42 0 1 30\n";
+    auto old=decodeRuntime(v5);
+    assert(old && old->cycleWallShaders && !old->differentShaderPerSurface);
     // New procedural and OpenBrush presets must survive a scene round-trip.
     SavedRuntime extended;
     extended.voxens.resize(300);

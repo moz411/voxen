@@ -184,9 +184,12 @@ void drawCarousel(CarouselState& state) {
                 state.liquidRoom=true;
                 state.panoramaSelected=-1;
             }
+            ImGui::Checkbox("Different shader per surface",&state.differentShaderPerSurface);
             ImGui::SliderFloat("Shader duration (seconds)",&state.wallCycleSeconds,
                                10.f,90.f,"%.0f s");
-            ImGui::TextDisabled("Cycles the same shader on all unassigned Meta surfaces");
+            ImGui::TextDisabled(state.differentShaderPerSurface
+                ? "Each unassigned surface cycles with a stable offset"
+                : "Same shader on all unassigned Meta surfaces");
             ImGui::EndTabItem();
             }
             if(ImGui::BeginTabItem("IMAGES")) {
