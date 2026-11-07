@@ -82,7 +82,7 @@ inline bool sanitizeForSave(SavedRuntime& r) {
     };
     // Invalid paths are not persisted; a missing panorama is preferable to data loss.
     if (r.panoramaFile.size()>128 || r.panoramaFile.find('/')!=std::string::npos ||
-        r.panoramaFile.find('\\\\')!=std::string::npos ||
+        r.panoramaFile.find('\\')!=std::string::npos ||
         r.panoramaFile.find("..")!=std::string::npos ||
         r.panoramaFile.find_first_of(" \\t\\r\\n")!=std::string::npos)
         r.panoramaFile.clear();
