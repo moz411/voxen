@@ -393,8 +393,12 @@ void drawCarousel(CarouselState& state) {
                             ImGui::EndCombo();
                         }
                     }
-                } else if(state.sceneSurfaceKind==2)
-                    ImGui::InputInt("Procedural shader mode",&state.sceneProceduralMode);
+                } else if(state.sceneSurfaceKind==2) {
+                    static constexpr const char* cylinderShaders[]={
+                        "Matrix Rain","Ocean Waves","Liquid Room"};
+                    state.sceneProceduralMode=std::clamp(state.sceneProceduralMode,0,2);
+                    ImGui::Combo("Background shader",&state.sceneProceduralMode,cylinderShaders,3);
+                }
                 if(ImGui::Button("APPLY SURFACE"))state.sceneSurfaceApply=true;
                 ImGui::Separator();
                 const char* currentAudio=state.sceneAudioIndex==0?"NONE":
