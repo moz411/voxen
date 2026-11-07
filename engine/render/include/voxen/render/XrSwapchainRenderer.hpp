@@ -403,6 +403,7 @@ private:
     std::chrono::steady_clock::time_point galleryExitSince_{};
     std::chrono::steady_clock::time_point galleryEntrySince_{};
     bool galleryEntryArmed_ = true;
+    XrVector3f galleryHeadPosition_{0.f,0.f,0.f};
     void updateGalleryWalkIn(const XrVector3f& headPosition);
     std::array<HolographicHand,2> holographicHands_{};
     std::chrono::steady_clock::time_point lastHandSample_{};
