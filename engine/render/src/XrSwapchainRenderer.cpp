@@ -3095,6 +3095,45 @@ void XrSwapchainRenderer::render(
             rescanPanoramaAssets();
         }
         imguiCarousel_.panoramaFiles=panoramaNames_;
+#ifdef VOXEN_WITH_GLB_IMPORT
+        // Decode gallery Pictures asynchronously, independently of the immersive
+        // panorama texture. A single gallery texture is resident at a time.
+        if(galleryPictureDecodeFuture_.valid() &&
+           galleryPictureDecodeFuture_.wait_for(std::chrono::seconds(0))==
+               std::future_status::ready) {
+            try {
+                auto decoded=galleryPictureDecodeFuture_.get();
+                if(loadGalleryPictureGpu(std::move(decoded)))
+                    galleryPictureLoadedFilename_=galleryPictureRequestedFilename_;
+            } catch(...) { galleryPictureLoadedFilename_.clear(); }
+        }
+        std::string requestedPicture;
+        if(!immersiveSceneActive_ && portalManager_) {
+            for(const auto& portal:portalManager_->visible()) {
+                if(portal.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
+                   !portal.surface.pictureFilename.empty()) {
+                    requestedPicture=portal.surface.pictureFilename;
+                    break;
+                }
+            }
+        }
+        if(!requestedPicture.empty() &&
+           requestedPicture!=galleryPictureLoadedFilename_ &&
+           !galleryPictureDecodeFuture_.valid() &&
+           requestedPicture!=galleryPictureRequestedFilename_) {
+            const auto it=std::find(panoramaNames_.begin(),panoramaNames_.end(),requestedPicture);
+            if(it!=panoramaNames_.end()) {
+                galleryPictureRequestedFilename_=requestedPicture;
+                const auto file=panoramaRoot_/requestedPicture;
+                VkPhysicalDeviceProperties props{};
+                vkGetPhysicalDeviceProperties(physicalDevice_,&props);
+                const int limit=static_cast<int>(std::min(props.limits.maxImageDimension2D,4096u));
+                galleryPictureDecodeFuture_=std::async(std::launch::async,[file,limit] {
+                    return decodePanoramaImage(file,limit,8ull*1024ull*1024ull);
+                });
+            }
+        }
+#endif
         if(imguiCarousel_.panoramaSlideshow && imguiCarousel_.backgroundSourceKind==1 &&
            imguiCarousel_.panoramaSelected<0 && !panoramaNames_.empty())
             imguiCarousel_.panoramaSelected=0;
