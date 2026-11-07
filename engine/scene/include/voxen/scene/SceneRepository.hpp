@@ -166,7 +166,7 @@ public:
                        >> p.surface.proceduralShaderMode) || geometry!=1 ||
                    kind<0 || kind>2 || p.surface.pictureFilename.size()>255 ||
                    p.surface.pictureFilename.find('/')!=std::string::npos ||
-                   p.surface.pictureFilename.find('\\\\')!=std::string::npos ||
+                   p.surface.pictureFilename.find('\\')!=std::string::npos ||
                    p.surface.pictureFilename=="..")return std::nullopt;
                 p.geometry=PortalGeometry::Cylinder;
                 p.surface.kind=static_cast<PortalSurfaceKind>(kind);
