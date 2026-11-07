@@ -14,6 +14,7 @@ public:
     void shutdown() noexcept;
     void refresh();
     void update(int selection,bool playing,float volume);
+    void updateStereo(int selection,bool playing,float leftGain,float rightGain);
     // Position of the active Android MediaPlayer in seconds; -1 if unavailable.
     [[nodiscard]] double playbackSeconds() const noexcept;
     [[nodiscard]] bool analysisReady() const noexcept { return featureTimeline_.ready(); }
@@ -33,5 +34,6 @@ private:
     int selected_=-1;
     bool wasPlaying_=false;
     float lastVolume_=-1.f;
+    float lastRightVolume_=-1.f;
 };
 }
