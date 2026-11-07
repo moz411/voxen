@@ -609,6 +609,8 @@ bool XrSwapchainRenderer::saveCurrentScene() {
     runtime.motionGravity=imguiCarousel_.motionGravity;
     runtime.motionBounce=imguiCarousel_.motionBounce;
 #endif
+    // Invalid or newer editor settings should never make the entire scene unsavable.
+    if(!voxen::gallery::sanitizeForSave(runtime)) return false;
     const auto payload=voxen::gallery::encodeRuntime(runtime);
     if(payload.empty()) return false;
     auto record=voxen::gallery::SceneRepository::newScene(
