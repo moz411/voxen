@@ -375,6 +375,42 @@ void drawCarousel(CarouselState& state) {
             if(!valid || state.sceneImmersive)ImGui::BeginDisabled();
             if(ImGui::Button("DISPOSE",ImVec2(140,44)))state.scenePlace=true;
             if(!valid || state.sceneImmersive)ImGui::EndDisabled();
+            if(valid && state.scenePortalSelected) {
+                ImGui::Separator();
+                ImGui::TextUnformatted("SELECTED SCENE PORTAL");
+                static constexpr const char* surfaceTypes[]={"DEFAULT","PICTURES","PROCEDURAL"};
+                ImGui::Combo("Cylinder surface",&state.sceneSurfaceKind,surfaceTypes,3);
+                if(state.sceneSurfaceKind==1) {
+                    if(state.panoramaFiles.empty())ImGui::TextDisabled("No pictures available");
+                    else {
+                        state.scenePictureIndex=std::clamp(state.scenePictureIndex,0,
+                            static_cast<int>(state.panoramaFiles.size())-1);
+                        const char* preview=state.panoramaFiles[state.scenePictureIndex].c_str();
+                        if(ImGui::BeginCombo("Picture",preview)) {
+                            for(int i=0;i<static_cast<int>(state.panoramaFiles.size());++i)
+                                if(ImGui::Selectable(state.panoramaFiles[i].c_str(),i==state.scenePictureIndex))
+                                    state.scenePictureIndex=i;
+                            ImGui::EndCombo();
+                        }
+                    }
+                } else if(state.sceneSurfaceKind==2)
+                    ImGui::InputInt("Procedural shader mode",&state.sceneProceduralMode);
+                if(ImGui::Button("APPLY SURFACE"))state.sceneSurfaceApply=true;
+                ImGui::Separator();
+                const char* currentAudio=state.sceneAudioIndex==0?"NONE":
+                    (state.sceneAudioIndex-1<static_cast<int>(state.musicFiles.size())
+                        ?state.musicFiles[state.sceneAudioIndex-1].c_str():"NONE");
+                if(ImGui::BeginCombo("Approach sound",currentAudio)) {
+                    if(ImGui::Selectable("NONE",state.sceneAudioIndex==0))state.sceneAudioIndex=0;
+                    for(int i=0;i<static_cast<int>(state.musicFiles.size());++i)
+                        if(ImGui::Selectable(state.musicFiles[i].c_str(),state.sceneAudioIndex==i+1))
+                            state.sceneAudioIndex=i+1;
+                    ImGui::EndCombo();
+                }
+                ImGui::SliderFloat("Audible radius (m)",&state.sceneAudioRadius,0.5f,10.f);
+                ImGui::SliderFloat("Approach gain",&state.sceneAudioGain,0.f,1.f);
+                if(ImGui::Button("APPLY SOUND"))state.sceneAudioApply=true;
+            }
             if(state.sceneDeleteConfirm) {
                 ImGui::TextUnformatted("Delete selected saved scene?");
                 if(ImGui::Button("CONFIRM DELETE")) {
