@@ -16,5 +16,5 @@ void main() {
     vec2 circle=vec2(cos(angle),sin(angle));
     normal=vec3(circle.x,0.0,circle.y);
     uv=vec2(3.0*float(x)/float(SEG),v);
-    gl_Position=pc.mvp*vec4(circle.x,v*2.0-1.0,circle.y,1.0);
+    gl_Position=pc.mvp*vec4(circle.x,(v*2.0-1.0)*2.0,circle.y,1.0);
 }
