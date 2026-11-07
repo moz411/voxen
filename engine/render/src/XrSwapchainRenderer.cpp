@@ -87,6 +87,8 @@
 #include "mandelbrotZoomFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "galleryPortalFrag.spv.hpp"
+#include "galleryCylinderVert.spv.hpp"
+#include "galleryCylinderFrag.spv.hpp"
 #include <voxen/scene/PortalCylinderInteraction.hpp>
 #include "mechanicalCannonFrag.spv.hpp"
 #include "imguiPanelFrag.spv.hpp"
@@ -1338,7 +1340,7 @@ void XrSwapchainRenderer::createPipeline() {
         ms.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
         VkPipelineDepthStencilStateCreateInfo ds{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
         ds.depthTestEnable = VK_TRUE;
-        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &organicSpherePipeline_ || &out == &torusKnotPipeline_ || &out == &spikeBloomPipeline_ || &out == &jellyfishPipeline_ || &out == &earthwormPipeline_ || &out == &cloudPipeline_ || &out == &metaballsPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &organicSpherePipeline_
+        ds.depthWriteEnable = (&out == &laserPipeline_ || &out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenMandelbulbPipeline_ || &out == &organicSpherePipeline_ || &out == &torusKnotPipeline_ || &out == &spikeBloomPipeline_ || &out == &jellyfishPipeline_ || &out == &earthwormPipeline_ || &out == &cloudPipeline_ || &out == &metaballsPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &galleryCylinderPipeline_ || &out == &organicSpherePipeline_
 #ifdef VOXEN_WITH_IMGUI
         || &out == &imguiPanelPipeline_
 #endif
@@ -1370,7 +1372,7 @@ void XrSwapchainRenderer::createPipeline() {
         if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &galleryCylinderPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -1463,6 +1465,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, mandelbrotZoomFrag, mandelbrotZoomFragSize, mandelbrotZoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
     buildPipeline(fractalVert, fractalVertSize, galleryPortalFrag, galleryPortalFragSize, galleryPortalPipeline_);
+    buildPipeline(galleryCylinderVert, galleryCylinderVertSize, galleryCylinderFrag, galleryCylinderFragSize, galleryCylinderPipeline_);
     buildPipeline(cubeVert, cubeVertSize, mechanicalCannonFrag, mechanicalCannonFragSize, mechanicalCannonPipeline_);
 #ifdef VOXEN_WITH_IMGUI
     buildPipeline(fractalVert, fractalVertSize, imguiPanelFrag, imguiPanelFragSize, imguiPanelPipeline_);
@@ -2136,9 +2139,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     }
     // Saved scene instances are static 3D Voxen, not floor rings.
     if(!immersiveSceneActive_ && !editingMode() && portalManager_ &&
-       organicSpherePipeline_!=VK_NULL_HANDLE) {
+       galleryCylinderPipeline_!=VK_NULL_HANDLE) {
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          organicSpherePipeline_);
+                          galleryCylinderPipeline_);
         const auto portals=portalManager_->visible();
         const auto count=std::min<std::size_t>(portals.size(),64);
         for(std::size_t i=0;i<count;++i) {
@@ -2146,18 +2149,18 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             if(suppressedPortalId_ && p.id==*suppressedPortalId_)continue;
             const auto& xyz=(galleryDragging_ && selectedPortalId_ && p.id==*selectedPortalId_)
                 ? galleryDraggedPose_.positionMeters : p.localPose.positionMeters;
-            const float radius=0.125f*std::clamp(p.scale,0.1f,4.f);
+            const float s=std::clamp(p.scale,0.1f,4.f);
             const Mat4 mvp=multiply(projView,
-                modelMatrix(xyz[0],xyz[1],radius*2.f,xyz[2],0.f));
+                modelMatrix(xyz[0],xyz[1],0.4f*s,xyz[2],0.f));
             const auto preview=scenePreviewCache_.find(p.sceneId);
-            const float preset=preview==scenePreviewCache_.end()?4.f:
-                float(4u+preview->second.materialPreset%4u);
+            const float preset=preview==scenePreviewCache_.end()?0.f:
+                float(preview->second.materialPreset%8u);
             const float selected=(selectedPortalId_ && p.id==*selectedPortalId_) ? 1.5f : 1.f;
-            ProceduralPushConstants pc{mvp,{seconds,selected,preset,0.5f}};
+            ProceduralPushConstants pc{mvp,{seconds,selected,preset,0.f}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,sizeof(pc),&pc);
-            vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
+            vkCmdDraw(commandBuffer_,48*6,1,0,0);
         }
         // DISPOSE preview follows the right controller until trigger release.
         if(pendingGalleryFloorAction_==1 && controllerTracked_[1]) {
@@ -2173,7 +2176,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,sizeof(pc),&pc);
-            vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
+            vkCmdDraw(commandBuffer_,48*6,1,0,0);
         }
     }
     // Cheap optical skeleton: thin white translucent finger segments and palm.
@@ -3580,6 +3583,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     meshWireVertexCount_=0;
     if (carouselPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,carouselPipeline_,nullptr); carouselPipeline_=VK_NULL_HANDLE; }
     if (galleryPortalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryPortalPipeline_,nullptr); galleryPortalPipeline_=VK_NULL_HANDLE; }
+    if (galleryCylinderPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderPipeline_,nullptr); galleryCylinderPipeline_=VK_NULL_HANDLE; }
     if (mechanicalCannonPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,mechanicalCannonPipeline_,nullptr); mechanicalCannonPipeline_=VK_NULL_HANDLE; }
 #ifdef VOXEN_WITH_IMGUI
     if (imguiPanelPipeline_ != VK_NULL_HANDLE) {vkDestroyPipeline(device_,imguiPanelPipeline_,nullptr);imguiPanelPipeline_=VK_NULL_HANDLE;}
