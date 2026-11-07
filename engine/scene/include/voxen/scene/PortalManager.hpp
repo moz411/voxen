@@ -57,6 +57,8 @@ struct VisiblePortal {
     SceneId sceneId;
     Pose localPose;
     float scale=1.f;
+    PortalGeometry geometry=PortalGeometry::Cylinder;
+    PortalSurface surface{};
 };
 
 class PortalManager {
@@ -102,7 +104,7 @@ public:
         if (!localized_ || !gallery_) return out;
         for(const auto& p:gallery_->placements) {
             out.push_back({p.id,p.sceneId,
-                           compose(localized_->anchorInLocal,p.roomLocalPose),p.scale});
+                           compose(localized_->anchorInLocal,p.roomLocalPose),p.scale,p.geometry,p.surface});
         }
         return out;
     }
