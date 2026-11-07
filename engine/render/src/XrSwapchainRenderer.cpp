@@ -3395,6 +3395,7 @@ void XrSwapchainRenderer::render(
         if(!editingMode() && !immersiveSceneActive_ && portalManager_ &&
            portalManager_->localized() && pendingGalleryFloorAction_==0) {
             float loudest=0.f;
+            float bestPan=0.f;
             const auto& tracks=mp3Library_.titles();
             for(const auto& portal:portalManager_->visible()) {
                 if(portal.audio.filename.empty())continue;
@@ -3408,6 +3409,10 @@ void XrSwapchainRenderer::render(
                 const auto it=std::find(tracks.begin(),tracks.end(),portal.audio.filename);
                 if(it==tracks.end())continue;
                 loudest=gain;
+                const float horizontal=std::sqrt(dx*dx+dz*dz);
+                bestPan=horizontal>0.001f?std::clamp(
+                    -(dx*galleryHeadRight_.x+dz*galleryHeadRight_.z)/horizontal,
+                    -1.f,1.f):0.f;
                 activeMp3=static_cast<int>(std::distance(tracks.begin(),it));
             }
             const auto now=std::chrono::steady_clock::now();
@@ -3428,6 +3433,7 @@ void XrSwapchainRenderer::render(
             const float alpha=1.f-std::exp(-dt/tau);
             galleryAudioSmoothedGain_+=alpha*(loudest-galleryAudioSmoothedGain_);
             mp3Gain=galleryAudioSmoothedGain_;
+            galleryAudioPan_=bestPan;
             playMp3=galleryAudioTrack_>=0 && mp3Gain>0.001f;
             activeMp3=galleryAudioTrack_;
         }
@@ -3436,7 +3442,15 @@ void XrSwapchainRenderer::render(
             galleryAudioSmoothedGain_=0.f;
             galleryAudioUpdatedAt_={};
         }
-        mp3Library_.update(activeMp3,playMp3,mp3Gain);
+        if(!editingMode() && !immersiveSceneActive_) {
+            // Equal-power pan. Android MediaPlayer supports independent L/R gains,
+            // but this is stereo panning, not HRTF or acoustic occlusion.
+            const float pan=std::clamp(galleryAudioPan_,-1.f,1.f);
+            const float angle=(pan+1.f)*0.78539816339f;
+            mp3Library_.updateStereo(activeMp3,playMp3,
+                mp3Gain*std::cos(angle)*1.41421356f,
+                mp3Gain*std::sin(angle)*1.41421356f);
+        } else mp3Library_.update(activeMp3,playMp3,mp3Gain);
         // Visible cursor proves that ray → panel UV mapping reaches ImGui.
         if(aiming) {
             ImGui::GetForegroundDrawList()->AddCircleFilled(
@@ -3484,6 +3498,11 @@ void XrSwapchainRenderer::render(
         0.5f*(views[0].pose.position.z+views[1].pose.position.z)
     };
     viewerPosition_={center.x,center.y,center.z};
+    // Rotate local +X into world space for head-relative stereo panning.
+    const auto& hq=views[0].pose.orientation;
+    galleryHeadRight_={1.f-2.f*(hq.y*hq.y+hq.z*hq.z),
+        2.f*(hq.x*hq.y+hq.z*hq.w),
+        2.f*(hq.x*hq.z-hq.y*hq.w)};
     // Compute the spatial white wipe once per stereo frame. 550 ms of final
     // explosion, followed by a 600 ms white sweep; reverse it over Gallery.
     transitionWhiteCoverage_=0.f;
