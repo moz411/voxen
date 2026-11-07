@@ -90,6 +90,7 @@
 #include "galleryCylinderVert.spv.hpp"
 #include "galleryCylinderFrag.spv.hpp"
 #include <voxen/scene/PortalCylinderInteraction.hpp>
+#include <voxen/scene/PortalProximityAudio.hpp>
 #include "mechanicalCannonFrag.spv.hpp"
 #include "imguiPanelFrag.spv.hpp"
 #include "panoramaVert.spv.hpp"
@@ -426,6 +427,7 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
 }
 
 void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
+    galleryHeadPosition_=headPosition;
     if(editingMode() || pendingGalleryFloorAction_!=0 || galleryDragging_)return;
     if(!portalManager_ || !portalManager_->localized()) {
         galleryEntryCandidate_.reset();
@@ -3385,8 +3387,38 @@ void XrSwapchainRenderer::render(
         const bool sceneAudio=(editingMode() || immersiveSceneActive_) && imguiCarousel_.musicPlaying;
         ambientMusic_.configure(imguiCarousel_.musicTrack,
             procedural&&sceneAudio,imguiCarousel_.musicVolume);
-        mp3Library_.update(procedural?-1:imguiCarousel_.musicFile,
-            !procedural&&sceneAudio,imguiCarousel_.musicVolume);
+        int activeMp3=procedural?-1:imguiCarousel_.musicFile;
+        bool playMp3=!procedural&&sceneAudio;
+        float mp3Gain=imguiCarousel_.musicVolume;
+        // Gallery preview: reuse the MP3 decoder for the nearest audible portal.
+        // Only one MediaPlayer is available; multiple sources cannot overlap.
+        if(!editingMode() && !immersiveSceneActive_ && portalManager_ &&
+           portalManager_->localized() && pendingGalleryFloorAction_==0) {
+            float loudest=0.f;
+            const auto& tracks=mp3Library_.titles();
+            for(const auto& portal:portalManager_->visible()) {
+                if(portal.audio.filename.empty())continue;
+                const auto& p=portal.localPose.positionMeters;
+                const float dx=galleryHeadPosition_.x-p[0];
+                const float dy=galleryHeadPosition_.y-p[1];
+                const float dz=galleryHeadPosition_.z-p[2];
+                const float distance=std::sqrt(dx*dx+dy*dy+dz*dz);
+                const float gain=voxen::gallery::portalProximityGain(portal.audio,distance);
+                if(gain<=loudest)continue;
+                const auto it=std::find(tracks.begin(),tracks.end(),portal.audio.filename);
+                if(it==tracks.end())continue;
+                loudest=gain;
+                activeMp3=static_cast<int>(std::distance(tracks.begin(),it));
+            }
+            if(loudest>0.001f) {
+                playMp3=true;
+                mp3Gain=loudest;
+            } else {
+                playMp3=false;
+                activeMp3=-1;
+            }
+        }
+        mp3Library_.update(activeMp3,playMp3,mp3Gain);
         // Visible cursor proves that ray → panel UV mapping reaches ImGui.
         if(aiming) {
             ImGui::GetForegroundDrawList()->AddCircleFilled(
