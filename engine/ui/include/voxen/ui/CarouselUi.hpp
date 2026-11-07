@@ -104,6 +104,14 @@ struct CarouselState {
     bool mandelbulbLighting = false; // Opt-in: proven cyan shader remains default
     int voxenMaterial = 0; // independent surface material for procedural mesh shapes
     bool collideRoomMesh = true;
+    // Particle editor parameters are intentionally separate from legacy Voxen IDs.
+    // No placement is allowed until the Vulkan emitter pipeline is implemented.
+    bool particlePaintEnabled = false;
+    int particlePreset = 0; // 0 Smoke, 1 Snow, 2 Stars
+    float particleDensity = 1.f;
+    float particleLifetime = 4.f;
+    float particleTurbulence = 0.5f;
+    bool particleAudioReactive = true;
     int voxenPreset = 0;
     int flatVoxenVolume = 0; // 0 cube; 1 sphere // Plasma or Spheres Intersections
     bool voxenPaintEnabled = false;
