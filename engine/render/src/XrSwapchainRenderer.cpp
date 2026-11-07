@@ -3717,6 +3717,11 @@ void XrSwapchainRenderer::shutdown() noexcept {
     }
 
 #ifdef VOXEN_WITH_GLB_IMPORT
+    if(galleryPictureDecodeFuture_.valid()) {
+        galleryPictureDecodeFuture_.wait();
+        try { (void)galleryPictureDecodeFuture_.get(); } catch(...) {}
+    }
+    releaseGalleryPictureGpu();
     releasePanoramaGpu();
 #endif
     if(panoramaPipeline_) { vkDestroyPipeline(device_,panoramaPipeline_,nullptr); panoramaPipeline_=VK_NULL_HANDLE; }
