@@ -595,6 +595,7 @@ bool XrSwapchainRenderer::saveCurrentScene() {
     runtime.liquidOpacity=imguiCarousel_.liquidOpacity;
     runtime.wallShaderMode=imguiCarousel_.wallShaderMode;
     runtime.cycleWallShaders=imguiCarousel_.cycleWallShaders;
+    runtime.differentShaderPerSurface=imguiCarousel_.differentShaderPerSurface;
     runtime.wallCycleSeconds=imguiCarousel_.wallCycleSeconds;
     runtime.musicSource=imguiCarousel_.musicSource;
     runtime.musicTrack=imguiCarousel_.musicTrack;
@@ -690,6 +691,7 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     imguiCarousel_.liquidOpacity=snapshot->liquidOpacity;
     imguiCarousel_.wallShaderMode=snapshot->wallShaderMode;
     imguiCarousel_.cycleWallShaders=snapshot->cycleWallShaders;
+    imguiCarousel_.differentShaderPerSurface=snapshot->differentShaderPerSurface;
     imguiCarousel_.wallCycleSeconds=snapshot->wallCycleSeconds;
     imguiCarousel_.musicSource=snapshot->musicSource;
     imguiCarousel_.musicTrack=snapshot->musicTrack;
@@ -1838,6 +1840,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     bool includeFloorCeiling=true;
     int wallShaderMode=0;
     bool cycleWallShaders=true;
+    bool differentShaderPerSurface=false;
     float wallCycleSeconds=30.f;
     std::array<float,3> wallColor{0.12f,0.55f,1.0f};
     float solidOpacity=0.85f;
@@ -1855,6 +1858,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     includeFloorCeiling=imguiCarousel_.includeFloorCeiling;
     wallShaderMode=imguiCarousel_.wallShaderMode;
     cycleWallShaders=imguiCarousel_.cycleWallShaders;
+    differentShaderPerSurface=imguiCarousel_.differentShaderPerSurface;
     wallCycleSeconds=std::clamp(imguiCarousel_.wallCycleSeconds,10.f,90.f);
     wallColor={imguiCarousel_.wallColor[0],imguiCarousel_.wallColor[1],imguiCarousel_.wallColor[2]};
     solidOpacity=imguiCarousel_.wallSolidOpacity;
@@ -1920,11 +1924,13 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         constexpr int demoModes[]={0,2,3,4,5,6,7,10,11,12,13,14,15,16,17,19,20,21,22};
         constexpr int modeCount=static_cast<int>(sizeof(demoModes)/sizeof(demoModes[0]));
         int slideshowMode=wallShaderMode;
+        int slideshowIndex=0;
         if(cycleWallShaders) {
             const auto first=std::find(std::begin(demoModes),std::end(demoModes),wallShaderMode);
             const int start=first==std::end(demoModes)?0:static_cast<int>(first-std::begin(demoModes));
             const auto step=static_cast<std::uint64_t>(std::floor(seconds / wallCycleSeconds));
-            slideshowMode=demoModes[(start+static_cast<int>(step%modeCount))%modeCount];
+            slideshowIndex=(start+static_cast<int>(step%modeCount))%modeCount;
+            slideshowMode=demoModes[slideshowIndex];
         }
         auto choosePipeline=[&](int mode)->VkPipeline {
             switch(mode){
@@ -2009,9 +2015,22 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                std::find(selected.begin(),selected.end(),closest)==selected.end())
                 selected.push_back(closest);
         }
+        // Stable IDs prevent shaders swapping between walls when the headset moves.
+        std::vector<std::uint64_t> surfaceIds;
+        surfaceIds.reserve(selected.size());
+        for(const auto* surface:selected) surfaceIds.push_back(surface->id);
+        std::sort(surfaceIds.begin(),surfaceIds.end());
+        surfaceIds.erase(std::unique(surfaceIds.begin(),surfaceIds.end()),surfaceIds.end());
         for(const auto* surface:selected) {
             int activeMode=wallShaderMode;
-            if(cycleWallShaders) activeMode=slideshowMode;
+            if(cycleWallShaders) {
+                activeMode=slideshowMode;
+                if(differentShaderPerSurface) {
+                    const auto it=std::lower_bound(surfaceIds.begin(),surfaceIds.end(),surface->id);
+                    const auto rank=static_cast<int>(it-surfaceIds.begin());
+                    activeMode=demoModes[(slideshowIndex+rank)%modeCount];
+                }
+            }
             // Explicit per-surface shader overrides the global/cycling mode.
             const auto assignment=imguiCarousel_.surfaceMedia.find(surface->id);
             if(assignment!=imguiCarousel_.surfaceMedia.end()) {
