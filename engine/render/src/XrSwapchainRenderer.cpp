@@ -3410,13 +3410,31 @@ void XrSwapchainRenderer::render(
                 loudest=gain;
                 activeMp3=static_cast<int>(std::distance(tracks.begin(),it));
             }
-            if(loudest>0.001f) {
-                playMp3=true;
-                mp3Gain=loudest;
-            } else {
-                playMp3=false;
-                activeMp3=-1;
+            const auto now=std::chrono::steady_clock::now();
+            const float dt=galleryAudioUpdatedAt_.time_since_epoch().count()==0
+                ? 0.016f : std::clamp(std::chrono::duration<float>(
+                    now-galleryAudioUpdatedAt_).count(),0.f,0.1f);
+            galleryAudioUpdatedAt_=now;
+            // Fade out before changing MediaPlayer source; otherwise switching
+            // cylinders restarts the next MP3 at full gain.
+            if(activeMp3!=galleryAudioTrack_ && galleryAudioSmoothedGain_>0.015f) {
+                loudest=0.f;
+                activeMp3=galleryAudioTrack_;
+            } else if(activeMp3!=galleryAudioTrack_) {
+                galleryAudioTrack_=activeMp3;
+                galleryAudioSmoothedGain_=0.f;
             }
+            const float tau=loudest>galleryAudioSmoothedGain_?0.35f:0.22f;
+            const float alpha=1.f-std::exp(-dt/tau);
+            galleryAudioSmoothedGain_+=alpha*(loudest-galleryAudioSmoothedGain_);
+            mp3Gain=galleryAudioSmoothedGain_;
+            playMp3=galleryAudioTrack_>=0 && mp3Gain>0.001f;
+            activeMp3=galleryAudioTrack_;
+        }
+        else {
+            galleryAudioTrack_=-1;
+            galleryAudioSmoothedGain_=0.f;
+            galleryAudioUpdatedAt_={};
         }
         mp3Library_.update(activeMp3,playMp3,mp3Gain);
         // Visible cursor proves that ray → panel UV mapping reaches ImGui.
