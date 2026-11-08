@@ -1,5 +1,6 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
 #include <limits>
+#include <fstream>
 #include <voxen/render/MandelbulbMesh.hpp>
 #ifdef VOXEN_WITH_GLB_IMPORT
 #include <voxen/render/PanoramaImage.hpp>
@@ -469,46 +470,29 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         try {
             auto decoded=immersiveGlbDecodeFuture_.get();
             if(!immersiveSceneActive_)return;
-            // GLB exports may have a displaced origin. Align the lowest
-            // transformed mesh vertex with the real-world floor.
-            std::vector<float> elevations;
-            for(const auto& node:decoded.nodes) {
-                const auto& m=node.worldMatrix;
-                for(auto index:node.primitives) {
-                    if(index>=decoded.primitives.size())continue;
-                    const auto& vertices=decoded.primitives[index].vertices;
-                    // Sample evenly to avoid excessive memory on large scenes.
-                    const size_t stride=std::max<size_t>(1,vertices.size()/2048);
-                    for(size_t i=0;i<vertices.size();i+=stride) {
-                        const auto& v=vertices[i].position;
-                        const float y=m[1]*v[0]+m[5]*v[1]+m[9]*v[2]+m[13];
-                        if(std::isfinite(y))elevations.push_back(y);
-                    }
+            // Explicit, persistent per-scene offset in metres. No geometry
+            // percentile/minimum heuristic: OpenBrush can contain distant strokes.
+            float offsetY=0.f;
+            const auto offsetFile=immersiveGlbDecodePath_.parent_path() /
+                (immersiveGlbDecodePath_.stem().string()+".offset-y");
+            if(std::ifstream input(offsetFile); input) {
+                float configured=0.f;
+                if(input>>configured && std::isfinite(configured) &&
+                   configured>=-1000.f && configured<=1000.f) {
+                    offsetY=configured;
                 }
-            }
-            // Robust floor estimate: ignore sparse geometry extending far below
-            // the main authored scene. The global minimum is often an outlier.
-            float floorY=0.f, minY=0.f, medianY=0.f;
-            if(!elevations.empty()) {
-                const size_t floorIndex=(elevations.size()-1)/20; // 5th percentile
-                std::nth_element(elevations.begin(),elevations.begin()+floorIndex,elevations.end());
-                floorY=elevations[floorIndex];
-                minY=*std::min_element(elevations.begin(),elevations.end());
-                const size_t medianIndex=elevations.size()/2;
-                std::nth_element(elevations.begin(),elevations.begin()+medianIndex,elevations.end());
-                medianY=elevations[medianIndex];
             }
 #ifdef __ANDROID__
             __android_log_print(ANDROID_LOG_INFO,"VoxenGLB",
-                "Scene elevations: min=%.3f p05=%.3f median=%.3f samples=%zu",
-                minY,floorY,medianY,elevations.size());
+                "Scene vertical offset=%.3f m (file: %s)",
+                offsetY,offsetFile.string().c_str());
 #endif
             if(loadDemoGlb(immersiveGlbDecodePath_,std::move(decoded))) {
-                glbPlacement_={headPosition.x,-floorY,headPosition.z};
+                glbPlacement_={headPosition.x,offsetY,headPosition.z};
                 glbPlaced_=true;
 #ifdef __ANDROID__
                 __android_log_print(ANDROID_LOG_INFO,"VoxenGLB",
-                    "Immersive GLB GPU ready, vertical floor correction %.3f m",-floorY);
+                    "Immersive GLB GPU ready, vertical offset %.3f m",offsetY);
 #endif
             } else {
 #ifdef __ANDROID__
