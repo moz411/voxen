@@ -65,6 +65,8 @@
 #include "solidWallFrag.spv.hpp"
 #include "mandelbulbLitVert.spv.hpp"
 #include "mandelbulbLitFrag.spv.hpp"
+#include "openbrushMeshVert.spv.hpp"
+#include "openbrushMeshFrag.spv.hpp"
 #include "openbrushDotsVert.spv.hpp"
 #include "openbrushDotsFrag.spv.hpp"
 #include "glbOriginalVert.spv.hpp"
@@ -1502,6 +1504,13 @@ void XrSwapchainRenderer::createPipeline() {
         checkVk(vkCreatePipelineLayout(device_, &ci, nullptr, &openbrushDotsPipelineLayout_),
                 "openbrush Dots pipeline layout");
     }
+    {
+        VkPushConstantRange range{VK_SHADER_STAGE_VERTEX_BIT,0,64};
+        VkPipelineLayoutCreateInfo ci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        ci.pushConstantRangeCount=1;ci.pPushConstantRanges=&range;
+        checkVk(vkCreatePipelineLayout(device_,&ci,nullptr,&openbrushMeshPipelineLayout_),
+                "openbrush mesh pipeline layout");
+    }
     // Shared render pass and push constants.
     auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
                              const std::uint8_t* fb, std::size_t fsz,
@@ -1555,6 +1564,14 @@ void XrSwapchainRenderer::createPipeline() {
 #endif
         auto dotsBinding = voxen::render::openbrush::dotsInstanceBinding();
         auto dotsAttributes = voxen::render::openbrush::dotsInstanceAttributes();
+        auto meshBinding = voxen::render::openbrush::meshBinding();
+        auto meshAttributes = voxen::render::openbrush::meshAttributes();
+        if (&out == &openbrushMeshPipeline_) {
+            vi.vertexBindingDescriptionCount=1;
+            vi.pVertexBindingDescriptions=&meshBinding;
+            vi.vertexAttributeDescriptionCount=static_cast<uint32_t>(meshAttributes.size());
+            vi.pVertexAttributeDescriptions=meshAttributes.data();
+        }
         if (&out == &openbrushDotsPipeline_) {
             vi.vertexBindingDescriptionCount=1;
             vi.pVertexBindingDescriptions=&dotsBinding;
@@ -1646,6 +1663,7 @@ void XrSwapchainRenderer::createPipeline() {
         if(&out==&glbTexturedPipeline_)pi.layout=glbTexturePipelineLayout_;
 #endif
         if(&out==&openbrushDotsPipeline_)pi.layout=openbrushDotsPipelineLayout_;
+        if(&out==&openbrushMeshPipeline_)pi.layout=openbrushMeshPipelineLayout_;
         if(&out==&panoramaPipeline_)pi.layout=panoramaPipelineLayout_;
         if(&out==&galleryCylinderPicturePipeline_)pi.layout=galleryPicturePipelineLayout_;
         pi.renderPass=renderPass_;
@@ -1653,6 +1671,7 @@ void XrSwapchainRenderer::createPipeline() {
         vkDestroyShaderModule(device_, fs, nullptr);
         vkDestroyShaderModule(device_, vs, nullptr);
     };
+    buildPipeline(openbrushMeshVert,openbrushMeshVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushMeshPipeline_);
     buildPipeline(openbrushDotsVert,openbrushDotsVertSize,openbrushDotsFrag,openbrushDotsFragSize,openbrushDotsPipeline_);
     buildPipeline(panoramaVert,panoramaVertSize,panoramaFrag,panoramaFragSize,panoramaPipeline_);
     buildPipeline(organicSphereVert, organicSphereVertSize, organicSphereFrag, organicSphereFragSize, organicSpherePipeline_);
@@ -2791,6 +2810,11 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         rectangle.baseArrayLayer=0;
         rectangle.layerCount=1;
         vkCmdClearAttachments(commandBuffer_,1,&attachment,1,&rectangle);
+    }
+    if (immersiveSceneActive_ && !openbrushMeshGpu_.empty() && openbrushMeshPipeline_) {
+        std::array<float,16> vp{};
+        std::copy(std::begin(projView.m),std::end(projView.m),vp.begin());
+        openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,openbrushMeshPipelineLayout_,vp);
     }
     // Experimental Dots overlay, one instanced draw per eye.
     if (immersiveSceneActive_ && openbrushDotsGpu_.count() && openbrushDotsPipeline_!=VK_NULL_HANDLE) {
@@ -3981,6 +4005,16 @@ bool XrSwapchainRenderer::activateTiltScene(const std::filesystem::path& source)
 #else
         const std::filesystem::path root=".";
 #endif
+        if(source.extension()==".vxmesh") {
+            if(device_==VK_NULL_HANDLE)return false;
+            auto scene=voxen::render::openbrush::readCompiledScene(source.string());
+            auto packed=voxen::render::openbrush::packMeshes(scene);
+            vkDeviceWaitIdle(device_);
+            openbrushDotsGpu_.destroy(device_);
+            openbrushMeshGpu_.destroy(device_);
+            openbrushMeshGpu_.upload(device_,physicalDevice_,packed);
+            return !openbrushMeshGpu_.empty();
+        }
         // Source files are immutable inputs. Cache is isolated per file and
         // invalidated when size or modification time changes.
         auto result=voxen::render::openbrush::loadTiltDotsCached(source,root/"tilt-cache");
@@ -3995,6 +4029,7 @@ bool XrSwapchainRenderer::activateTiltScene(const std::filesystem::path& source)
         // Caller must invoke this at a scene transition, not mid-frame.
         vkDeviceWaitIdle(device_);
         openbrushDotsGpu_.destroy(device_);
+        openbrushMeshGpu_.destroy(device_);
         openbrushDotsGpu_.upload(device_,physicalDevice_,result.dots);
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO,"VoxenOpenBrush",
@@ -4016,6 +4051,7 @@ void XrSwapchainRenderer::deactivateTiltScene() {
     if(device_!=VK_NULL_HANDLE) {
         vkDeviceWaitIdle(device_);
         openbrushDotsGpu_.destroy(device_);
+        openbrushMeshGpu_.destroy(device_);
     }
 }
 
@@ -4078,7 +4114,9 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
-    if(device_!=VK_NULL_HANDLE)openbrushDotsGpu_.destroy(device_);
+    if(device_!=VK_NULL_HANDLE){openbrushDotsGpu_.destroy(device_);openbrushMeshGpu_.destroy(device_);}
+    if(openbrushMeshPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushMeshPipeline_,nullptr);openbrushMeshPipeline_=VK_NULL_HANDLE;}
+    if(openbrushMeshPipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,openbrushMeshPipelineLayout_,nullptr);openbrushMeshPipelineLayout_=VK_NULL_HANDLE;}
     if(openbrushDotsPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushDotsPipeline_,nullptr);openbrushDotsPipeline_=VK_NULL_HANDLE;}
     if(openbrushDotsPipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,openbrushDotsPipelineLayout_,nullptr);openbrushDotsPipelineLayout_=VK_NULL_HANDLE;}
     if(voxenMandelbulbLitPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbLitPipeline_,nullptr);voxenMandelbulbLitPipeline_=VK_NULL_HANDLE;}
