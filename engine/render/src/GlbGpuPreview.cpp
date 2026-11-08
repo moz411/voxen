@@ -164,7 +164,8 @@ void XrSwapchainRenderer::releaseGlbGpu() noexcept {
         glbTextureDescriptorPool_=VK_NULL_HANDLE;
     }
 }
-bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
+bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file,
+    std::optional<voxen::scene::gltf::MeshAsset> decoded) {
     if(device_==VK_NULL_HANDLE) {
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_ERROR,"VoxenGLB","GPU load failed: Vulkan device unavailable");
@@ -188,7 +189,7 @@ bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
             static_cast<unsigned long long>(std::filesystem::file_size(file)),
             limits.maxFileBytes);
 #endif
-        const auto model=voxen::scene::gltf::loadMeshGlb(file,limits);
+        auto model=decoded ? std::move(*decoded) : voxen::scene::gltf::loadMeshGlb(file,limits);
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO,"VoxenGLB",
             "GLB parsed: nodes=%zu primitives=%zu images=%zu",
