@@ -7,9 +7,14 @@ Branch: `feature/openbrush-offline-compiler`. The existing portal and Android re
 From the Voxen repository root, with Node.js 20+:
 
 ```sh
-npm install --no-save --package-lock=false three three-tiltloader fflate tsx
+npm install --no-save --package-lock=false three fflate tsx
+mkdir -p tools/vendor
+git clone --depth 1 https://github.com/icosa-foundation/three-tiltloader.git tools/vendor/three-tiltloader
 node --import tsx tools/compile_openbrush.mjs /path/to/artwork.tilt -o /tmp/artwork.vxmesh
 ```
+
+The published npm package does not reliably include the upstream source modules.
+The compiler therefore imports from the explicit local Git checkout in tools/vendor.
 
 The compiler reads the 16-byte .tilt header, decompresses the embedded ZIP,
 parses strokes and uses Icosa's geometry generators directly, **without
