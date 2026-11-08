@@ -1,4 +1,4 @@
-// Standalone host-side VXMSH001 smoke test: compile with C++17, no Vulkan SDK.
+// Standalone host-side VXMSH001/VXMSH002 smoke test: compile with C++17, no Vulkan SDK.
 // Usage: c++ -std=c++17 -Iengine/render/include tests/openbrush_compiled_scene_smoke.cpp -o /tmp/vxmesh-smoke
 //        /tmp/vxmesh-smoke /tmp/scene.vxmesh
 #include <voxen/render/OpenBrushCompiledScene.hpp>
@@ -13,7 +13,7 @@ int main(int argc,char** argv) {
         for(const auto& mesh:scene.meshes){
             const auto n=mesh.positions.size()/3;
             if(mesh.positions.size()!=n*3 || mesh.normals.size()!=n*3 ||
-               mesh.colors.size()!=n*4 || mesh.uv0.size()!=n*2 ||
+               mesh.colors.size()!=n*4 || mesh.uv0.size()!=n*4 ||
                mesh.indices.size()%3!=0)
                 throw std::runtime_error("Invalid vertex attributes or triangle count");
             vertices+=n;indices+=mesh.indices.size();
