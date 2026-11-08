@@ -7,8 +7,8 @@ Branch: `feature/openbrush-offline-compiler`. The existing portal and Android re
 From the Voxen repository root, with Node.js 20+:
 
 ```sh
-npm install --no-save --package-lock=false three three-tiltloader fflate
-node tools/compile_openbrush.mjs /path/to/artwork.tilt -o /tmp/artwork.vxmesh
+npm install --no-save --package-lock=false three three-tiltloader fflate tsx
+node --import tsx tools/compile_openbrush.mjs /path/to/artwork.tilt -o /tmp/artwork.vxmesh
 ```
 
 The compiler reads the 16-byte .tilt header, decompresses the embedded ZIP,
