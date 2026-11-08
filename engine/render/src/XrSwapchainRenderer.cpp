@@ -2793,7 +2793,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdClearAttachments(commandBuffer_,1,&attachment,1,&rectangle);
     }
     // Experimental Dots overlay, one instanced draw per eye.
-    if (openbrushDotsGpu_.count() && openbrushDotsPipeline_!=VK_NULL_HANDLE) {
+    if (immersiveSceneActive_ && openbrushDotsGpu_.count() && openbrushDotsPipeline_!=VK_NULL_HANDLE) {
         voxen::render::openbrush::DotsCameraPush camera{};
         std::copy(std::begin(projView.m),std::end(projView.m),camera.viewProjection.begin());
         const auto& q=xrView.pose.orientation;
