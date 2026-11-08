@@ -890,7 +890,6 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
         restored.push_back(item);
     }
     voxens_=std::move(restored);
-    editingSavedSceneId_=id;
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
 #ifdef VOXEN_WITH_IMGUI
@@ -3816,6 +3815,7 @@ void XrSwapchainRenderer::render(
             // treat the built-in mechanical cannon as a walk-in portal.
             const bool ok=imguiCarousel_.editMode && !immersiveSceneActive_ &&
                           valid && loadSavedScene(sceneIds_[index]);
+            if(ok)editingSavedSceneId_=sceneIds_[index];
             imguiCarousel_.sceneStatus=ok?"Scene loaded in editor":"Cannot load selected scene in editor";
         }
         if(imguiCarousel_.sceneLoad) {
@@ -3829,6 +3829,7 @@ void XrSwapchainRenderer::render(
                     "Scene loaded":"Load failed";
         }
         if(imguiCarousel_.voxenClear){
+            editingSavedSceneId_.reset();
             voxens_.clear();
             lastVoxenValid_=false;
             imguiCarousel_.voxenClear=false;
