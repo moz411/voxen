@@ -278,12 +278,44 @@ void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& roo
     glbAssetRoot_=root / "assets";
 #endif
     rescanGlbAssets();
+    refreshSceneIndex();
 #endif
 }
 
 void XrSwapchainRenderer::refreshSceneIndex() {
     sceneIds_=sceneRepository_?sceneRepository_->listScenes():
         std::vector<voxen::gallery::SceneId>{};
+#ifdef VOXEN_WITH_GLB_IMPORT
+    // Explicit scenes/ directory: never promote small object GLBs.
+    // Persist a lightweight scene record so PortalManager can place it.
+    const auto scenesDir=glbAssetRoot_/"scenes";
+    if(!glbAssetRoot_.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(scenesDir,ec);
+        for(std::filesystem::directory_iterator it(scenesDir,ec),end;!ec && it!=end;it.increment(ec)) {
+            if(!it->is_regular_file(ec) || it->is_symlink(ec))continue;
+            auto ext=it->path().extension().string();
+            std::transform(ext.begin(),ext.end(),ext.begin(),
+                [](unsigned char c){return static_cast<char>(std::tolower(c));});
+            if(ext!=".glb")continue;
+            const auto filename=it->path().filename().string();
+            // Deterministic ID, independent of directory iteration order.
+            std::uint64_t hash=14695981039346656037ull;
+            for(unsigned char c:filename){hash^=c;hash*=1099511628211ull;}
+            const auto id=std::string("glb-")+std::to_string(hash);
+            if(!sceneRepository_->loadSceneMetadata(id)) {
+                voxen::gallery::SceneRecord record;
+                record.id=id;
+                record.displayName=it->path().stem().string()+" [GLB]";
+                record.preview.boundingRadiusMeters=2.5f;
+                record.preview.materialPreset=4;
+                record.payloadAsset="scene.bin";
+                sceneRepository_->saveScene(record,"GLB_SCENE_V1\n"+filename);
+            }
+        }
+        sceneIds_=sceneRepository_->listScenes();
+    }
+#endif
     sceneLabels_.clear();
     scenePreviewCache_.clear();
     sceneLabels_.reserve(sceneIds_.size());
@@ -521,6 +553,36 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
     if(immersiveSceneActive_ || !sceneRepository_) return false;
     // Validate and parse before touching the current live scene.
     auto saved=sceneRepository_->loadScene(id);
+#ifdef VOXEN_WITH_GLB_IMPORT
+    if(saved && saved->second.starts_with("GLB_SCENE_V1\n")) {
+        const auto filename=saved->second.substr(sizeof("GLB_SCENE_V1\n")-1);
+        // Only basename references from our auto-discovered scene directory.
+        if(filename.empty() || std::filesystem::path(filename).filename()!=filename ||
+           std::filesystem::path(filename).extension()!=".glb")return false;
+        const auto path=glbAssetRoot_/"scenes"/filename;
+        if(!std::filesystem::is_regular_file(path) || !loadDemoGlb(path))return false;
+        std::vector<PlasmaVoxen>{}.swap(voxens_);
+        glbPreview_=false;
+        glbPlaced_=true;
+        glbInGallery_=false;
+        glbScale_=1.f;
+        // Center the authored GLB origin at the current headset X/Z.
+        glbPlacement_={galleryHeadPosition_.x,0.f,galleryHeadPosition_.z};
+#ifdef VOXEN_WITH_IMGUI
+        imguiCarousel_.editMode=false;
+        imguiCarousel_.visible=false;
+        imguiCarousel_.glbMaterialMode=0;
+        imguiCarousel_.musicPlaying=false;
+#endif
+        immersiveSceneActive_=true;
+        galleryRevealStarted_={};
+        transitionWhiteCoverage_=0.f;
+        victoryExitAt_={};
+        spikeProjectiles_.clear();
+        spikeImpacts_.clear();
+        return true;
+    }
+#endif
     auto immersiveSnapshot=saved ? voxen::gallery::decodeRuntime(saved->second) : std::nullopt;
     if(!immersiveSnapshot)return false;
     // Enter with only the requested scene instances resident.
@@ -556,6 +618,12 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
     immersiveSceneActive_=false;
+#ifdef VOXEN_WITH_GLB_IMPORT
+    if(glbPlaced_ && !glbInGallery_) {
+        glbPlaced_=false;
+        glbPreview_=false;
+    }
+#endif
     if(victoryExitAt_.time_since_epoch().count()!=0 && immersivePortalId_)
         suppressedPortalId_=immersivePortalId_;
     if(victoryExitAt_.time_since_epoch().count()!=0)
