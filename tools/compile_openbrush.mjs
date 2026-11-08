@@ -9,6 +9,7 @@ import {unzipSync,strFromU8} from 'fflate';
 import {readTiltStrokeData} from './vendor/three-tiltloader/src/tilt-strokes.js';
 import {generateBrushGeometry} from './vendor/three-tiltloader/src/brush-geometry.ts';
 import {getOpenBrushGeometryDefaults} from './vendor/three-tiltloader/src/brush-defaults.js';
+import {identifyBrush} from './openbrush-brush-registry.mjs';
 
 const args=process.argv.slice(2);
 const materialArg=args.indexOf('--materials');
@@ -58,7 +59,7 @@ for(const stroke of strokes){
  const g=generateBrushGeometry(converted,family,{finalized:true,lastControlPointIsKeeper:true});
  const count=g.positions.length/3,ic=g.indices.length;
  if(!count||!ic){skipped++;continue;}
- const group=materialGroups.get(guid)??{guid,family,meshes:0,vertices:0,triangles:0,rendering:'unresolved',texture:null,blendMode:null};
+ const group=materialGroups.get(guid)??{guid,family,meshes:0,vertices:0,triangles:0,...identifyBrush(guid),rendering:'unimplemented'};
  group.meshes++;group.vertices+=count;group.triangles+=ic/3;
  materialGroups.set(guid,group);
  if(!Number.isInteger(count)||count>10000000||ic>30000000)throw Error('Excessive mesh size');
