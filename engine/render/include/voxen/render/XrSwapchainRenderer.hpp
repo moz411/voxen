@@ -62,6 +62,9 @@ public:
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
     void configureSceneStorage(const std::filesystem::path& root);
+    // Explicit scene activation: no .tilt decoding at application startup.
+    bool activateTiltScene(const std::filesystem::path& source);
+    void deactivateTiltScene();
 #ifdef VOXEN_WITH_GLB_IMPORT
     // Explicit prototype import: app-private assets/demo.glb.
     bool loadDemoGlb(const std::filesystem::path& file,
