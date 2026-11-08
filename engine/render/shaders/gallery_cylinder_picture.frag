@@ -9,5 +9,7 @@ void main() {
     vec2 texcoord=vec2(fract(uv.x),1.0-uv.y);
     vec3 rgb=texture(picture,texcoord).rgb;
     float rim=1.0-smoothstep(0.0,0.035,min(uv.y,1.0-uv.y));
-    outColor=vec4(rgb*pc.parameters.y+vec3(0.06,0.22,0.30)*rim,1.0);
+    float pulse=0.65+0.35*sin(pc.parameters.x*2.4+6.2831853*fract(uv.x));
+    vec3 glow=vec3(0.14,0.58,1.0)*rim*(0.7+0.6*pulse);
+    outColor=vec4(rgb*pc.parameters.y+glow,1.0);
 }
