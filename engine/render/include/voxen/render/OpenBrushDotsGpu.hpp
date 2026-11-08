@@ -20,14 +20,14 @@ static_assert(offsetof(DotInstance, center) == 0);
 static_assert(offsetof(DotInstance, color) == 12);
 static_assert(offsetof(DotInstance, diameterMeters) == 28);
 
-// Input binding 0 is a static unit quad; binding 1 is the instance buffer.
+// Single instance-rate binding, six procedural vertices per instance.
 inline VkVertexInputBindingDescription dotsInstanceBinding() {
-    return {1, sizeof(DotInstance), VK_VERTEX_INPUT_RATE_INSTANCE};
+    return {0, sizeof(DotInstance), VK_VERTEX_INPUT_RATE_INSTANCE};
 }
 inline std::array<VkVertexInputAttributeDescription, 3> dotsInstanceAttributes() {
-    return {{{2,1,VK_FORMAT_R32G32B32_SFLOAT,0},
-             {3,1,VK_FORMAT_R32G32B32A32_SFLOAT,12},
-             {4,1,VK_FORMAT_R32_SFLOAT,28}}};
+    return {{{0,0,VK_FORMAT_R32G32B32_SFLOAT,0},
+             {1,0,VK_FORMAT_R32G32B32A32_SFLOAT,12},
+             {2,0,VK_FORMAT_R32_SFLOAT,28}}};
 }
 class DotsGpuBuffer {
 public:
