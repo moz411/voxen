@@ -240,12 +240,15 @@ private:
     GlbTexture panoramaTexture_{};
     GlbTexture panoramaPreviousTexture_{};
     VkDescriptorPool panoramaPreviousDescriptorPool_=VK_NULL_HANDLE;
-    GlbTexture galleryPictureTexture_{};
-    VkDescriptorPool galleryPictureDescriptorPool_=VK_NULL_HANDLE;
-    std::string galleryPictureLoadedFilename_;
+    struct GalleryPictureResource {
+        GlbTexture texture{};
+        VkDescriptorPool pool=VK_NULL_HANDLE;
+    };
+    // Filename-keyed GPU resources: each portal binds its own immutable descriptor.
+    std::unordered_map<std::string,GalleryPictureResource> galleryPictureCache_;
     std::string galleryPictureRequestedFilename_;
     std::future<PanoramaImage> galleryPictureDecodeFuture_;
-    bool loadGalleryPictureGpu(PanoramaImage&& decoded);
+    bool loadGalleryPictureGpu(const std::string& filename,PanoramaImage&& decoded);
     void releaseGalleryPictureGpu() noexcept;
     VkDescriptorPool panoramaDescriptorPool_=VK_NULL_HANDLE;
     bool loadPanoramaGpu(PanoramaImage&& decoded);
