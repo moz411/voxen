@@ -464,6 +464,7 @@ private:
     std::vector<std::string> sceneLabels_;
     void refreshSceneIndex();
     int selectedSceneIndex_ = 0;
+    std::optional<voxen::gallery::SceneId> editingSavedSceneId_;
     std::string sceneStatus_;
     std::chrono::steady_clock::time_point lastPhysicsFrame_{};
     float physicsAccumulator_=0.f;
