@@ -247,6 +247,13 @@ void XrSwapchainRenderer::releasePanoramaGpu() noexcept {
     panoramaTexture_={};
     if(panoramaDescriptorPool_)vkDestroyDescriptorPool(device_,panoramaDescriptorPool_,nullptr);
     panoramaDescriptorPool_=VK_NULL_HANDLE;
+    if(panoramaPreviousTexture_.sampler)vkDestroySampler(device_,panoramaPreviousTexture_.sampler,nullptr);
+    if(panoramaPreviousTexture_.view)vkDestroyImageView(device_,panoramaPreviousTexture_.view,nullptr);
+    if(panoramaPreviousTexture_.image)vkDestroyImage(device_,panoramaPreviousTexture_.image,nullptr);
+    if(panoramaPreviousTexture_.memory)vkFreeMemory(device_,panoramaPreviousTexture_.memory,nullptr);
+    panoramaPreviousTexture_={};
+    if(panoramaPreviousDescriptorPool_)vkDestroyDescriptorPool(device_,panoramaPreviousDescriptorPool_,nullptr);
+    panoramaPreviousDescriptorPool_=VK_NULL_HANDLE;
 }
 bool XrSwapchainRenderer::loadPanoramaGpu(PanoramaImage&& decoded) {
     if(!device_ || !panoramaSetLayout_ || !commandPool_)return false;
@@ -273,7 +280,15 @@ bool XrSwapchainRenderer::loadPanoramaGpu(PanoramaImage&& decoded) {
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO,"VoxenPanorama","GPU upload finished");
 #endif
-        releasePanoramaGpu();
+        // Keep the currently displayed image alive for an actual crossfade.
+        // Any older transition image can be released now.
+        if(panoramaPreviousTexture_.sampler)vkDestroySampler(device_,panoramaPreviousTexture_.sampler,nullptr);
+        if(panoramaPreviousTexture_.view)vkDestroyImageView(device_,panoramaPreviousTexture_.view,nullptr);
+        if(panoramaPreviousTexture_.image)vkDestroyImage(device_,panoramaPreviousTexture_.image,nullptr);
+        if(panoramaPreviousTexture_.memory)vkFreeMemory(device_,panoramaPreviousTexture_.memory,nullptr);
+        if(panoramaPreviousDescriptorPool_)vkDestroyDescriptorPool(device_,panoramaPreviousDescriptorPool_,nullptr);
+        panoramaPreviousTexture_=panoramaTexture_;
+        panoramaPreviousDescriptorPool_=panoramaDescriptorPool_;
         panoramaTexture_=incoming;
         panoramaDescriptorPool_=pool;
         return true;
