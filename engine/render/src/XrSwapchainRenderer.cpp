@@ -3,6 +3,7 @@
 #include <fstream>
 #include <voxen/render/MandelbulbMesh.hpp>
 #include <voxen/render/OpenBrushDotsDraw.hpp>
+#include <voxen/render/OpenBrushDotsBinary.hpp>
 #ifdef VOXEN_WITH_GLB_IMPORT
 #include <voxen/render/PanoramaImage.hpp>
 #endif
@@ -924,6 +925,38 @@ void XrSwapchainRenderer::initialize(
     imguiSurface_.initialize(vulkanInstance,physicalDevice_,device_,queue_,queueFamilyIndex_);
 #endif
     createPipeline();
+    // Optional experimental Open Brush Dots payload, generated offline from a
+    // .tilt sketch. Missing/invalid files leave the existing gallery untouched.
+    {
+#ifdef __ANDROID__
+        const char* dotsPath="/sdcard/Android/data/org.voxen.xr/files/openbrush-dots.bin";
+#else
+        const char* dotsPath="openbrush-dots.bin";
+#endif
+        std::ifstream file(dotsPath, std::ios::binary | std::ios::ate);
+        if (file) {
+            try {
+                const auto end=file.tellg();
+                if (end < 16 || end > std::streamoff(32*1024*1024))
+                    throw std::runtime_error("Dots payload size out of range");
+                std::vector<std::uint8_t> bytes(static_cast<std::size_t>(end));
+                file.seekg(0);
+                if (!file.read(reinterpret_cast<char*>(bytes.data()), end))
+                    throw std::runtime_error("Dots payload read failed");
+                auto instances=voxen::render::openbrush::decodeDotsBinary(bytes.data(),bytes.size());
+                openbrushDotsGpu_.upload(device_,physicalDevice_,instances);
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_INFO,"VoxenOpenBrush","Loaded Dots instances=%u",openbrushDotsGpu_.count());
+#endif
+            } catch (const std::exception& e) {
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_ERROR,"VoxenOpenBrush","Dots load failed: %s",e.what());
+#else
+                std::fprintf(stderr,"VoxenOpenBrush: %s\\n",e.what());
+#endif
+            }
+        }
+    }
     // Three shared meshes: high/medium/low detail, extracted only once.
     {
         auto upload=[&](const void* data,VkDeviceSize bytes,VkBufferUsageFlags usage,
@@ -2735,6 +2768,17 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         rectangle.layerCount=1;
         vkCmdClearAttachments(commandBuffer_,1,&attachment,1,&rectangle);
     }
+    // Experimental Dots overlay, one instanced draw per eye.
+    if (openbrushDotsGpu_.count() && openbrushDotsPipeline_!=VK_NULL_HANDLE) {
+        voxen::render::openbrush::DotsCameraPush camera{};
+        std::copy(std::begin(projView.m),std::end(projView.m),camera.viewProjection.begin());
+        const auto& q=xrView.pose.orientation;
+        const float x=q.x,y=q.y,z=q.z,w=q.w;
+        camera.cameraRight={1.f-2.f*(y*y+z*z),2.f*(x*y+w*z),2.f*(x*z-w*y),0.f};
+        camera.cameraUp={2.f*(x*y-w*z),1.f-2.f*(x*x+z*z),2.f*(y*z+w*x),0.f};
+        voxen::render::openbrush::recordDots(commandBuffer_,openbrushDotsPipeline_,
+            openbrushDotsPipelineLayout_,openbrushDotsGpu_,camera);
+    }
     vkCmdEndRenderPass(commandBuffer_);
     if (gpuTimestampPool_ != VK_NULL_HANDLE)
         vkCmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpuTimestampPool_, 1);
@@ -3965,6 +4009,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
+    if(device_!=VK_NULL_HANDLE)openbrushDotsGpu_.destroy(device_);
     if(openbrushDotsPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushDotsPipeline_,nullptr);openbrushDotsPipeline_=VK_NULL_HANDLE;}
     if(openbrushDotsPipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,openbrushDotsPipelineLayout_,nullptr);openbrushDotsPipelineLayout_=VK_NULL_HANDLE;}
     if(voxenMandelbulbLitPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbLitPipeline_,nullptr);voxenMandelbulbLitPipeline_=VK_NULL_HANDLE;}
