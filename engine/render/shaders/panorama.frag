@@ -27,5 +27,5 @@ void main() {
     bool inside=u>=0.0 && u<=1.0 && v>=0.0 && v<=1.0;
     vec3 rgb=inside?texture(panorama,vec2(u,v)).rgb:vec3(1.0);
     float fade=smoothstep(0.0,1.0,clamp(pc.controls.w,0.0,1.0));
-    outColor=vec4(mix(vec3(1.0),rgb,fade),1.0);
+    outColor=vec4(rgb,fade);
 }
