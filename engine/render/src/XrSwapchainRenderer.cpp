@@ -3796,7 +3796,7 @@ void XrSwapchainRenderer::render(
                 imguiCarousel_.cycleWallShaders=false;
                 imguiCarousel_.differentShaderPerSurface=false;
                 imguiCarousel_.musicPlaying=false;
-                imguiCarousel_.musicFile.clear();
+                imguiCarousel_.musicFile=-1;
                 imguiCarousel_.motionEnabled=false;
                 imguiCarousel_.sceneStatus="New empty scene; SAVE creates a new entry";
             }
