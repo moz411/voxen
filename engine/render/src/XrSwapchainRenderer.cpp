@@ -1890,22 +1890,25 @@ void XrSwapchainRenderer::updateControllerInteraction(
             float nearest=10.f;
             for(const auto& portal:portalManager_->visible()) {
                 const auto& p=portal.localPose.positionMeters;
-                const float dx=p[0]-hand.position.x;
-                const float dy=p[1]-hand.position.y;
-                const float dz=p[2]-hand.position.z;
-                const float t=dx*forward[0]+dy*forward[1]+dz*forward[2];
-                if(t<0.08f || t>nearest)continue;
-                // The cylinder spans floor..floor+1.6*scale, not a small sphere
-                // centered on its floor anchor. Test a finite vertical cylinder.
+                // Ray / finite vertical cylinder intersection. Using the
+                // distance to the floor anchor fails for rays aimed at its top.
                 const float scale=std::clamp(portal.scale,0.1f,4.f);
                 const float radius=0.4f*scale;
-                const float floorY=p[1];
-                const float topY=floorY+1.6f*scale;
+                const float ox=hand.position.x-p[0], oz=hand.position.z-p[2];
+                const float dx=forward[0], dz=forward[2];
+                const float aa=dx*dx+dz*dz;
+                if(aa<1e-6f)continue;
+                const float bb=2.f*(ox*dx+oz*dz);
+                const float cc=ox*ox+oz*oz-radius*radius;
+                const float discriminant=bb*bb-4.f*aa*cc;
+                if(discriminant<0.f)continue;
+                const float root=std::sqrt(discriminant);
+                const float t0=(-bb-root)/(2.f*aa);
+                const float t1=(-bb+root)/(2.f*aa);
+                const float t=t0>0.08f?t0:t1;
+                if(t<0.08f || t>=nearest)continue;
                 const float hitY=hand.position.y+t*forward[1];
-                const float hitX=hand.position.x+t*forward[0];
-                const float hitZ=hand.position.z+t*forward[2];
-                const float radial2=(hitX-p[0])*(hitX-p[0])+(hitZ-p[2])*(hitZ-p[2]);
-                if(hitY>=floorY-0.05f && hitY<=topY+0.05f && radial2<=radius*radius) {
+                if(hitY>=p[1]-0.05f && hitY<=p[1]+1.6f*scale+0.05f) {
                     nearest=t;
                     galleryHoveredId_=portal.id;
                 }
