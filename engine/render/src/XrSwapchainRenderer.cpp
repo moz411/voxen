@@ -324,6 +324,35 @@ void XrSwapchainRenderer::refreshSceneIndex() {
         sceneIds_=sceneRepository_->listScenes();
     }
 #endif
+    // .tilt files are scene assets, never standalone Voxen or eager GPU loads.
+#ifdef __ANDROID__
+    const std::filesystem::path tiltDir="/sdcard/Android/data/org.voxen.xr/files/tilts";
+#else
+    const std::filesystem::path tiltDir="tilts";
+#endif
+    if(sceneRepository_) {
+        std::error_code ec;
+        std::filesystem::create_directories(tiltDir,ec);
+        for(std::filesystem::directory_iterator it(tiltDir,ec),end;
+            !ec && it!=end;it.increment(ec)) {
+            if(!it->is_regular_file(ec) || it->is_symlink(ec) ||
+               it->path().extension()!=".tilt")continue;
+            const auto filename=it->path().filename().string();
+            std::uint64_t hash=14695981039346656037ull;
+            for(unsigned char c:filename){hash^=c;hash*=1099511628211ull;}
+            const auto id=std::string("tilt-")+std::to_string(hash);
+            if(!sceneRepository_->loadSceneMetadata(id)) {
+                voxen::gallery::SceneRecord record;
+                record.id=id;
+                record.displayName=it->path().stem().string()+" [Open Brush]";
+                record.preview.boundingRadiusMeters=2.5f;
+                record.preview.materialPreset=4;
+                record.payloadAsset="scene.bin";
+                sceneRepository_->saveScene(record,"TILT_SCENE_V1\\n"+filename);
+            }
+        }
+        sceneIds_=sceneRepository_->listScenes();
+    }
     sceneLabels_.clear();
     scenePreviewCache_.clear();
     sceneLabels_.reserve(sceneIds_.size());
@@ -608,6 +637,30 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
 #endif
     // Validate and parse before touching the current live scene.
     auto saved=sceneRepository_->loadScene(id);
+    if(saved && saved->second.starts_with("TILT_SCENE_V1\\n")) {
+        const auto filename=saved->second.substr(sizeof("TILT_SCENE_V1\\n")-1);
+        if(filename.empty() || std::filesystem::path(filename).filename()!=filename ||
+           std::filesystem::path(filename).extension()!=".tilt")return false;
+#ifdef __ANDROID__
+        const auto path=std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/tilts")/filename;
+#else
+        const auto path=std::filesystem::path("tilts")/filename;
+#endif
+        if(!std::filesystem::is_regular_file(path) || !activateTiltScene(path))return false;
+        std::vector<PlasmaVoxen>{}.swap(voxens_);
+#ifdef VOXEN_WITH_IMGUI
+        imguiCarousel_.editMode=false;
+        imguiCarousel_.visible=false;
+        imguiCarousel_.musicPlaying=false;
+#endif
+        immersiveSceneActive_=true;
+        galleryRevealStarted_={};
+        transitionWhiteCoverage_=0.f;
+        victoryExitAt_={};
+        spikeProjectiles_.clear();
+        spikeImpacts_.clear();
+        return true;
+    }
 #ifdef __ANDROID__
     __android_log_print(saved?ANDROID_LOG_INFO:ANDROID_LOG_ERROR,"VoxenGallery",
         "Scene repository load: %s",saved?"found":"missing");
@@ -689,6 +742,7 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
 #endif
     ambientMusic_.configure(0,false,0.f);
     mp3Library_.update(-1,false,0.f);
+    deactivateTiltScene();
     // Release the per-scene CPU instance storage. Global pipelines, mesh
     // caches and descriptor allocations remain resident for now.
     std::vector<PlasmaVoxen>{}.swap(voxens_);
