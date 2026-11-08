@@ -338,16 +338,20 @@ bool XrSwapchainRenderer::loadPanoramaGpu(PanoramaImage&& decoded) {
 }
 void XrSwapchainRenderer::releaseGalleryPictureGpu() noexcept {
     if(!device_)return;
-    if(galleryPictureTexture_.sampler)vkDestroySampler(device_,galleryPictureTexture_.sampler,nullptr);
-    if(galleryPictureTexture_.view)vkDestroyImageView(device_,galleryPictureTexture_.view,nullptr);
-    if(galleryPictureTexture_.image)vkDestroyImage(device_,galleryPictureTexture_.image,nullptr);
-    if(galleryPictureTexture_.memory)vkFreeMemory(device_,galleryPictureTexture_.memory,nullptr);
-    galleryPictureTexture_={};
-    if(galleryPictureDescriptorPool_)vkDestroyDescriptorPool(device_,galleryPictureDescriptorPool_,nullptr);
-    galleryPictureDescriptorPool_=VK_NULL_HANDLE;
+    for(auto& entry:galleryPictureCache_) {
+        auto& tex=entry.second.texture;
+        if(tex.sampler)vkDestroySampler(device_,tex.sampler,nullptr);
+        if(tex.view)vkDestroyImageView(device_,tex.view,nullptr);
+        if(tex.image)vkDestroyImage(device_,tex.image,nullptr);
+        if(tex.memory)vkFreeMemory(device_,tex.memory,nullptr);
+        if(entry.second.pool)vkDestroyDescriptorPool(device_,entry.second.pool,nullptr);
+    }
+    galleryPictureCache_.clear();
 }
-bool XrSwapchainRenderer::loadGalleryPictureGpu(PanoramaImage&& decoded) {
-    if(!device_ || !panoramaSetLayout_ || !commandPool_)return false;
+bool XrSwapchainRenderer::loadGalleryPictureGpu(
+    const std::string& filename,PanoramaImage&& decoded) {
+    if(!device_ || !panoramaSetLayout_ || !commandPool_ || filename.empty())return false;
+    if(galleryPictureCache_.find(filename)!=galleryPictureCache_.end())return true;
     GlbTexture incoming{};
     VkDescriptorPool pool=VK_NULL_HANDLE;
     try {
@@ -371,9 +375,8 @@ bool XrSwapchainRenderer::loadGalleryPictureGpu(PanoramaImage&& decoded) {
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO,"VoxenPanorama","GPU upload finished");
 #endif
-        releaseGalleryPictureGpu();
-        galleryPictureTexture_=incoming;
-        galleryPictureDescriptorPool_=pool;
+        // No replacement: existing portal textures retain their own descriptors.
+        galleryPictureCache_.emplace(filename,GalleryPictureResource{incoming,pool});
         return true;
     } catch(const std::exception& e) {
 #ifdef __ANDROID__

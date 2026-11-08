@@ -13,7 +13,8 @@ void main() {
     int x=i+offsets[corner].x;
     float v=float(offsets[corner].y);
     float angle=TAU*float(x)/float(SEG);
-    vec2 circle=vec2(cos(angle),sin(angle));
+    float breathe=1.0+0.035*sin(pc.parameters.x*2.2);
+    vec2 circle=breathe*vec2(cos(angle),sin(angle));
     normal=vec3(circle.x,0.0,circle.y);
     uv=vec2(3.0*float(x)/float(SEG),v);
     gl_Position=pc.mvp*vec4(circle.x,(v*2.0-1.0)*2.0,circle.y,1.0);

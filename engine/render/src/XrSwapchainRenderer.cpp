@@ -2,6 +2,10 @@
 #include <limits>
 #include <fstream>
 #include <voxen/render/MandelbulbMesh.hpp>
+#include <voxen/render/OpenBrushDotsDraw.hpp>
+#include <voxen/render/OpenBrushDotsBinary.hpp>
+#include <voxen/render/OpenBrushTilt.hpp>
+#include <voxen/render/OpenBrushTiltCache.hpp>
 #ifdef VOXEN_WITH_GLB_IMPORT
 #include <voxen/render/PanoramaImage.hpp>
 #endif
@@ -61,6 +65,10 @@
 #include "solidWallFrag.spv.hpp"
 #include "mandelbulbLitVert.spv.hpp"
 #include "mandelbulbLitFrag.spv.hpp"
+#include "openbrushMeshVert.spv.hpp"
+#include "openbrushMeshFrag.spv.hpp"
+#include "openbrushDotsVert.spv.hpp"
+#include "openbrushDotsFrag.spv.hpp"
 #include "glbOriginalVert.spv.hpp"
 #include "glbOriginalFrag.spv.hpp"
 #include "glbTexturedVert.spv.hpp"
@@ -318,6 +326,36 @@ void XrSwapchainRenderer::refreshSceneIndex() {
         sceneIds_=sceneRepository_->listScenes();
     }
 #endif
+    // .tilt files are scene assets, never standalone Voxen or eager GPU loads.
+#ifdef __ANDROID__
+    const std::filesystem::path tiltDir="/sdcard/Android/data/org.voxen.xr/files/tilts";
+#else
+    const std::filesystem::path tiltDir="tilts";
+#endif
+    if(sceneRepository_) {
+        std::error_code ec;
+        std::filesystem::create_directories(tiltDir,ec);
+        for(std::filesystem::directory_iterator it(tiltDir,ec),end;
+            !ec && it!=end;it.increment(ec)) {
+            if(!it->is_regular_file(ec) || it->is_symlink(ec) ||
+               (it->path().extension()!=".tilt" && it->path().extension()!=".vxmesh"))continue;
+            const auto filename=it->path().filename().string();
+            std::uint64_t hash=14695981039346656037ull;
+            for(unsigned char c:filename){hash^=c;hash*=1099511628211ull;}
+            const auto id=std::string("tilt-")+std::to_string(hash);
+            if(!sceneRepository_->loadSceneMetadata(id)) {
+                voxen::gallery::SceneRecord record;
+                record.id=id;
+                record.displayName=it->path().stem().string()+
+                    (it->path().extension()==".vxmesh"?" [Open Brush compiled]":" [Open Brush]");
+                record.preview.boundingRadiusMeters=2.5f;
+                record.preview.materialPreset=4;
+                record.payloadAsset="scene.bin";
+                sceneRepository_->saveScene(record,"TILT_SCENE_V1\\n"+filename);
+            }
+        }
+        sceneIds_=sceneRepository_->listScenes();
+    }
     sceneLabels_.clear();
     scenePreviewCache_.clear();
     sceneLabels_.reserve(sceneIds_.size());
@@ -602,6 +640,31 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
 #endif
     // Validate and parse before touching the current live scene.
     auto saved=sceneRepository_->loadScene(id);
+    if(saved && saved->second.starts_with("TILT_SCENE_V1\\n")) {
+        const auto filename=saved->second.substr(sizeof("TILT_SCENE_V1\\n")-1);
+        if(filename.empty() || std::filesystem::path(filename).filename()!=filename ||
+           (std::filesystem::path(filename).extension()!=".tilt" &&
+             std::filesystem::path(filename).extension()!=".vxmesh"))return false;
+#ifdef __ANDROID__
+        const auto path=std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/tilts")/filename;
+#else
+        const auto path=std::filesystem::path("tilts")/filename;
+#endif
+        if(!std::filesystem::is_regular_file(path) || !activateTiltScene(path))return false;
+        std::vector<PlasmaVoxen>{}.swap(voxens_);
+#ifdef VOXEN_WITH_IMGUI
+        imguiCarousel_.editMode=false;
+        imguiCarousel_.visible=false;
+        imguiCarousel_.musicPlaying=false;
+#endif
+        immersiveSceneActive_=true;
+        galleryRevealStarted_={};
+        transitionWhiteCoverage_=0.f;
+        victoryExitAt_={};
+        spikeProjectiles_.clear();
+        spikeImpacts_.clear();
+        return true;
+    }
 #ifdef __ANDROID__
     __android_log_print(saved?ANDROID_LOG_INFO:ANDROID_LOG_ERROR,"VoxenGallery",
         "Scene repository load: %s",saved?"found":"missing");
@@ -683,6 +746,7 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
 #endif
     ambientMusic_.configure(0,false,0.f);
     mp3Library_.update(-1,false,0.f);
+    deactivateTiltScene();
     // Release the per-scene CPU instance storage. Global pipelines, mesh
     // caches and descriptor allocations remain resident for now.
     std::vector<PlasmaVoxen>{}.swap(voxens_);
@@ -1434,6 +1498,21 @@ void XrSwapchainRenderer::createPipeline() {
         info.pPushConstantRanges=&range;
         checkVk(vkCreatePipelineLayout(device_,&info,nullptr,&galleryPicturePipelineLayout_),"gallery picture layout");
     }
+    {
+        auto range = voxen::render::openbrush::dotsCameraPushRange();
+        VkPipelineLayoutCreateInfo ci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        ci.pushConstantRangeCount=1;
+        ci.pPushConstantRanges=&range;
+        checkVk(vkCreatePipelineLayout(device_, &ci, nullptr, &openbrushDotsPipelineLayout_),
+                "openbrush Dots pipeline layout");
+    }
+    {
+        VkPushConstantRange range{VK_SHADER_STAGE_VERTEX_BIT,0,64};
+        VkPipelineLayoutCreateInfo ci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        ci.pushConstantRangeCount=1;ci.pPushConstantRanges=&range;
+        checkVk(vkCreatePipelineLayout(device_,&ci,nullptr,&openbrushMeshPipelineLayout_),
+                "openbrush mesh pipeline layout");
+    }
     // Shared render pass and push constants.
     auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
                              const std::uint8_t* fb, std::size_t fsz,
@@ -1485,6 +1564,22 @@ void XrSwapchainRenderer::createPipeline() {
             vi.pVertexAttributeDescriptions=texAttrs;
         }
 #endif
+        auto dotsBinding = voxen::render::openbrush::dotsInstanceBinding();
+        auto dotsAttributes = voxen::render::openbrush::dotsInstanceAttributes();
+        auto meshBinding = voxen::render::openbrush::meshBinding();
+        auto meshAttributes = voxen::render::openbrush::meshAttributes();
+        if (&out == &openbrushMeshPipeline_) {
+            vi.vertexBindingDescriptionCount=1;
+            vi.pVertexBindingDescriptions=&meshBinding;
+            vi.vertexAttributeDescriptionCount=static_cast<uint32_t>(meshAttributes.size());
+            vi.pVertexAttributeDescriptions=meshAttributes.data();
+        }
+        if (&out == &openbrushDotsPipeline_) {
+            vi.vertexBindingDescriptionCount=1;
+            vi.pVertexBindingDescriptions=&dotsBinding;
+            vi.vertexAttributeDescriptionCount=static_cast<uint32_t>(dotsAttributes.size());
+            vi.pVertexAttributeDescriptions=dotsAttributes.data();
+        }
         VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
         vp.viewportCount=1; vp.scissorCount=1;
         VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
@@ -1523,7 +1618,7 @@ void XrSwapchainRenderer::createPipeline() {
 #endif
             ;
         if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
-        if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
+        if(&out==&panoramaPipeline_ || &out==&openbrushDotsPipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
         if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &galleryCylinderPipeline_ || &out == &galleryCylinderMatrixPipeline_ || &out == &galleryCylinderOceanPipeline_ || &out == &galleryCylinderLiquidPipeline_ || &out == &panoramaPipeline_
@@ -1533,6 +1628,15 @@ void XrSwapchainRenderer::createPipeline() {
         ) {
             blend.blendEnable=VK_TRUE;
             blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
+            blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.colorBlendOp=VK_BLEND_OP_ADD;
+            blend.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;
+            blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.alphaBlendOp=VK_BLEND_OP_ADD;
+        }
+        if (&out==&openbrushDotsPipeline_) {
+            blend.blendEnable=VK_TRUE;
+            blend.srcColorBlendFactor=VK_BLEND_FACTOR_ONE;
             blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
             blend.colorBlendOp=VK_BLEND_OP_ADD;
             blend.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;
@@ -1560,6 +1664,8 @@ void XrSwapchainRenderer::createPipeline() {
 #ifdef VOXEN_WITH_GLB_IMPORT
         if(&out==&glbTexturedPipeline_)pi.layout=glbTexturePipelineLayout_;
 #endif
+        if(&out==&openbrushDotsPipeline_)pi.layout=openbrushDotsPipelineLayout_;
+        if(&out==&openbrushMeshPipeline_)pi.layout=openbrushMeshPipelineLayout_;
         if(&out==&panoramaPipeline_)pi.layout=panoramaPipelineLayout_;
         if(&out==&galleryCylinderPicturePipeline_)pi.layout=galleryPicturePipelineLayout_;
         pi.renderPass=renderPass_;
@@ -1567,6 +1673,8 @@ void XrSwapchainRenderer::createPipeline() {
         vkDestroyShaderModule(device_, fs, nullptr);
         vkDestroyShaderModule(device_, vs, nullptr);
     };
+    buildPipeline(openbrushMeshVert,openbrushMeshVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushMeshPipeline_);
+    buildPipeline(openbrushDotsVert,openbrushDotsVertSize,openbrushDotsFrag,openbrushDotsFragSize,openbrushDotsPipeline_);
     buildPipeline(panoramaVert,panoramaVertSize,panoramaFrag,panoramaFragSize,panoramaPipeline_);
     buildPipeline(organicSphereVert, organicSphereVertSize, organicSphereFrag, organicSphereFragSize, organicSpherePipeline_);
     buildPipeline(torusKnotVert, torusKnotVertSize, organicSphereFrag, organicSphereFragSize, torusKnotPipeline_);
@@ -1712,6 +1820,14 @@ void XrSwapchainRenderer::updateControllerInteraction(
 #ifdef VOXEN_WITH_IMGUI
     const bool galleryTriggerEdge=pressed[1] && !lastGalleryTriggerPressed_;
     lastGalleryTriggerPressed_=pressed[1];
+    if(pendingGalleryFloorAction_==1 && tracked[1]) {
+        // Forward/backward on right thumbstick adjusts the preview and final
+        // portal distance; independent of controller pitch.
+        const float axis=thumbsticks[1].y;
+        if(std::fabs(axis)>0.18f)
+            galleryPlacementDistance_=std::clamp(
+                galleryPlacementDistance_+axis*0.035f,0.5f,5.0f);
+    }
     if(pendingGalleryFloorAction_==1 && galleryTriggerEdge && tracked[1] && !imguiCarousel_.visible) {
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
@@ -1721,10 +1837,18 @@ void XrSwapchainRenderer::updateControllerInteraction(
             -(1.f-2.f*(q.x*q.x+q.y*q.y))};
         voxen::gallery::Pose placed{};
         placed.positionMeters={
-            pose.position.x+0.38f*forward[0],
-            pose.position.y+0.38f*forward[1],
-            pose.position.z+0.38f*forward[2]};
-        const bool valid=portalManager_ && portalManager_->localized() &&
+            pose.position.x+galleryPlacementDistance_*forward[0],
+            pose.position.y+galleryPlacementDistance_*forward[1],
+            pose.position.z+galleryPlacementDistance_*forward[2]};
+        // Raycast vertically down at the placement location. A floor plane's
+        // center is not necessarily its intersection at this X/Z position.
+        const std::array<float,3> down{0.f,-1.f,0.f};
+        const std::array<float,3> above{
+            placed.positionMeters[0],pose.position.y+2.0f,placed.positionMeters[2]};
+        const auto floor=voxen::gallery::intersectTrackedFloor(
+            environmentSurfaces_.surfaces(),above,down);
+        if(floor)placed.positionMeters[1]=floor->localPose.positionMeters[1];
+        const bool valid=floor.has_value() && portalManager_ && portalManager_->localized() &&
             selectedSceneIndex_>=0 &&
             static_cast<std::size_t>(selectedSceneIndex_)<sceneIds_.size();
         const auto id=valid?portalManager_->placeAtPose(sceneIds_[selectedSceneIndex_],placed):
@@ -1733,7 +1857,9 @@ void XrSwapchainRenderer::updateControllerInteraction(
             selectedPortalId_=*id;
             pendingGalleryFloorAction_=0;
             imguiCarousel_.sceneStatus="Static Voxen placed";
-        } else imguiCarousel_.sceneStatus="Placement failed: room anchor or scene unavailable";
+        } else imguiCarousel_.sceneStatus=!floor
+            ? "No tracked Meta floor at portal location; placement cancelled"
+            : "Placement failed: room anchor or scene unavailable";
     }
 #endif
 #ifdef VOXEN_WITH_IMGUI
@@ -1752,41 +1878,97 @@ void XrSwapchainRenderer::updateControllerInteraction(
             -2.f*(q.y*q.z-q.w*q.x),
             -(1.f-2.f*(q.x*q.x+q.y*q.y))};
         if(galleryDragging_) {
-            galleryDraggedPose_.positionMeters={
-                hand.position.x+galleryGrabDistance_*forward[0],
-                hand.position.y+galleryGrabDistance_*forward[1],
-                hand.position.z+galleryGrabDistance_*forward[2]};
+            // Same right-stick distance control when moving an existing portal.
+            // Preserve the portal's floor anchor; controller pitch must not lift it.
+            const float axis=thumbsticks[1].y;
+            if(std::fabs(axis)>0.18f)
+                galleryGrabDistance_=std::clamp(galleryGrabDistance_+axis*0.035f,0.5f,5.f);
+            galleryDraggedPose_.positionMeters[0]=hand.position.x+galleryGrabDistance_*forward[0];
+            galleryDraggedPose_.positionMeters[2]=hand.position.z+galleryGrabDistance_*forward[2];
+            const std::array<float,3> above{
+                galleryDraggedPose_.positionMeters[0],hand.position.y+2.f,
+                galleryDraggedPose_.positionMeters[2]};
+            const auto floor=voxen::gallery::intersectTrackedFloor(
+                environmentSurfaces_.surfaces(),above,{0.f,-1.f,0.f});
+            galleryDragFloorValid_=floor.has_value();
+            if(floor)galleryDraggedPose_.positionMeters[1]=floor->localPose.positionMeters[1];
             if(!pressed[1]) {
-                const bool saved=selectedPortalId_ &&
+                // Always resolve the floor again at release. Never persist a
+                // stale Y value or an X/Z location outside the tracked floor.
+                const std::array<float,3> releaseAbove{
+                    galleryDraggedPose_.positionMeters[0],hand.position.y+2.f,
+                    galleryDraggedPose_.positionMeters[2]};
+                const auto releaseFloor=voxen::gallery::intersectTrackedFloor(
+                    environmentSurfaces_.surfaces(),releaseAbove,{0.f,-1.f,0.f});
+                const bool validFloor=releaseFloor.has_value();
+                if(validFloor)
+                    galleryDraggedPose_.positionMeters[1]=releaseFloor->localPose.positionMeters[1];
+                const bool saved=validFloor && selectedPortalId_ &&
                     portalManager_->moveToPose(*selectedPortalId_,galleryDraggedPose_);
+                if(!saved)galleryDraggedPose_=galleryDragOriginalPose_;
+                galleryDragFloorValid_=false;
                 galleryDragging_=false;
-                imguiCarousel_.sceneStatus=saved?"Sphere moved and gallery saved":
-                                                  "Move failed: gallery unchanged";
+                imguiCarousel_.sceneStatus=saved?"Portal snapped to Meta floor and saved":
+                    "No tracked floor at release; portal position unchanged";
             }
         } else {
             galleryHoveredId_.reset();
             float nearest=10.f;
             for(const auto& portal:portalManager_->visible()) {
                 const auto& p=portal.localPose.positionMeters;
-                const float dx=p[0]-hand.position.x;
-                const float dy=p[1]-hand.position.y;
-                const float dz=p[2]-hand.position.z;
-                const float t=dx*forward[0]+dy*forward[1]+dz*forward[2];
-                if(t<0.08f || t>nearest)continue;
-                const float miss2=dx*dx+dy*dy+dz*dz-t*t;
-                const float radius=0.25f*std::clamp(portal.scale,0.1f,4.f);
-                if(miss2<=radius*radius*2.25f) {
+                // Ray / finite vertical cylinder intersection. Using the
+                // distance to the floor anchor fails for rays aimed at its top.
+                const float scale=std::clamp(portal.scale,0.1f,4.f);
+                const float radius=0.4f*scale;
+                const float ox=hand.position.x-p[0], oz=hand.position.z-p[2];
+                const float dx=forward[0], dz=forward[2];
+                const float aa=dx*dx+dz*dz;
+                if(aa<1e-6f)continue;
+                const float bb=2.f*(ox*dx+oz*dz);
+                const float cc=ox*ox+oz*oz-radius*radius;
+                const float discriminant=bb*bb-4.f*aa*cc;
+                if(discriminant<0.f)continue;
+                const float root=std::sqrt(discriminant);
+                const float t0=(-bb-root)/(2.f*aa);
+                const float t1=(-bb+root)/(2.f*aa);
+                const float t=t0>0.08f?t0:t1;
+                if(t<0.08f || t>=nearest)continue;
+                const float hitY=hand.position.y+t*forward[1];
+                if(hitY>=p[1]-0.05f && hitY<=p[1]+1.6f*scale+0.05f) {
                     nearest=t;
                     galleryHoveredId_=portal.id;
                 }
             }
             if(galleryTriggerEdge && galleryHoveredId_) {
                 selectedPortalId_=galleryHoveredId_;
-                galleryGrabDistance_=nearest;
-                galleryDraggedPose_.positionMeters={
-                    hand.position.x+nearest*forward[0],
-                    hand.position.y+nearest*forward[1],
-                    hand.position.z+nearest*forward[2]};
+                // Keep the panel selection synchronized with ray selection;
+                // otherwise the next UI update silently selects the old portal.
+                for(std::size_t i=0;i<sceneIds_.size();++i) {
+                    const auto portals=portalManager_->visible();
+                    const auto it=std::find_if(portals.begin(),portals.end(),
+                        [&](const voxen::gallery::VisiblePortal& p){return p.id==*selectedPortalId_;});
+                    if(it!=portals.end() && it->sceneId==sceneIds_[i]) {
+                        selectedSceneIndex_=static_cast<int>(i);
+                        imguiCarousel_.selectedScene=static_cast<int>(i);
+                        break;
+                    }
+                }
+                // Grab by the column's center (half height), not the ray
+                // intersection on its surface. The stored pose remains floor-based.
+                for(const auto& portal:portalManager_->visible())
+                    if(portal.id==*selectedPortalId_) {
+                        galleryDraggedPose_=portal.localPose;
+                        galleryDragOriginalPose_=portal.localPose;
+                        galleryDragFloorValid_=true;
+                        const auto& base=portal.localPose.positionMeters;
+                        const float halfHeight=0.8f*std::clamp(portal.scale,0.1f,4.f);
+                        const float cx=base[0]-hand.position.x;
+                        const float cy=base[1]+halfHeight-hand.position.y;
+                        const float cz=base[2]-hand.position.z;
+                        galleryGrabDistance_=std::clamp(
+                            cx*forward[0]+cy*forward[1]+cz*forward[2],0.5f,5.f);
+                        break;
+                    }
                 galleryDragging_=true;
                 galleryDeleteArmedUntil_={};
                 imguiCarousel_.sceneStatus="Moving sphere; release trigger to save, B twice to delete";
@@ -2318,7 +2500,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         for(std::size_t i=0;i<count;++i) {
             const auto& p=portals[i];
             if(suppressedPortalId_ && p.id==*suppressedPortalId_)continue;
-            const auto& xyz=(galleryDragging_ && selectedPortalId_ && p.id==*selectedPortalId_)
+            const auto& xyz=(galleryDragging_ && galleryDragFloorValid_ &&
+                selectedPortalId_ && p.id==*selectedPortalId_)
                 ? galleryDraggedPose_.positionMeters : p.localPose.positionMeters;
             const float s=std::clamp(p.scale,0.1f,4.f);
             const Mat4 mvp=multiply(projView,
@@ -2336,13 +2519,14 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 pipeline=shaderMode==0?galleryCylinderMatrixPipeline_:
                     shaderMode==1?galleryCylinderOceanPipeline_:galleryCylinderLiquidPipeline_;
             }
+            const auto picture=galleryPictureCache_.find(p.surface.pictureFilename);
             const bool textured=p.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
-                galleryPictureTexture_.descriptor &&
-                p.surface.pictureFilename==galleryPictureLoadedFilename_;
+                picture!=galleryPictureCache_.end() && picture->second.texture.descriptor;
             if(textured) {
                 pipeline=galleryCylinderPicturePipeline_;
+                const auto descriptor=picture->second.texture.descriptor;
                 vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    galleryPicturePipelineLayout_,0,1,&galleryPictureTexture_.descriptor,0,nullptr);
+                    galleryPicturePipelineLayout_,0,1,&descriptor,0,nullptr);
             }
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);
             ProceduralPushConstants pc{mvp,{seconds,useBackground?1.f:selected,
@@ -2361,8 +2545,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const float dy=-2.f*(q.y*q.z-q.w*q.x);
             const float dz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
             const Mat4 mvp=multiply(projView,modelMatrix(
-                pose.position.x+0.38f*dx,pose.position.y+0.38f*dy,
-                0.25f,pose.position.z+0.38f*dz,0.f));
+                pose.position.x+galleryPlacementDistance_*dx,
+                pose.position.y+galleryPlacementDistance_*dy,
+                0.25f,pose.position.z+galleryPlacementDistance_*dz,0.f));
             ProceduralPushConstants pc{mvp,{seconds,1.f,4.f,0.5f}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -2704,6 +2889,22 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         rectangle.baseArrayLayer=0;
         rectangle.layerCount=1;
         vkCmdClearAttachments(commandBuffer_,1,&attachment,1,&rectangle);
+    }
+    if (immersiveSceneActive_ && !openbrushMeshGpu_.empty() && openbrushMeshPipeline_) {
+        std::array<float,16> vp{};
+        std::copy(std::begin(projView.m),std::end(projView.m),vp.begin());
+        openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,openbrushMeshPipelineLayout_,vp);
+    }
+    // Experimental Dots overlay, one instanced draw per eye.
+    if (immersiveSceneActive_ && openbrushDotsGpu_.count() && openbrushDotsPipeline_!=VK_NULL_HANDLE) {
+        voxen::render::openbrush::DotsCameraPush camera{};
+        std::copy(std::begin(projView.m),std::end(projView.m),camera.viewProjection.begin());
+        const auto& q=xrView.pose.orientation;
+        const float x=q.x,y=q.y,z=q.z,w=q.w;
+        camera.cameraRight={1.f-2.f*(y*y+z*z),2.f*(x*y+w*z),2.f*(x*z-w*y),0.f};
+        camera.cameraUp={2.f*(x*y-w*z),1.f-2.f*(x*x+z*z),2.f*(y*z+w*x),0.f};
+        voxen::render::openbrush::recordDots(commandBuffer_,openbrushDotsPipeline_,
+            openbrushDotsPipelineLayout_,openbrushDotsGpu_,camera);
     }
     vkCmdEndRenderPass(commandBuffer_);
     if (gpuTimestampPool_ != VK_NULL_HANDLE)
@@ -3269,41 +3470,73 @@ void XrSwapchainRenderer::render(
         }
         imguiCarousel_.panoramaFiles=panoramaNames_;
 #ifdef VOXEN_WITH_GLB_IMPORT
-        // Decode gallery Pictures asynchronously, independently of the immersive
-        // panorama texture. A single gallery texture is resident at a time.
+        // Sequential async decode; each filename owns a persistent Vulkan texture.
+        // Never change a descriptor while another portal is rendering with it.
         if(galleryPictureDecodeFuture_.valid() &&
            galleryPictureDecodeFuture_.wait_for(std::chrono::seconds(0))==
                std::future_status::ready) {
+            const std::string completed=galleryPictureRequestedFilename_;
             try {
                 auto decoded=galleryPictureDecodeFuture_.get();
-                if(loadGalleryPictureGpu(std::move(decoded)))
-                    galleryPictureLoadedFilename_=galleryPictureRequestedFilename_;
-            } catch(...) { galleryPictureLoadedFilename_.clear(); }
+                (void)loadGalleryPictureGpu(completed,std::move(decoded));
+            } catch(...) {
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_WARN,"VoxenGallery",
+                                    "Portal picture decode failed: %s",completed.c_str());
+#endif
+            }
+            galleryPictureRequestedFilename_.clear();
         }
-        std::string requestedPicture;
-        if(!immersiveSceneActive_ && portalManager_) {
-            for(const auto& portal:portalManager_->visible()) {
-                if(portal.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
-                   !portal.surface.pictureFilename.empty()) {
-                    requestedPicture=portal.surface.pictureFilename;
-                    break;
+        if(!immersiveSceneActive_ && portalManager_ &&
+           !galleryPictureDecodeFuture_.valid()) {
+            const auto portals=portalManager_->visible();
+            // Release textures no longer referenced by any visible portal.
+            // GPU commands may still reference them, so synchronize before freeing.
+            bool stale=false;
+            for(const auto& entry:galleryPictureCache_) {
+                const bool used=std::any_of(portals.begin(),portals.end(),
+                    [&](const voxen::gallery::VisiblePortal& p) {
+                        return p.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
+                               p.surface.pictureFilename==entry.first;
+                    });
+                if(!used){stale=true;break;}
+            }
+            if(stale) {
+                vkDeviceWaitIdle(device_);
+                for(auto it=galleryPictureCache_.begin();it!=galleryPictureCache_.end();) {
+                    const bool used=std::any_of(portals.begin(),portals.end(),
+                        [&](const voxen::gallery::VisiblePortal& p) {
+                            return p.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
+                                   p.surface.pictureFilename==it->first;
+                        });
+                    if(used){++it;continue;}
+                    auto& tex=it->second.texture;
+                    if(tex.sampler)vkDestroySampler(device_,tex.sampler,nullptr);
+                    if(tex.view)vkDestroyImageView(device_,tex.view,nullptr);
+                    if(tex.image)vkDestroyImage(device_,tex.image,nullptr);
+                    if(tex.memory)vkFreeMemory(device_,tex.memory,nullptr);
+                    if(it->second.pool)vkDestroyDescriptorPool(device_,it->second.pool,nullptr);
+                    it=galleryPictureCache_.erase(it);
                 }
             }
-        }
-        if(!requestedPicture.empty() &&
-           requestedPicture!=galleryPictureLoadedFilename_ &&
-           !galleryPictureDecodeFuture_.valid() &&
-           requestedPicture!=galleryPictureRequestedFilename_) {
-            const auto it=std::find(panoramaNames_.begin(),panoramaNames_.end(),requestedPicture);
-            if(it!=panoramaNames_.end()) {
-                galleryPictureRequestedFilename_=requestedPicture;
-                const auto file=panoramaRoot_/requestedPicture;
+            // Load all distinct gallery pictures, not only the selected portal.
+            for(const auto& portal:portals) {
+                if(portal.surface.kind!=voxen::gallery::PortalSurfaceKind::Picture ||
+                   portal.surface.pictureFilename.empty() ||
+                   galleryPictureCache_.count(portal.surface.pictureFilename))continue;
+                const auto it=std::find(panoramaNames_.begin(),panoramaNames_.end(),
+                                        portal.surface.pictureFilename);
+                if(it==panoramaNames_.end())continue;
+                galleryPictureRequestedFilename_=portal.surface.pictureFilename;
+                const auto file=panoramaRoot_/galleryPictureRequestedFilename_;
                 VkPhysicalDeviceProperties props{};
                 vkGetPhysicalDeviceProperties(physicalDevice_,&props);
-                const int limit=static_cast<int>(std::min(props.limits.maxImageDimension2D,4096u));
+                // Portal cylinders need less resolution than immersive panoramas.
+                const int limit=static_cast<int>(std::min(props.limits.maxImageDimension2D,1024u));
                 galleryPictureDecodeFuture_=std::async(std::launch::async,[file,limit] {
                     return decodePanoramaImage(file,limit,8ull*1024ull*1024ull);
                 });
+                break;
             }
         }
 #endif
@@ -3876,6 +4109,63 @@ void XrSwapchainRenderer::render(
     }
 }
 
+bool XrSwapchainRenderer::activateTiltScene(const std::filesystem::path& source) {
+    try {
+#ifdef __ANDROID__
+        const std::filesystem::path root="/sdcard/Android/data/org.voxen.xr/files";
+#else
+        const std::filesystem::path root=".";
+#endif
+        if(source.extension()==".vxmesh") {
+            if(device_==VK_NULL_HANDLE)return false;
+            auto scene=voxen::render::openbrush::readCompiledScene(source.string());
+            auto packed=voxen::render::openbrush::packMeshes(scene);
+            vkDeviceWaitIdle(device_);
+            openbrushDotsGpu_.destroy(device_);
+            openbrushMeshGpu_.destroy(device_);
+            openbrushMeshGpu_.upload(device_,physicalDevice_,packed);
+            return !openbrushMeshGpu_.empty();
+        }
+        // Source files are immutable inputs. Cache is isolated per file and
+        // invalidated when size or modification time changes.
+        auto result=voxen::render::openbrush::loadTiltDotsCached(source,root/"tilt-cache");
+        if(result.dots.empty()) {
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_WARN,"VoxenOpenBrush",
+                "Tilt has no supported Dots: %s",source.string().c_str());
+#endif
+            return false;
+        }
+        if(device_==VK_NULL_HANDLE)return false;
+        // Caller must invoke this at a scene transition, not mid-frame.
+        vkDeviceWaitIdle(device_);
+        openbrushDotsGpu_.destroy(device_);
+        openbrushMeshGpu_.destroy(device_);
+        openbrushDotsGpu_.upload(device_,physicalDevice_,result.dots);
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenOpenBrush",
+            "Activated %s: %u Dots (%s)",source.filename().string().c_str(),
+            openbrushDotsGpu_.count(),result.cacheHit?"cache":"decoded");
+#endif
+        return true;
+    } catch(const std::exception& e) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_ERROR,"VoxenOpenBrush",
+            "Tilt activation failed: %s",e.what());
+#else
+        std::fprintf(stderr,"Tilt activation failed: %s\\n",e.what());
+#endif
+        return false;
+    }
+}
+void XrSwapchainRenderer::deactivateTiltScene() {
+    if(device_!=VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(device_);
+        openbrushDotsGpu_.destroy(device_);
+        openbrushMeshGpu_.destroy(device_);
+    }
+}
+
 void XrSwapchainRenderer::shutdown() noexcept {
 #ifdef VOXEN_WITH_GLB_IMPORT
     // Join the worker before destroying renderer state and scene storage.
@@ -3935,6 +4225,11 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
+    if(device_!=VK_NULL_HANDLE){openbrushDotsGpu_.destroy(device_);openbrushMeshGpu_.destroy(device_);}
+    if(openbrushMeshPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushMeshPipeline_,nullptr);openbrushMeshPipeline_=VK_NULL_HANDLE;}
+    if(openbrushMeshPipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,openbrushMeshPipelineLayout_,nullptr);openbrushMeshPipelineLayout_=VK_NULL_HANDLE;}
+    if(openbrushDotsPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushDotsPipeline_,nullptr);openbrushDotsPipeline_=VK_NULL_HANDLE;}
+    if(openbrushDotsPipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,openbrushDotsPipelineLayout_,nullptr);openbrushDotsPipelineLayout_=VK_NULL_HANDLE;}
     if(voxenMandelbulbLitPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbLitPipeline_,nullptr);voxenMandelbulbLitPipeline_=VK_NULL_HANDLE;}
 #ifdef VOXEN_WITH_GLB_IMPORT
     releaseGlbGpu();

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <voxen/render/OpenBrushDotsGpu.hpp>
+#include <voxen/render/OpenBrushCompiledGpu.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -61,6 +63,9 @@ public:
         uint32_t queueFamilyIndex);
     void shutdown() noexcept;
     void configureSceneStorage(const std::filesystem::path& root);
+    // Explicit scene activation: no .tilt decoding at application startup.
+    bool activateTiltScene(const std::filesystem::path& source);
+    void deactivateTiltScene();
 #ifdef VOXEN_WITH_GLB_IMPORT
     // Explicit prototype import: app-private assets/demo.glb.
     bool loadDemoGlb(const std::filesystem::path& file,
@@ -235,12 +240,15 @@ private:
     GlbTexture panoramaTexture_{};
     GlbTexture panoramaPreviousTexture_{};
     VkDescriptorPool panoramaPreviousDescriptorPool_=VK_NULL_HANDLE;
-    GlbTexture galleryPictureTexture_{};
-    VkDescriptorPool galleryPictureDescriptorPool_=VK_NULL_HANDLE;
-    std::string galleryPictureLoadedFilename_;
+    struct GalleryPictureResource {
+        GlbTexture texture{};
+        VkDescriptorPool pool=VK_NULL_HANDLE;
+    };
+    // Filename-keyed GPU resources: each portal binds its own immutable descriptor.
+    std::unordered_map<std::string,GalleryPictureResource> galleryPictureCache_;
     std::string galleryPictureRequestedFilename_;
     std::future<PanoramaImage> galleryPictureDecodeFuture_;
-    bool loadGalleryPictureGpu(PanoramaImage&& decoded);
+    bool loadGalleryPictureGpu(const std::string& filename,PanoramaImage&& decoded);
     void releaseGalleryPictureGpu() noexcept;
     VkDescriptorPool panoramaDescriptorPool_=VK_NULL_HANDLE;
     bool loadPanoramaGpu(PanoramaImage&& decoded);
@@ -288,6 +296,12 @@ private:
         uint32_t indexCount=0;
     };
     std::array<MandelbulbLod,3> mandelbulbLods_{};
+    voxen::render::openbrush::DotsGpuBuffer openbrushDotsGpu_{};
+    voxen::render::openbrush::CompiledMeshGpu openbrushMeshGpu_{};
+    VkPipeline openbrushMeshPipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout openbrushMeshPipelineLayout_ = VK_NULL_HANDLE;
+    VkPipeline openbrushDotsPipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout openbrushDotsPipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline voxenAttractorPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenFractalPyramidPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenPhyllotaxisPipeline_ = VK_NULL_HANDLE;
@@ -438,7 +452,10 @@ private:
     bool lastGalleryTriggerPressed_ = false;
     bool galleryDragging_ = false;
     float galleryGrabDistance_ = 0.5f;
+    float galleryPlacementDistance_ = 1.5f; // right stick Y, meters
     voxen::gallery::Pose galleryDraggedPose_{};
+    voxen::gallery::Pose galleryDragOriginalPose_{};
+    bool galleryDragFloorValid_ = false;
     std::optional<voxen::gallery::InstanceId> galleryHoveredId_;
     std::chrono::steady_clock::time_point galleryDeleteArmedUntil_{};
     [[nodiscard]] std::optional<voxen::gallery::FloorHit> galleryFloorHit() const;

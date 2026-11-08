@@ -7,3 +7,7 @@ build/
 local.properties
 *.iml
 .DS_Store
+
+# Offline Open Brush compiler dependencies
+node_modules/
+tools/vendor/
