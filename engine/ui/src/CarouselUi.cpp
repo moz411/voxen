@@ -353,28 +353,32 @@ void drawCarousel(CarouselState& state) {
                 if(ImGui::Selectable(label.c_str(),state.selectedScene==static_cast<int>(i))) {
                     state.selectedScene=static_cast<int>(i);
                     state.sceneDeleteConfirm=false;
-                    if(ImGui::IsMouseDoubleClicked(0))state.sceneLoad=true;
+                    if(ImGui::IsMouseDoubleClicked(0) && state.editMode)state.sceneLoadEdit=true;
                 }
                 ImGui::PopID();
             }
             ImGui::EndChild();
-            if(!state.editMode)ImGui::BeginDisabled();
-            if(ImGui::Button("SAVE",ImVec2(140,44)))state.sceneSave=true;
-            ImGui::SameLine();
-            if(!state.editMode || state.savedSceneIds.empty())ImGui::BeginDisabled();
-            if(ImGui::Button("CHARGER",ImVec2(140,44)))state.sceneLoadEdit=true;
-            if(!state.editMode || state.savedSceneIds.empty())ImGui::EndDisabled();
-            if(!state.editMode)ImGui::EndDisabled();
-            ImGui::SameLine();
+            // Compact buttons: fit all four actions within the scene panel.
+            const float gap=ImGui::GetStyle().ItemSpacing.x;
+            const float buttonWidth=std::max(64.f,(ImGui::GetContentRegionAvail().x-3.f*gap)/4.f);
+            const ImVec2 buttonSize(buttonWidth,32.f);
             const bool valid=state.selectedScene>=0 &&
                 static_cast<std::size_t>(state.selectedScene)<state.savedSceneIds.size();
-            if(!valid || state.sceneImmersive)ImGui::BeginDisabled();
-            if(ImGui::Button("DELETE",ImVec2(140,44)))state.sceneDeleteConfirm=true;
-            if(!valid || state.sceneImmersive)ImGui::EndDisabled();
+            ImGui::BeginDisabled(!state.editMode);
+            if(ImGui::Button("SAVE",buttonSize))state.sceneSave=true;
+            ImGui::EndDisabled();
             ImGui::SameLine();
-            if(!valid || state.sceneImmersive)ImGui::BeginDisabled();
-            if(ImGui::Button("DISPOSE",ImVec2(140,44)))state.scenePlace=true;
-            if(!valid || state.sceneImmersive)ImGui::EndDisabled();
+            ImGui::BeginDisabled(!state.editMode || !valid);
+            if(ImGui::Button("LOAD",buttonSize))state.sceneLoadEdit=true;
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!valid || state.sceneImmersive);
+            if(ImGui::Button("DELETE",buttonSize))state.sceneDeleteConfirm=true;
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!valid || state.sceneImmersive);
+            if(ImGui::Button("DISPOSE",buttonSize))state.scenePlace=true;
+            ImGui::EndDisabled();
             if(valid && state.scenePortalSelected) {
                 ImGui::Separator();
                 ImGui::TextUnformatted("SELECTED SCENE PORTAL");
@@ -430,7 +434,7 @@ void drawCarousel(CarouselState& state) {
                 if(ImGui::Button("CANCEL"))state.sceneDeleteConfirm=false;
             }
             if(!state.sceneStatus.empty())ImGui::TextWrapped("%s",state.sceneStatus.c_str());
-            ImGui::TextDisabled("Double-click scene to load; DISPOSE then right trigger");
+            ImGui::TextDisabled("LOAD to edit, SAVE to update; DISPOSE then right trigger");
             if(!state.sceneAnchorReady)
                 ImGui::TextDisabled("Waiting for localized Meta room anchor");
             if(state.sceneImmersive && ImGui::Button("EXIT SCENE"))state.sceneLeave=true;
