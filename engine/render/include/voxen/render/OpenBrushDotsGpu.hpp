@@ -7,12 +7,28 @@
 #include <voxen/render/OpenBrushDots.hpp>
 #include <vulkan/vulkan.h>
 #include <cstdint>
+#include <cstddef>
+#include <array>
 #include <cstring>
 #include <limits>
 #include <stdexcept>
 #include <vector>
 
 namespace voxen::render::openbrush {
+static_assert(sizeof(DotInstance) == 32, "Dots GPU instance stride mismatch");
+static_assert(offsetof(DotInstance, center) == 0);
+static_assert(offsetof(DotInstance, color) == 12);
+static_assert(offsetof(DotInstance, diameterMeters) == 28);
+
+// Input binding 0 is a static unit quad; binding 1 is the instance buffer.
+inline VkVertexInputBindingDescription dotsInstanceBinding() {
+    return {1, sizeof(DotInstance), VK_VERTEX_INPUT_RATE_INSTANCE};
+}
+inline std::array<VkVertexInputAttributeDescription, 3> dotsInstanceAttributes() {
+    return {{{2,1,VK_FORMAT_R32G32B32_SFLOAT,0},
+             {3,1,VK_FORMAT_R32G32B32A32_SFLOAT,12},
+             {4,1,VK_FORMAT_R32_SFLOAT,28}}};
+}
 class DotsGpuBuffer {
 public:
     DotsGpuBuffer() = default;
