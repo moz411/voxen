@@ -175,7 +175,20 @@ bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
     std::vector<GlbTexture> incomingTextures;
     VkDescriptorPool incomingPool=VK_NULL_HANDLE;
     try {
-        const auto model=voxen::scene::gltf::loadMeshGlb(file);
+        // Full OpenBrush scenes are larger than the 64 MiB object-preview budget.
+        // Keep the existing limits for ordinary assets; only assets/scenes
+        // receives an elevated encoded-file allowance.
+        voxen::scene::gltf::Limits limits{};
+        if(file.parent_path().filename()=="scenes") {
+            limits.maxFileBytes=256u*1024u*1024u;
+        }
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenGLB",
+            "GLB input size=%llu bytes, budget=%zu bytes",
+            static_cast<unsigned long long>(std::filesystem::file_size(file)),
+            limits.maxFileBytes);
+#endif
+        const auto model=voxen::scene::gltf::loadMeshGlb(file,limits);
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO,"VoxenGLB",
             "GLB parsed: nodes=%zu primitives=%zu images=%zu",
