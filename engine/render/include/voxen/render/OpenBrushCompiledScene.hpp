@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -27,7 +29,7 @@ inline CompiledScene readCompiledScene(const std::string& path) {
         throw std::runtime_error("VXMSH: invalid file size");
     file.seekg(0);
     std::vector<std::uint8_t> data(static_cast<std::size_t>(length));
-    if(!file.read(reinterpret_cast<char*>(data.data()),length))
+    if(!file.read(reinterpret_cast<char*>(data.data()),static_cast<std::streamsize>(data.size())))
         throw std::runtime_error("VXMSH: short read");
     std::size_t off=0;
     auto take=[&](std::size_t bytes)->const std::uint8_t*{
@@ -49,6 +51,7 @@ inline CompiledScene readCompiledScene(const std::string& path) {
         for(std::size_t i=0;i<count;i++){
             const auto bits=readU32();
             std::memcpy(&out[i],&bits,4);
+            if(!std::isfinite(out[i]))throw std::runtime_error("VXMSH: non-finite float");
         }
         return out;
     };
