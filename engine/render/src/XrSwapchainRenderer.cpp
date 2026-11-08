@@ -775,6 +775,12 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     // The next render tick releases the panorama texture and discards any
     // in-flight asynchronous decode by comparing the selected index.
     imguiCarousel_.panoramaSelected=-1;
+    imguiCarousel_.backgroundSourceKind=0;
+    imguiCarousel_.backgroundTargetSurface=-1;
+    imguiCarousel_.videoSelected=-1;
+    imguiCarousel_.wallSourceKind=0;
+    imguiCarousel_.wallVideoSelected=-1;
+    imguiCarousel_.surfaceMedia.clear();
     panoramaFadeActive_=false;
 #endif
     immersivePortalId_.reset();
