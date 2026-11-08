@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <voxen/render/OpenBrushDotsGpu.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -288,6 +289,7 @@ private:
         uint32_t indexCount=0;
     };
     std::array<MandelbulbLod,3> mandelbulbLods_{};
+    voxen::render::openbrush::DotsGpuBuffer openbrushDotsGpu_{};
     VkPipeline openbrushDotsPipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout openbrushDotsPipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline voxenAttractorPipeline_ = VK_NULL_HANDLE;
