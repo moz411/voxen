@@ -229,6 +229,8 @@ private:
     struct GlbTexture { VkImage image=VK_NULL_HANDLE; VkDeviceMemory memory=VK_NULL_HANDLE; VkImageView view=VK_NULL_HANDLE; VkSampler sampler=VK_NULL_HANDLE; VkDescriptorSet descriptor=VK_NULL_HANDLE; };
     std::vector<GlbTexture> glbTextures_;
     GlbTexture panoramaTexture_{};
+    GlbTexture panoramaPreviousTexture_{};
+    VkDescriptorPool panoramaPreviousDescriptorPool_=VK_NULL_HANDLE;
     GlbTexture galleryPictureTexture_{};
     VkDescriptorPool galleryPictureDescriptorPool_=VK_NULL_HANDLE;
     std::string galleryPictureLoadedFilename_;
