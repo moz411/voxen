@@ -1890,13 +1890,26 @@ void XrSwapchainRenderer::updateControllerInteraction(
                 galleryDraggedPose_.positionMeters[2]};
             const auto floor=voxen::gallery::intersectTrackedFloor(
                 environmentSurfaces_.surfaces(),above,{0.f,-1.f,0.f});
+            galleryDragFloorValid_=floor.has_value();
             if(floor)galleryDraggedPose_.positionMeters[1]=floor->localPose.positionMeters[1];
             if(!pressed[1]) {
-                const bool saved=selectedPortalId_ &&
+                // Always resolve the floor again at release. Never persist a
+                // stale Y value or an X/Z location outside the tracked floor.
+                const std::array<float,3> releaseAbove{
+                    galleryDraggedPose_.positionMeters[0],hand.position.y+2.f,
+                    galleryDraggedPose_.positionMeters[2]};
+                const auto releaseFloor=voxen::gallery::intersectTrackedFloor(
+                    environmentSurfaces_.surfaces(),releaseAbove,{0.f,-1.f,0.f});
+                const bool validFloor=releaseFloor.has_value();
+                if(validFloor)
+                    galleryDraggedPose_.positionMeters[1]=releaseFloor->localPose.positionMeters[1];
+                const bool saved=validFloor && selectedPortalId_ &&
                     portalManager_->moveToPose(*selectedPortalId_,galleryDraggedPose_);
+                if(!saved)galleryDraggedPose_=galleryDragOriginalPose_;
+                galleryDragFloorValid_=false;
                 galleryDragging_=false;
-                imguiCarousel_.sceneStatus=saved?"Sphere moved and gallery saved":
-                                                  "Move failed: gallery unchanged";
+                imguiCarousel_.sceneStatus=saved?"Portal snapped to Meta floor and saved":
+                    "No tracked floor at release; portal position unchanged";
             }
         } else {
             galleryHoveredId_.reset();
@@ -1945,6 +1958,8 @@ void XrSwapchainRenderer::updateControllerInteraction(
                 for(const auto& portal:portalManager_->visible())
                     if(portal.id==*selectedPortalId_) {
                         galleryDraggedPose_=portal.localPose;
+                        galleryDragOriginalPose_=portal.localPose;
+                        galleryDragFloorValid_=true;
                         const auto& base=portal.localPose.positionMeters;
                         const float halfHeight=0.8f*std::clamp(portal.scale,0.1f,4.f);
                         const float cx=base[0]-hand.position.x;
@@ -2485,7 +2500,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         for(std::size_t i=0;i<count;++i) {
             const auto& p=portals[i];
             if(suppressedPortalId_ && p.id==*suppressedPortalId_)continue;
-            const auto& xyz=(galleryDragging_ && selectedPortalId_ && p.id==*selectedPortalId_)
+            const auto& xyz=(galleryDragging_ && galleryDragFloorValid_ &&
+                selectedPortalId_ && p.id==*selectedPortalId_)
                 ? galleryDraggedPose_.positionMeters : p.localPose.positionMeters;
             const float s=std::clamp(p.scale,0.1f,4.f);
             const Mat4 mvp=multiply(projView,
