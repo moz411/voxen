@@ -461,6 +461,48 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
 
 void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
     galleryHeadPosition_=headPosition;
+#ifdef VOXEN_WITH_GLB_IMPORT
+    if(immersiveGlbDecoding_ &&
+       immersiveGlbDecodeFuture_.wait_for(std::chrono::seconds(0))==std::future_status::ready) {
+        immersiveGlbDecoding_=false;
+        try {
+            auto decoded=immersiveGlbDecodeFuture_.get();
+            // GLB exports may have a displaced origin. Align the lowest
+            // transformed mesh vertex with the real-world floor.
+            float minY=std::numeric_limits<float>::infinity();
+            for(const auto& node:decoded.nodes) {
+                const auto& m=node.worldMatrix;
+                for(auto index:node.primitives) {
+                    if(index>=decoded.primitives.size())continue;
+                    for(const auto& vertex:decoded.primitives[index].vertices) {
+                        const auto& v=vertex.position;
+                        const float y=m[1]*v[0]+m[5]*v[1]+m[9]*v[2]+m[13];
+                        if(std::isfinite(y))minY=std::min(minY,y);
+                    }
+                }
+            }
+            if(!std::isfinite(minY))minY=0.f;
+            if(loadDemoGlb(immersiveGlbDecodePath_,std::move(decoded))) {
+                glbPlacement_={headPosition.x,-minY,headPosition.z};
+                glbPlaced_=true;
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_INFO,"VoxenGLB",
+                    "Immersive GLB GPU ready, vertical floor correction %.3f m",-minY);
+#endif
+            } else {
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_ERROR,"VoxenGLB","Immersive GPU upload failed");
+#endif
+                leaveImmersiveScene();
+            }
+        } catch(const std::exception& e) {
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_ERROR,"VoxenGLB","Async GLB decode failed: %s",e.what());
+#endif
+            leaveImmersiveScene();
+        }
+    }
+#endif
     if(editingMode() || pendingGalleryFloorAction_!=0 || galleryDragging_)return;
     if(!portalManager_ || !portalManager_->localized()) {
         galleryEntryCandidate_.reset();
@@ -579,22 +621,23 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
 #ifdef __ANDROID__
         __android_log_print(ANDROID_LOG_INFO,"VoxenGallery","Loading GLB scene: %s",path.string().c_str());
 #endif
-        if(!loadDemoGlb(path)) {
+        // Decode on a worker. Vulkan allocations remain on the render thread
+        // when the future is ready; never touch VkDevice from the worker.
+        immersiveGlbDecodePath_=path;
+        immersiveGlbDecoding_=true;
+        immersiveGlbDecodeFuture_=std::async(std::launch::async,[path] {
+            voxen::scene::gltf::Limits limits{};
+            limits.maxFileBytes=256u*1024u*1024u;
+            return voxen::scene::gltf::loadMeshGlb(path,limits);
+        });
 #ifdef __ANDROID__
-            __android_log_print(ANDROID_LOG_ERROR,"VoxenGallery","GLB scene GPU load failed");
-#endif
-            return false;
-        }
-#ifdef __ANDROID__
-        __android_log_print(ANDROID_LOG_INFO,"VoxenGallery","GLB scene loaded successfully");
+        __android_log_print(ANDROID_LOG_INFO,"VoxenGLB","Async CPU decode started");
 #endif
         std::vector<PlasmaVoxen>{}.swap(voxens_);
         glbPreview_=false;
-        glbPlaced_=true;
+        glbPlaced_=false; // enabled only after CPU decode and GPU upload
         glbInGallery_=false;
         glbScale_=1.f;
-        // Center the authored GLB origin at the current headset X/Z.
-        glbPlacement_={galleryHeadPosition_.x,0.f,galleryHeadPosition_.z};
 #ifdef VOXEN_WITH_IMGUI
         imguiCarousel_.editMode=false;
         imguiCarousel_.visible=false;
