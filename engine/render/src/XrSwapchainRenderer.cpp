@@ -2483,13 +2483,14 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 pipeline=shaderMode==0?galleryCylinderMatrixPipeline_:
                     shaderMode==1?galleryCylinderOceanPipeline_:galleryCylinderLiquidPipeline_;
             }
+            const auto picture=galleryPictureCache_.find(p.surface.pictureFilename);
             const bool textured=p.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
-                galleryPictureTexture_.descriptor &&
-                p.surface.pictureFilename==galleryPictureLoadedFilename_;
+                picture!=galleryPictureCache_.end() && picture->second.texture.descriptor;
             if(textured) {
                 pipeline=galleryCylinderPicturePipeline_;
+                const auto descriptor=picture->second.texture.descriptor;
                 vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    galleryPicturePipelineLayout_,0,1,&galleryPictureTexture_.descriptor,0,nullptr);
+                    galleryPicturePipelineLayout_,0,1,&descriptor,0,nullptr);
             }
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);
             ProceduralPushConstants pc{mvp,{seconds,useBackground?1.f:selected,
@@ -3433,50 +3434,44 @@ void XrSwapchainRenderer::render(
         }
         imguiCarousel_.panoramaFiles=panoramaNames_;
 #ifdef VOXEN_WITH_GLB_IMPORT
-        // Decode gallery Pictures asynchronously, independently of the immersive
-        // panorama texture. A single gallery texture is resident at a time.
+        // Sequential async decode; each filename owns a persistent Vulkan texture.
+        // Never change a descriptor while another portal is rendering with it.
         if(galleryPictureDecodeFuture_.valid() &&
            galleryPictureDecodeFuture_.wait_for(std::chrono::seconds(0))==
                std::future_status::ready) {
+            const std::string completed=galleryPictureRequestedFilename_;
             try {
                 auto decoded=galleryPictureDecodeFuture_.get();
-                if(loadGalleryPictureGpu(std::move(decoded)))
-                    galleryPictureLoadedFilename_=galleryPictureRequestedFilename_;
-            } catch(...) { galleryPictureLoadedFilename_.clear(); }
-        }
-        // Select the hovered/selected portal's texture before other gallery assets.
-        std::string requestedPicture;
-        if(!immersiveSceneActive_ && portalManager_) {
-            const auto portals=portalManager_->visible();
-            if(selectedPortalId_) {
-                const auto selected=std::find_if(portals.begin(),portals.end(),
-                    [&](const voxen::gallery::VisiblePortal& p){return p.id==*selectedPortalId_;});
-                if(selected!=portals.end() &&
-                   selected->surface.kind==voxen::gallery::PortalSurfaceKind::Picture)
-                    requestedPicture=selected->surface.pictureFilename;
+                (void)loadGalleryPictureGpu(completed,std::move(decoded));
+            } catch(...) {
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_WARN,"VoxenGallery",
+                                    "Portal picture decode failed: %s",completed.c_str());
+#endif
             }
-            if(requestedPicture.empty())
-                for(const auto& portal:portals)
-                    if(portal.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
-                       !portal.surface.pictureFilename.empty()) {
-                        requestedPicture=portal.surface.pictureFilename;
-                        break;
-                    }
+            galleryPictureRequestedFilename_.clear();
         }
-        if(!requestedPicture.empty() &&
-           requestedPicture!=galleryPictureLoadedFilename_ &&
-           !galleryPictureDecodeFuture_.valid() &&
-           requestedPicture!=galleryPictureRequestedFilename_) {
-            const auto it=std::find(panoramaNames_.begin(),panoramaNames_.end(),requestedPicture);
-            if(it!=panoramaNames_.end()) {
-                galleryPictureRequestedFilename_=requestedPicture;
-                const auto file=panoramaRoot_/requestedPicture;
+        if(!immersiveSceneActive_ && portalManager_ &&
+           !galleryPictureDecodeFuture_.valid()) {
+            const auto portals=portalManager_->visible();
+            // Load all distinct gallery pictures, not only the selected portal.
+            for(const auto& portal:portals) {
+                if(portal.surface.kind!=voxen::gallery::PortalSurfaceKind::Picture ||
+                   portal.surface.pictureFilename.empty() ||
+                   galleryPictureCache_.count(portal.surface.pictureFilename))continue;
+                const auto it=std::find(panoramaNames_.begin(),panoramaNames_.end(),
+                                        portal.surface.pictureFilename);
+                if(it==panoramaNames_.end())continue;
+                galleryPictureRequestedFilename_=portal.surface.pictureFilename;
+                const auto file=panoramaRoot_/galleryPictureRequestedFilename_;
                 VkPhysicalDeviceProperties props{};
                 vkGetPhysicalDeviceProperties(physicalDevice_,&props);
-                const int limit=static_cast<int>(std::min(props.limits.maxImageDimension2D,4096u));
+                // Portal cylinders need less resolution than immersive panoramas.
+                const int limit=static_cast<int>(std::min(props.limits.maxImageDimension2D,1536u));
                 galleryPictureDecodeFuture_=std::async(std::launch::async,[file,limit] {
                     return decodePanoramaImage(file,limit,8ull*1024ull*1024ull);
                 });
+                break;
             }
         }
 #endif
