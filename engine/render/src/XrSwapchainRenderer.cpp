@@ -3424,15 +3424,24 @@ void XrSwapchainRenderer::render(
                     galleryPictureLoadedFilename_=galleryPictureRequestedFilename_;
             } catch(...) { galleryPictureLoadedFilename_.clear(); }
         }
+        // Select the hovered/selected portal's texture before other gallery assets.
         std::string requestedPicture;
         if(!immersiveSceneActive_ && portalManager_) {
-            for(const auto& portal:portalManager_->visible()) {
-                if(portal.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
-                   !portal.surface.pictureFilename.empty()) {
-                    requestedPicture=portal.surface.pictureFilename;
-                    break;
-                }
+            const auto portals=portalManager_->visible();
+            if(selectedPortalId_) {
+                const auto selected=std::find_if(portals.begin(),portals.end(),
+                    [&](const voxen::gallery::VisiblePortal& p){return p.id==*selectedPortalId_;});
+                if(selected!=portals.end() &&
+                   selected->surface.kind==voxen::gallery::PortalSurfaceKind::Picture)
+                    requestedPicture=selected->surface.pictureFilename;
             }
+            if(requestedPicture.empty())
+                for(const auto& portal:portals)
+                    if(portal.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
+                       !portal.surface.pictureFilename.empty()) {
+                        requestedPicture=portal.surface.pictureFilename;
+                        break;
+                    }
         }
         if(!requestedPicture.empty() &&
            requestedPicture!=galleryPictureLoadedFilename_ &&
