@@ -479,7 +479,7 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
             const auto& pos=it->localPose.positionMeters;
             const float x=headPosition.x-pos[0],y=headPosition.y-pos[1],z=headPosition.z-pos[2];
             const float rearmRadius=0.57f*std::clamp(it->scale,0.1f,4.f);
-            if(x*x+z*z>rearmRadius*rearmRadius || std::abs(y)>1.0f*std::clamp(it->scale,0.1f,4.f)) {
+            if(x*x+z*z>rearmRadius*rearmRadius || y < -0.2f || y > 2.0f*std::clamp(it->scale,0.1f,4.f)) {
                 suppressedPortalId_.reset();
                 galleryEntryCandidate_.reset();
 #ifdef __ANDROID__
@@ -2251,7 +2251,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 ? galleryDraggedPose_.positionMeters : p.localPose.positionMeters;
             const float s=std::clamp(p.scale,0.1f,4.f);
             const Mat4 mvp=multiply(projView,
-                modelMatrix(xyz[0],xyz[1],0.4f*s,xyz[2],0.f));
+                modelMatrix(xyz[0],xyz[1]+0.8f*s,0.4f*s,xyz[2],0.f));
             const auto preview=scenePreviewCache_.find(p.sceneId);
             const float preset=preview==scenePreviewCache_.end()?0.f:
                 float(preview->second.materialPreset%8u);
