@@ -14,9 +14,9 @@
 
 namespace voxen::render::openbrush {
 struct MeshVertex {
-    float position[3], normal[3], color[4], uv[2];
+    float position[3], normal[3], color[4], uv[4];
 };
-static_assert(sizeof(MeshVertex)==48);
+static_assert(sizeof(MeshVertex)==56);
 struct MeshDraw {
     std::string brushGuid;
     std::uint32_t firstIndex=0, indexCount=0;
@@ -31,7 +31,7 @@ inline PackedMeshes packMeshes(const CompiledScene& scene) {
     for(const auto& mesh:scene.meshes) {
         const std::size_t n=mesh.positions.size()/3;
         if(mesh.positions.size()!=n*3 || mesh.normals.size()!=n*3 ||
-           mesh.colors.size()!=n*4 || mesh.uv0.size()!=n*2 ||
+           mesh.colors.size()!=n*4 || mesh.uv0.size()!=n*4 ||
            out.vertices.size()+n>std::numeric_limits<std::uint32_t>::max() ||
            out.indices.size()+mesh.indices.size()>std::numeric_limits<std::uint32_t>::max())
             throw std::runtime_error("VXMSH: invalid mesh attributes or size");
@@ -41,7 +41,7 @@ inline PackedMeshes packMeshes(const CompiledScene& scene) {
             std::memcpy(v.position,mesh.positions.data()+i*3,3*sizeof(float));
             std::memcpy(v.normal,mesh.normals.data()+i*3,3*sizeof(float));
             std::memcpy(v.color,mesh.colors.data()+i*4,4*sizeof(float));
-            std::memcpy(v.uv,mesh.uv0.data()+i*2,2*sizeof(float));
+            std::memcpy(v.uv,mesh.uv0.data()+i*4,4*sizeof(float));
             out.vertices.push_back(v);
         }
         MeshDraw draw{mesh.brushGuid,static_cast<std::uint32_t>(out.indices.size()),
@@ -61,7 +61,7 @@ inline std::array<VkVertexInputAttributeDescription,4> meshAttributes() {
     return {{{0,0,VK_FORMAT_R32G32B32_SFLOAT,0},
              {1,0,VK_FORMAT_R32G32B32_SFLOAT,12},
              {2,0,VK_FORMAT_R32G32B32A32_SFLOAT,24},
-             {3,0,VK_FORMAT_R32G32_SFLOAT,40}}};
+             {3,0,VK_FORMAT_R32G32B32A32_SFLOAT,40}}};
 }
 class CompiledMeshGpu {
 public:
