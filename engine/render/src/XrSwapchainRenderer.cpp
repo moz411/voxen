@@ -470,22 +470,18 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         try {
             auto decoded=immersiveGlbDecodeFuture_.get();
             if(!immersiveSceneActive_)return;
-            // Explicit, persistent per-scene offset in metres. No geometry
-            // percentile/minimum heuristic: OpenBrush can contain distant strokes.
+            // Height belongs to the selected portal placement in room gallery metadata.
             float offsetY=0.f;
-            const auto offsetFile=immersiveGlbDecodePath_.parent_path() /
-                (immersiveGlbDecodePath_.stem().string()+".offset-y");
-            if(std::ifstream input(offsetFile); input) {
-                float configured=0.f;
-                if(input>>configured && std::isfinite(configured) &&
-                   configured>=-1000.f && configured<=1000.f) {
-                    offsetY=configured;
-                }
+            if(portalManager_ && immersivePortalId_) {
+                for(const auto& portal:portalManager_->visible())
+                    if(portal.id==*immersivePortalId_) {
+                        offsetY=portal.sceneHeightOffsetMeters;
+                        break;
+                    }
             }
 #ifdef __ANDROID__
             __android_log_print(ANDROID_LOG_INFO,"VoxenGLB",
-                "Scene vertical offset=%.3f m (file: %s)",
-                offsetY,offsetFile.string().c_str());
+                "Scene vertical offset from gallery=%.3f m",offsetY);
 #endif
             if(loadDemoGlb(immersiveGlbDecodePath_,std::move(decoded))) {
                 glbPlacement_={headPosition.x,offsetY,headPosition.z};
@@ -3455,26 +3451,12 @@ void XrSwapchainRenderer::render(
                         }
 #ifdef VOXEN_WITH_GLB_IMPORT
                     imguiCarousel_.sceneHeightAvailable=false;
-                    imguiCarousel_.sceneHeightOffset=0.f;
+                    imguiCarousel_.sceneHeightOffset=it->sceneHeightOffsetMeters;
                     if(sceneRepository_) {
-                        auto savedScene=sceneRepository_->loadScene(sceneId);
-                        if(savedScene && savedScene->second.starts_with("GLB_SCENE_V1\n")) {
-                            const auto filename=savedScene->second.substr(sizeof("GLB_SCENE_V1\n")-1);
-                            const auto name=std::filesystem::path(filename);
-                            if(name.filename()==name && name.extension()==".glb") {
-                                imguiCarousel_.sceneHeightAvailable=true;
-                                const auto offsetFile=glbAssetRoot_/"scenes"/
-                                    (name.stem().string()+".offset-y");
-                                if(std::ifstream input(offsetFile);input) {
-                                    float value=0.f;
-                                    if(input>>value && std::isfinite(value) &&
-                                       value>=-100.f && value<=100.f)
-                                        imguiCarousel_.sceneHeightOffset=value;
-                                }
-                            }
-                        }
+                        const auto savedScene=sceneRepository_->loadScene(sceneId);
+                        imguiCarousel_.sceneHeightAvailable=savedScene &&
+                            savedScene->second.starts_with("GLB_SCENE_V1\n");
                     }
-#endif
                     imguiCarousel_.sceneAudioRadius=it->audio.audibleRadiusMeters;
                     imguiCarousel_.sceneAudioGain=it->audio.gain;
                 }
@@ -3491,30 +3473,11 @@ void XrSwapchainRenderer::render(
 #ifdef VOXEN_WITH_GLB_IMPORT
             if(imguiCarousel_.sceneHeightApply) {
                 imguiCarousel_.sceneHeightApply=false;
-                bool saved=false;
-                if(imguiCarousel_.sceneHeightAvailable && sceneRepository_ &&
-                   imguiCarousel_.selectedScene>=0 &&
-                   static_cast<size_t>(imguiCarousel_.selectedScene)<sceneIds_.size()) {
-                    const auto record=sceneRepository_->loadScene(
-                        sceneIds_[imguiCarousel_.selectedScene]);
-                    if(record && record->second.starts_with("GLB_SCENE_V1\n")) {
-                        const auto name=std::filesystem::path(
-                            record->second.substr(sizeof("GLB_SCENE_V1\n")-1));
-                        if(name.filename()==name && name.extension()==".glb" &&
-                           std::isfinite(imguiCarousel_.sceneHeightOffset)) {
-                            const auto offsetFile=glbAssetRoot_/"scenes"/
-                                (name.stem().string()+".offset-y");
-                            std::ofstream output(offsetFile,std::ios::trunc);
-                            if(output) {
-                                output<<imguiCarousel_.sceneHeightOffset<<"\n";
-                                output.flush();
-                                saved=output.good();
-                            }
-                        }
-                    }
-                }
+                const bool saved=imguiCarousel_.sceneHeightAvailable &&
+                    portalManager_->setSceneHeight(*selectedPortalId_,
+                        imguiCarousel_.sceneHeightOffset);
                 imguiCarousel_.sceneStatus=saved
-                    ?"Scene height saved (effective on next entry)"
+                    ?"Scene height saved in gallery (effective on next entry)"
                     :"Cannot save scene height";
             }
 #endif
