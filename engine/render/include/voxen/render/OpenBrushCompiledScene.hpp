@@ -15,7 +15,8 @@ namespace voxen::render::openbrush {
 struct CompiledMesh {
     std::string brushGuid;
     std::array<float,6> bounds{};
-    // UV0 is always 4 floats/vertex in memory; v1 UV.xy is zero-padded.\n    std::vector<float> positions, normals, colors, uv0;
+    // UV0 is always 4 floats/vertex in memory; v1 UV.xy is zero-padded.
+    std::vector<float> positions, normals, colors, uv0;
     std::vector<std::uint32_t> indices;
 };
 struct CompiledScene {
