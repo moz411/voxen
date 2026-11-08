@@ -543,6 +543,9 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         immersivePortalId_=inside->id;
         galleryExitSince_={};
     } else {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_ERROR,"VoxenGallery","Portal entry failed scene=%s",sceneId.c_str());
+#endif
 #ifdef VOXEN_WITH_IMGUI
         imguiCarousel_.sceneStatus="Automatic portal entry failed";
 #endif
@@ -551,8 +554,15 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
 
 bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id) {
     if(immersiveSceneActive_ || !sceneRepository_) return false;
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO,"VoxenGallery","Portal enter request scene=%s",id.c_str());
+#endif
     // Validate and parse before touching the current live scene.
     auto saved=sceneRepository_->loadScene(id);
+#ifdef __ANDROID__
+    __android_log_print(saved?ANDROID_LOG_INFO:ANDROID_LOG_ERROR,"VoxenGallery",
+        "Scene repository load: %s",saved?"found":"missing");
+#endif
 #ifdef VOXEN_WITH_GLB_IMPORT
     if(saved && saved->second.starts_with("GLB_SCENE_V1\n")) {
         const auto filename=saved->second.substr(sizeof("GLB_SCENE_V1\n")-1);
@@ -560,7 +570,24 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
         if(filename.empty() || std::filesystem::path(filename).filename()!=filename ||
            std::filesystem::path(filename).extension()!=".glb")return false;
         const auto path=glbAssetRoot_/"scenes"/filename;
-        if(!std::filesystem::is_regular_file(path) || !loadDemoGlb(path))return false;
+        if(!std::filesystem::is_regular_file(path)) {
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_ERROR,"VoxenGallery","GLB scene missing: %s",path.string().c_str());
+#endif
+            return false;
+        }
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenGallery","Loading GLB scene: %s",path.string().c_str());
+#endif
+        if(!loadDemoGlb(path)) {
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_ERROR,"VoxenGallery","GLB scene GPU load failed");
+#endif
+            return false;
+        }
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenGallery","GLB scene loaded successfully");
+#endif
         std::vector<PlasmaVoxen>{}.swap(voxens_);
         glbPreview_=false;
         glbPlaced_=true;
