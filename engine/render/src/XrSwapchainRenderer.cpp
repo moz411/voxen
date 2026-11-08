@@ -477,9 +477,9 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         if(it==portals.end())suppressedPortalId_.reset();
         else {
             const auto& pos=it->localPose.positionMeters;
-            const float x=headPosition.x-pos[0],y=headPosition.y-pos[1],z=headPosition.z-pos[2];
+            const float x=headPosition.x-pos[0],z=headPosition.z-pos[2];
             const float rearmRadius=0.57f*std::clamp(it->scale,0.1f,4.f);
-            if(x*x+z*z>rearmRadius*rearmRadius || y < -0.2f || y > 2.0f*std::clamp(it->scale,0.1f,4.f)) {
+            if(x*x+z*z>rearmRadius*rearmRadius) {
                 suppressedPortalId_.reset();
                 galleryEntryCandidate_.reset();
 #ifdef __ANDROID__
