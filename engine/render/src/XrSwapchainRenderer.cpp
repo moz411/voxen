@@ -824,8 +824,12 @@ bool XrSwapchainRenderer::saveCurrentScene() {
     if(!voxen::gallery::sanitizeForSave(runtime)) return false;
     const auto payload=voxen::gallery::encodeRuntime(runtime);
     if(payload.empty()) return false;
-    auto record=voxen::gallery::SceneRepository::newScene(
-        "Scene " + std::to_string(sceneIds_.size()+1));
+    // SAVE overwrites a scene loaded for editing, rather than silently
+    // creating a duplicate with a new identity and orphaning its portals.
+    auto record=editingSavedSceneId_
+        ? sceneRepository_->loadSceneMetadata(*editingSavedSceneId_).value_or(
+            voxen::gallery::SceneRepository::newScene("Scene " + std::to_string(sceneIds_.size()+1)))
+        : voxen::gallery::SceneRepository::newScene("Scene " + std::to_string(sceneIds_.size()+1));
     record.preview.materialPreset=voxens_.empty()?0u:
         static_cast<std::uint32_t>(voxens_.front().preset);
     // Lightweight proxy: bounding sphere and dominant preset, never a second
@@ -845,6 +849,7 @@ bool XrSwapchainRenderer::saveCurrentScene() {
         record.preview.boundingRadiusMeters=std::clamp(std::sqrt(radius2),0.05f,99.f);
     }
     if(!sceneRepository_->saveScene(record,payload)) return false;
+    editingSavedSceneId_=record.id;
     refreshSceneIndex();
     const auto it=std::find(sceneIds_.begin(),sceneIds_.end(),record.id);
     selectedSceneIndex_=it==sceneIds_.end()?0:static_cast<int>(it-sceneIds_.begin());
@@ -859,6 +864,7 @@ bool XrSwapchainRenderer::deleteSavedScene(const voxen::gallery::SceneId& id) {
        !sceneRepository_->deleteScene(id))return false;
     refreshSceneIndex();
     if(portalManager_)portalManager_->reloadGallery();
+    if(editingSavedSceneId_ && *editingSavedSceneId_==id)editingSavedSceneId_.reset();
     selectedPortalId_.reset();
     selectedSceneIndex_=sceneIds_.empty()?0:
         std::min(selectedSceneIndex_,static_cast<int>(sceneIds_.size()-1));
@@ -884,6 +890,7 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
         restored.push_back(item);
     }
     voxens_=std::move(restored);
+    editingSavedSceneId_=id;
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
 #ifdef VOXEN_WITH_IMGUI
