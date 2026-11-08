@@ -165,12 +165,22 @@ void XrSwapchainRenderer::releaseGlbGpu() noexcept {
     }
 }
 bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
-    if(device_==VK_NULL_HANDLE)return false;
+    if(device_==VK_NULL_HANDLE) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_ERROR,"VoxenGLB","GPU load failed: Vulkan device unavailable");
+#endif
+        return false;
+    }
     std::vector<GlbGpuPrimitive> incoming;
     std::vector<GlbTexture> incomingTextures;
     VkDescriptorPool incomingPool=VK_NULL_HANDLE;
     try {
         const auto model=voxen::scene::gltf::loadMeshGlb(file);
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenGLB",
+            "GLB parsed: nodes=%zu primitives=%zu images=%zu",
+            model.nodes.size(),model.primitives.size(),model.images.size());
+#endif
         if(!model.images.empty() && glbTextureSetLayout_ && commandPool_) {
             VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                                      static_cast<uint32_t>(model.images.size())};
@@ -219,8 +229,16 @@ bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
         glbPrimitives_=std::move(incoming);
         glbTextures_=std::move(incomingTextures);
         glbTextureDescriptorPool_=incomingPool;
+#ifdef __ANDROID__
+        __android_log_print(glbPrimitives_.empty()?ANDROID_LOG_ERROR:ANDROID_LOG_INFO,
+            "VoxenGLB","GPU load finished: drawable primitives=%zu",glbPrimitives_.size());
+#endif
         return !glbPrimitives_.empty();
-    } catch(const std::exception&) {
+    } catch(const std::exception& e) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_ERROR,"VoxenGLB",
+            "GPU load exception for %s: %s",file.string().c_str(),e.what());
+#endif
         for(auto& tex:incomingTextures) {
             if(tex.sampler)vkDestroySampler(device_,tex.sampler,nullptr);
             if(tex.view)vkDestroyImageView(device_,tex.view,nullptr);
