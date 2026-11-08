@@ -11,8 +11,16 @@ import {generateBrushGeometry} from './vendor/three-tiltloader/src/brush-geometr
 import {getOpenBrushGeometryDefaults} from './vendor/three-tiltloader/src/brush-defaults.js';
 
 const args=process.argv.slice(2);
+const familyArg=args.indexOf('--family');
+let onlyFamily=null;
+if(familyArg>=0){
+ if(familyArg+1>=args.length)throw Error('--family requires a value');
+ onlyFamily=args.splice(familyArg,2)[1];
+ if(!['ribbon','tube','hull','particle','emissive','thick-strip','concave-hull','print3d','unsupported'].includes(onlyFamily))
+  throw Error('Unknown family: '+onlyFamily);
+}
 if(args.length!==3||args[1]!=='-o'){
- console.error('Usage: node tools/compile_openbrush.mjs scene.tilt -o scene.vxmesh');
+ console.error('Usage: node tools/compile_openbrush.mjs scene.tilt -o scene.vxmesh [--family ribbon|tube|hull|particle]');
  process.exit(2);
 }
 const source=await readFile(resolve(args[0]));
@@ -31,6 +39,7 @@ for(const stroke of strokes){
  const guid=stroke.brushGuid.toLowerCase();
  const family=getOpenBrushGeometryDefaults(guid)?.family??'unsupported';
  families.set(family,(families.get(family)||0)+1);
+ if(onlyFamily && family!==onlyFamily)continue;
  // Serialized positions and brush sizes are in decimeters, Unity-handed.
  const converted={
   ...stroke,brushSize:stroke.brushSize*.1,
@@ -63,4 +72,4 @@ for(const stroke of strokes){
 }
 if(!meshes)throw Error('No geometry generated');
 await writeFile(resolve(args[2]),Buffer.concat([Buffer.from('VXMSH001'),u32(1),u32(meshes),...chunks]));
-console.log(JSON.stringify({strokes:strokes.length,meshes,triangles,skipped,families:Object.fromEntries(families),output:args[2]},null,2));
+console.log(JSON.stringify({strokes:strokes.length,meshes,triangles,skipped,filter:onlyFamily,families:Object.fromEntries(families),output:args[2]},null,2));
