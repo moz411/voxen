@@ -144,6 +144,79 @@ void uploadTexture(VkDevice device,VkPhysicalDevice gpu,VkQueue queue,VkCommandP
     }
 }
 }
+// Smoke textures use the existing GLB/panorama staging and descriptor path.
+void XrSwapchainRenderer::releaseOpenBrushSmokeTexture() noexcept {
+    auto& t=openbrushSmokeTexture_;
+    if(device_) {
+        if(t.sampler)vkDestroySampler(device_,t.sampler,nullptr);
+        if(t.view)vkDestroyImageView(device_,t.view,nullptr);
+        if(t.image)vkDestroyImage(device_,t.image,nullptr);
+        if(t.memory)vkFreeMemory(device_,t.memory,nullptr);
+        if(openbrushSmokeDescriptorPool_)
+            vkDestroyDescriptorPool(device_,openbrushSmokeDescriptorPool_,nullptr);
+    }
+    t={};openbrushSmokeDescriptorPool_=VK_NULL_HANDLE;
+}
+bool XrSwapchainRenderer::loadOpenBrushSmokeTexture(const std::filesystem::path& path) {
+    if(openbrushSmokeTexture_.descriptor)return true;
+    if(!device_ || !panoramaSetLayout_ || !commandPool_)return false;
+    GlbTexture incoming{};
+    VkDescriptorPool pool=VK_NULL_HANDLE;
+    try {
+        PanoramaImage decoded;
+        if(std::filesystem::is_regular_file(path)) {
+            decoded=decodePanoramaImage(path,2048,4ull*1024ull*1024ull);
+        } else {
+            // Built-in diagnostic fallback, not the original Open Brush texture.
+            // Keep Smoke visible when the separately shipped PNG is unavailable.
+            constexpr int dim=128;
+            decoded.width=dim;decoded.height=dim;
+            decoded.rgba.resize(dim*dim*4);
+            for(int y=0;y<dim;y++)for(int x=0;x<dim;x++) {
+                float u=(x+.5f)/dim*2.f-1.f,v=(y+.5f)/dim*2.f-1.f;
+                float r2=u*u+v*v;
+                float haze=std::max(0.f,1.f-r2);
+                float w=.72f+.14f*std::sin(u*13.f+v*7.f)+
+                        .14f*std::cos(v*19.f-u*5.f);
+                const std::size_t i=4*(y*dim+x);
+                decoded.rgba[i]=235;decoded.rgba[i+1]=237;decoded.rgba[i+2]=244;
+                decoded.rgba[i+3]=static_cast<std::uint8_t>(
+                    std::clamp(haze*haze*w*.72f,0.f,1.f)*255.f);
+            }
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_WARN,"VoxenOpenBrush",
+                "Smoke MainTex missing; using temporary procedural diagnostic texture");
+#endif
+        }
+        voxen::scene::gltf::EmbeddedImage image;
+        image.width=decoded.width;image.height=decoded.height;
+        image.rgba=std::move(decoded.rgba);
+        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1};
+        VkDescriptorPoolCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        ci.maxSets=1;ci.poolSizeCount=1;ci.pPoolSizes=&size;
+        checked(vkCreateDescriptorPool(device_,&ci,nullptr,&pool),"Smoke descriptor pool");
+        uploadTexture(device_,physicalDevice_,queue_,commandPool_,panoramaSetLayout_,
+                      pool,image,incoming.image,incoming.memory,incoming.view,
+                      incoming.sampler,incoming.descriptor);
+        openbrushSmokeTexture_=incoming;
+        openbrushSmokeDescriptorPool_=pool;
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenOpenBrush",
+            "Smoke texture ready %dx%d",image.width,image.height);
+#endif
+        return true;
+    } catch(const std::exception& e) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_ERROR,"VoxenOpenBrush","Smoke texture: %s",e.what());
+#endif
+        if(incoming.sampler)vkDestroySampler(device_,incoming.sampler,nullptr);
+        if(incoming.view)vkDestroyImageView(device_,incoming.view,nullptr);
+        if(incoming.image)vkDestroyImage(device_,incoming.image,nullptr);
+        if(incoming.memory)vkFreeMemory(device_,incoming.memory,nullptr);
+        if(pool)vkDestroyDescriptorPool(device_,pool,nullptr);
+        return false;
+    }
+}
 void XrSwapchainRenderer::releaseGlbGpu() noexcept {
     for(auto& p:glbPrimitives_) {
         if(p.vertexBuffer)vkDestroyBuffer(device_,p.vertexBuffer,nullptr);
