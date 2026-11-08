@@ -338,7 +338,7 @@ void XrSwapchainRenderer::refreshSceneIndex() {
         for(std::filesystem::directory_iterator it(tiltDir,ec),end;
             !ec && it!=end;it.increment(ec)) {
             if(!it->is_regular_file(ec) || it->is_symlink(ec) ||
-               it->path().extension()!=".tilt")continue;
+               (it->path().extension()!=".tilt" && it->path().extension()!=".vxmesh"))continue;
             const auto filename=it->path().filename().string();
             std::uint64_t hash=14695981039346656037ull;
             for(unsigned char c:filename){hash^=c;hash*=1099511628211ull;}
@@ -346,7 +346,8 @@ void XrSwapchainRenderer::refreshSceneIndex() {
             if(!sceneRepository_->loadSceneMetadata(id)) {
                 voxen::gallery::SceneRecord record;
                 record.id=id;
-                record.displayName=it->path().stem().string()+" [Open Brush]";
+                record.displayName=it->path().stem().string()+
+                    (it->path().extension()==".vxmesh"?" [Open Brush compiled]":" [Open Brush]");
                 record.preview.boundingRadiusMeters=2.5f;
                 record.preview.materialPreset=4;
                 record.payloadAsset="scene.bin";
@@ -642,7 +643,8 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
     if(saved && saved->second.starts_with("TILT_SCENE_V1\\n")) {
         const auto filename=saved->second.substr(sizeof("TILT_SCENE_V1\\n")-1);
         if(filename.empty() || std::filesystem::path(filename).filename()!=filename ||
-           std::filesystem::path(filename).extension()!=".tilt")return false;
+           (std::filesystem::path(filename).extension()!=".tilt" &&
+             std::filesystem::path(filename).extension()!=".vxmesh"))return false;
 #ifdef __ANDROID__
         const auto path=std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/tilts")/filename;
 #else
