@@ -1,6 +1,6 @@
 # Open Brush material fidelity (work in progress)
 
-The current `VXMSH001` loader renders stroke geometry with a generic mesh shader.
+The current `VXMSH001`/`VXMSH002` loader renders stroke geometry with a generic mesh shader.
 It does **not** implement Open Brush materials, even when the geometry family is
 `particle`. Native `.tilt` currently has a separate Dots-only Vulkan path.
 
@@ -8,8 +8,33 @@ It does **not** implement Open Brush materials, even when the geometry family is
 
 ```bash
 node tools/audit_openbrush.mjs ../Sa_Tuna.tilt -o brush-audit.json
-node tools/compile_openbrush.mjs ../Sa_Tuna.tilt -o Sa_Tuna.vxmesh --materials Sa_Tuna.materials.json
+node tools/compile_openbrush.mjs ../Sa_Tuna.tilt -o Sa_Tuna.vxmesh --materials Sa_Tuna.materials.json\n# Optional compatibility output for older builds:\nnode tools/compile_openbrush.mjs ../Sa_Tuna.tilt -o Sa_Tuna-v1.vxmesh --format v1
 ```
+
+To test the v2 and v1 files with the dependency-free host reader:
+
+```bash
+c++ -std=c++17 -Iengine/render/include tests/openbrush_compiled_scene_smoke.cpp -o /tmp/vxmesh-smoke
+/tmp/vxmesh-smoke Sa_Tuna.vxmesh
+/tmp/vxmesh-smoke Sa_Tuna-v1.vxmesh
+```
+
+## Compiled binary formats
+
+Both formats start with an 8-byte ASCII magic, a little-endian u32 version and
+a little-endian u32 mesh count. For each mesh: GUID[36], vertexCount u32,
+indexCount u32, bounds[6] f32, positions[vertexCount*3] f32,
+normals[vertexCount*3] f32, colors[vertexCount*4] f32,
+UV0 floats, then indices[indexCount] u32.
+
+- `VXMSH001` / v1: UV0[vertexCount*2] f32.
+- `VXMSH002` / v2: UV0[vertexCount*4] f32 (UV0.xyzw).
+- The v1 runtime decoder pads UV0.zw to zero. Both feed a 56-byte Vulkan
+  vertex: position[3], normal[3], color[4], UV0[4].
+- Missing UV components from the source geometry generator are zero-filled
+  by the v2 compiler. No material or texture bytes are embedded yet.
+- `VXMSH002` is **not** readable by an old runtime. Rebuild Voxen before
+  copying a newly compiled file to the headset.
 
 Both tools require `tools/vendor/three-tiltloader` (upstream source checkout)
 and the dependencies used by `compile_openbrush.mjs`.
@@ -31,8 +56,7 @@ a material as opaque/transparent/emissive from its geometry family alone.
 
 1. Resolve brush GUIDs against Open Brush's authoritative brush descriptors,
    including texture, blend mode, emission, and per-brush vertex semantics.
-2. Add an explicit versioned material payload to the compiled format; retain
-   v1 decoding for existing scenes.
+2. Extend v2 with explicit material/texture semantics; UV0.xyzw and backwards-compatible v1 decoding are now implemented.
 3. Implement the two most frequent particle materials in Vulkan with
    per-eye depth/blend validation and a Quest 3 screenshot comparison.
 4. Batch compatible instances and measure draw calls/GPU cost on device.
