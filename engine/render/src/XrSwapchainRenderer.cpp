@@ -3457,6 +3457,7 @@ void XrSwapchainRenderer::render(
                         imguiCarousel_.sceneHeightAvailable=savedScene &&
                             savedScene->second.starts_with("GLB_SCENE_V1\n");
                     }
+#endif
                     imguiCarousel_.sceneAudioRadius=it->audio.audibleRadiusMeters;
                     imguiCarousel_.sceneAudioGain=it->audio.gain;
                 }
