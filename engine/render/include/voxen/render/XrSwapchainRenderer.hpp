@@ -2,6 +2,7 @@
 
 #include <array>
 #include <voxen/render/OpenBrushDotsGpu.hpp>
+#include <voxen/render/OpenBrushCompiledGpu.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -293,6 +294,9 @@ private:
     };
     std::array<MandelbulbLod,3> mandelbulbLods_{};
     voxen::render::openbrush::DotsGpuBuffer openbrushDotsGpu_{};
+    voxen::render::openbrush::CompiledMeshGpu openbrushMeshGpu_{};
+    VkPipeline openbrushMeshPipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout openbrushMeshPipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline openbrushDotsPipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout openbrushDotsPipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline voxenAttractorPipeline_ = VK_NULL_HANDLE;
