@@ -1475,13 +1475,15 @@ void XrSwapchainRenderer::createPipeline() {
             if(&out==&meshWirePipeline_ || &out==&meshDepthPipeline_)binding.stride=sizeof(XrVector3f);
         }
 #ifdef VOXEN_WITH_GLB_IMPORT
-        VkVertexInputAttributeDescription texAttrs[3]{
+        VkVertexInputAttributeDescription texAttrs[4]{
             {0,0,VK_FORMAT_R32G32B32_SFLOAT,0},{1,0,VK_FORMAT_R32G32B32_SFLOAT,12},
-            {2,0,VK_FORMAT_R32G32_SFLOAT,24}};
+            {2,0,VK_FORMAT_R32G32_SFLOAT,24},
+            {3,0,VK_FORMAT_R32G32B32A32_SFLOAT,32}};
         if(&out==&glbPipeline_ || &out==&glbOriginalPipeline_ ||
-           &out==&glbTexturedPipeline_)binding.stride=32;
-        if(&out==&glbTexturedPipeline_) {
-            vi.vertexAttributeDescriptionCount=3;
+           &out==&glbTexturedPipeline_)binding.stride=48;
+        if(&out==&glbPipeline_ || &out==&glbOriginalPipeline_ ||
+           &out==&glbTexturedPipeline_) {
+            vi.vertexAttributeDescriptionCount=4;
             vi.pVertexAttributeDescriptions=texAttrs;
         }
 #endif
