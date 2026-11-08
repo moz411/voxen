@@ -1,5 +1,5 @@
 #pragma once
-// VXMSH001 v1 offline Open Brush geometry reader.
+// VXMSH001/v1 and VXMSH002/v2 offline Open Brush geometry reader.
 // No Vulkan dependency. Untrusted input is bounds-checked before allocation.
 #include <array>
 #include <cstdint>
@@ -15,7 +15,7 @@ namespace voxen::render::openbrush {
 struct CompiledMesh {
     std::string brushGuid;
     std::array<float,6> bounds{};
-    std::vector<float> positions, normals, colors, uv0;
+    // UV0 is always 4 floats/vertex in memory; v1 UV.xy is zero-padded.\n    std::vector<float> positions, normals, colors, uv0;
     std::vector<std::uint32_t> indices;
 };
 struct CompiledScene {
@@ -36,14 +36,17 @@ inline CompiledScene readCompiledScene(const std::string& path) {
         if(bytes>data.size()-off)throw std::runtime_error("VXMSH: truncated data");
         auto* p=data.data()+off;off+=bytes;return p;
     };
-    if(std::memcmp(take(8),"VXMSH001",8)!=0)
-        throw std::runtime_error("VXMSH: bad magic");
+    const auto* magic=take(8);
+    const bool v1=std::memcmp(magic,"VXMSH001",8)==0;
+    const bool v2=std::memcmp(magic,"VXMSH002",8)==0;
+    if(!v1&&!v2)throw std::runtime_error("VXMSH: bad magic");
     auto readU32=[&](){
         auto* p=take(4);
         return std::uint32_t(p[0])|(std::uint32_t(p[1])<<8)|
                (std::uint32_t(p[2])<<16)|(std::uint32_t(p[3])<<24);
     };
-    if(readU32()!=1)throw std::runtime_error("VXMSH: unsupported version");
+    if(readU32()!=(v2?2u:1u))
+        throw std::runtime_error("VXMSH: unsupported version");
     const auto meshCount=readU32();
     if(meshCount>100000)throw std::runtime_error("VXMSH: excessive mesh count");
     auto floats=[&](std::size_t count){
@@ -69,7 +72,15 @@ inline CompiledScene readCompiledScene(const std::string& path) {
         mesh.positions=floats(std::size_t(n)*3);
         mesh.normals=floats(std::size_t(n)*3);
         mesh.colors=floats(std::size_t(n)*4);
-        mesh.uv0=floats(std::size_t(n)*2);
+        if(v2)mesh.uv0=floats(std::size_t(n)*4);
+        else {
+            auto legacy=floats(std::size_t(n)*2);
+            mesh.uv0.assign(std::size_t(n)*4,0.f);
+            for(std::size_t i=0;i<n;i++) {
+                mesh.uv0[i*4]=legacy[i*2];
+                mesh.uv0[i*4+1]=legacy[i*2+1];
+            }
+        }
         mesh.indices.reserve(indices);
         for(std::uint32_t i=0;i<indices;i++){
             auto idx=readU32();
