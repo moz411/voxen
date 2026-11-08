@@ -11,6 +11,12 @@ import {generateBrushGeometry} from './vendor/three-tiltloader/src/brush-geometr
 import {getOpenBrushGeometryDefaults} from './vendor/three-tiltloader/src/brush-defaults.js';
 
 const args=process.argv.slice(2);
+const materialArg=args.indexOf('--materials');
+let materialPath=null;
+if(materialArg>=0){
+ if(materialArg+1>=args.length)throw Error('--materials requires an output path');
+ materialPath=args.splice(materialArg,2)[1];
+}
 const familyArg=args.indexOf('--family');
 let onlyFamily=null;
 if(familyArg>=0){
@@ -20,7 +26,7 @@ if(familyArg>=0){
   throw Error('Unknown family: '+onlyFamily);
 }
 if(args.length!==3||args[1]!=='-o'){
- console.error('Usage: node tools/compile_openbrush.mjs scene.tilt -o scene.vxmesh [--family ribbon|tube|hull|particle]');
+ console.error('Usage: node tools/compile_openbrush.mjs scene.tilt -o scene.vxmesh [--family ribbon|tube|hull|particle] [--materials materials.json]');
  process.exit(2);
 }
 const source=await readFile(resolve(args[0]));
@@ -34,6 +40,7 @@ const u32=v=>{const b=Buffer.allocUnsafe(4);b.writeUInt32LE(v);return b;};
 const f32=a=>{const b=Buffer.allocUnsafe(a.length*4);for(let i=0;i<a.length;i++)b.writeFloatLE(a[i],i*4);return b;};
 const uints=a=>{const b=Buffer.allocUnsafe(a.length*4);for(let i=0;i<a.length;i++)b.writeUInt32LE(a[i],i*4);return b;};
 const chunks=[];let meshes=0,triangles=0,skipped=0;
+const materialGroups=new Map();
 const families=new Map();
 for(const stroke of strokes){
  const guid=stroke.brushGuid.toLowerCase();
@@ -51,6 +58,9 @@ for(const stroke of strokes){
  const g=generateBrushGeometry(converted,family,{finalized:true,lastControlPointIsKeeper:true});
  const count=g.positions.length/3,ic=g.indices.length;
  if(!count||!ic){skipped++;continue;}
+ const group=materialGroups.get(guid)??{guid,family,meshes:0,vertices:0,triangles:0,rendering:'unresolved',texture:null,blendMode:null};
+ group.meshes++;group.vertices+=count;group.triangles+=ic/3;
+ materialGroups.set(guid,group);
  if(!Number.isInteger(count)||count>10000000||ic>30000000)throw Error('Excessive mesh size');
  if(g.normals.length!==count*3||g.colors.length!==count*4)throw Error('Invalid attribute layout');
  // V1 stores UV0.xy; brush-specific packed UV0.zw, UV1, tangents and materials
@@ -72,4 +82,11 @@ for(const stroke of strokes){
 }
 if(!meshes)throw Error('No geometry generated');
 await writeFile(resolve(args[2]),Buffer.concat([Buffer.from('VXMSH001'),u32(1),u32(meshes),...chunks]));
+if(materialPath){
+ const manifest={schema:'voxen.openbrush.materials.v1',meshFormat:'VXMSH001',
+  source:args[0],mesh:args[2],
+  warning:'VXMSH001 retains GUID, UV0.xy and vertex colors, but not brush material semantics. Particle geometry is NOT equivalent to the original particle shader.',
+  groups:[...materialGroups.values()].sort((a,b)=>b.meshes-a.meshes||a.guid.localeCompare(b.guid))};
+ await writeFile(resolve(materialPath),JSON.stringify(manifest,null,2)+'\\n');
+}
 console.log(JSON.stringify({strokes:strokes.length,meshes,triangles,skipped,filter:onlyFamily,families:Object.fromEntries(families),output:args[2]},null,2));
