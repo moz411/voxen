@@ -92,10 +92,11 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
             const auto& src=mesh->primitives[p];
             if(src.type!=cgltf_primitive_type_triangles)
                 throw std::runtime_error("glTF: only TRIANGLES supported in v1");
-            const cgltf_accessor *positions=nullptr,*normals=nullptr,*uvs=nullptr;
+            const cgltf_accessor *positions=nullptr,*normals=nullptr,*uvs=nullptr,*colors=nullptr;
             for(cgltf_size a=0;a<src.attributes_count;++a) {
                 const auto& attribute=src.attributes[a];
                 if(attribute.type==cgltf_attribute_type_position)positions=attribute.data;
+                else if(attribute.type==cgltf_attribute_type_color && attribute.index==0)colors=attribute.data;
                 else if(attribute.type==cgltf_attribute_type_normal)normals=attribute.data;
                 else if(attribute.type==cgltf_attribute_type_texcoord && attribute.index==0)uvs=attribute.data;
             }
@@ -113,6 +114,9 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
                 throw std::runtime_error("glTF: inconsistent normals");
             if(uvs && (uvs->type!=cgltf_type_vec2 || uvs->count!=vertexCount))
                 throw std::runtime_error("glTF: inconsistent UV");
+            if(colors && (colors->count!=vertexCount ||
+               (colors->type!=cgltf_type_vec3 && colors->type!=cgltf_type_vec4)))
+                throw std::runtime_error("glTF: inconsistent COLOR_0");
             Primitive dst;
             dst.vertices.resize(vertexCount);
             dst.indices.reserve(indexCount);
@@ -124,6 +128,9 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
                     throw std::runtime_error("glTF: unreadable normals");
                 if(uvs && !cgltf_accessor_read_float(uvs,v,vertex.uv.data(),2))
                     throw std::runtime_error("glTF: unreadable UV");
+                if(colors && !cgltf_accessor_read_float(colors,v,vertex.color.data(),
+                    colors->type==cgltf_type_vec3?3:4))
+                    throw std::runtime_error("glTF: unreadable COLOR_0");
             }
             for(std::size_t j=0;j<indexCount;++j) {
                 auto idx=src.indices?cgltf_accessor_read_index(src.indices,j):j;
