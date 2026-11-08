@@ -177,9 +177,8 @@ MeshAsset decodeMeshGlb(const std::vector<std::uint8_t>& bytes, const Limits& li
 }
 MeshAsset loadMeshGlb(const std::filesystem::path& file,const Limits& limits) {
     // Prefer app-private, trusted asset paths supplied by the scene repository.
-    const auto glb=loadGlb(file,limits.maxFileBytes);
-    // The cgltf reader expects the complete GLB (including headers), not its
-    // extracted BIN payload; read once again with the checked file limit.
+    // Read the complete GLB once. decodeMeshGlb validates the container
+    // before cgltf parses it; avoid duplicating the full JSON/BIN chunks.
     std::ifstream stream(file,std::ios::binary|std::ios::ate);
     if(!stream) throw std::runtime_error("glTF: cannot open file");
     const auto size=stream.tellg();
@@ -189,7 +188,6 @@ MeshAsset loadMeshGlb(const std::filesystem::path& file,const Limits& limits) {
     stream.seekg(0);
     if(!stream.read(reinterpret_cast<char*>(bytes.data()),static_cast<std::streamsize>(bytes.size())))
         throw std::runtime_error("glTF: truncated file");
-    (void)glb;
     return decodeMeshGlb(bytes,limits);
 }
 } // namespace voxen::scene::gltf
