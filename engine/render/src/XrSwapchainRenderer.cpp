@@ -2,6 +2,7 @@
 #include <limits>
 #include <fstream>
 #include <voxen/render/MandelbulbMesh.hpp>
+#include <voxen/render/OpenBrushDotsDraw.hpp>
 #ifdef VOXEN_WITH_GLB_IMPORT
 #include <voxen/render/PanoramaImage.hpp>
 #endif
@@ -61,6 +62,8 @@
 #include "solidWallFrag.spv.hpp"
 #include "mandelbulbLitVert.spv.hpp"
 #include "mandelbulbLitFrag.spv.hpp"
+#include "openbrushDotsVert.spv.hpp"
+#include "openbrushDotsFrag.spv.hpp"
 #include "glbOriginalVert.spv.hpp"
 #include "glbOriginalFrag.spv.hpp"
 #include "glbTexturedVert.spv.hpp"
@@ -1434,6 +1437,14 @@ void XrSwapchainRenderer::createPipeline() {
         info.pPushConstantRanges=&range;
         checkVk(vkCreatePipelineLayout(device_,&info,nullptr,&galleryPicturePipelineLayout_),"gallery picture layout");
     }
+    {
+        auto range = voxen::render::openbrush::dotsCameraPushRange();
+        VkPipelineLayoutCreateInfo ci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        ci.pushConstantRangeCount=1;
+        ci.pPushConstantRanges=&range;
+        checkVk(vkCreatePipelineLayout(device_, &ci, nullptr, &openbrushDotsPipelineLayout_),
+                "openbrush Dots pipeline layout");
+    }
     // Shared render pass and push constants.
     auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
                              const std::uint8_t* fb, std::size_t fsz,
@@ -1485,6 +1496,14 @@ void XrSwapchainRenderer::createPipeline() {
             vi.pVertexAttributeDescriptions=texAttrs;
         }
 #endif
+        auto dotsBinding = voxen::render::openbrush::dotsInstanceBinding();
+        auto dotsAttributes = voxen::render::openbrush::dotsInstanceAttributes();
+        if (&out == &openbrushDotsPipeline_) {
+            vi.vertexBindingDescriptionCount=1;
+            vi.pVertexBindingDescriptions=&dotsBinding;
+            vi.vertexAttributeDescriptionCount=static_cast<uint32_t>(dotsAttributes.size());
+            vi.pVertexAttributeDescriptions=dotsAttributes.data();
+        }
         VkPipelineViewportStateCreateInfo vp{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
         vp.viewportCount=1; vp.scissorCount=1;
         VkPipelineRasterizationStateCreateInfo rs{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
@@ -1523,7 +1542,7 @@ void XrSwapchainRenderer::createPipeline() {
 #endif
             ;
         if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
-        if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
+        if(&out==&panoramaPipeline_ || &out==&openbrushDotsPipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
         if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &galleryCylinderPipeline_ || &out == &galleryCylinderMatrixPipeline_ || &out == &galleryCylinderOceanPipeline_ || &out == &galleryCylinderLiquidPipeline_ || &out == &panoramaPipeline_
@@ -1533,6 +1552,15 @@ void XrSwapchainRenderer::createPipeline() {
         ) {
             blend.blendEnable=VK_TRUE;
             blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
+            blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.colorBlendOp=VK_BLEND_OP_ADD;
+            blend.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;
+            blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.alphaBlendOp=VK_BLEND_OP_ADD;
+        }
+        if (&out==&openbrushDotsPipeline_) {
+            blend.blendEnable=VK_TRUE;
+            blend.srcColorBlendFactor=VK_BLEND_FACTOR_ONE;
             blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
             blend.colorBlendOp=VK_BLEND_OP_ADD;
             blend.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;
@@ -1560,6 +1588,7 @@ void XrSwapchainRenderer::createPipeline() {
 #ifdef VOXEN_WITH_GLB_IMPORT
         if(&out==&glbTexturedPipeline_)pi.layout=glbTexturePipelineLayout_;
 #endif
+        if(&out==&openbrushDotsPipeline_)pi.layout=openbrushDotsPipelineLayout_;
         if(&out==&panoramaPipeline_)pi.layout=panoramaPipelineLayout_;
         if(&out==&galleryCylinderPicturePipeline_)pi.layout=galleryPicturePipelineLayout_;
         pi.renderPass=renderPass_;
@@ -1567,6 +1596,7 @@ void XrSwapchainRenderer::createPipeline() {
         vkDestroyShaderModule(device_, fs, nullptr);
         vkDestroyShaderModule(device_, vs, nullptr);
     };
+    buildPipeline(openbrushDotsVert,openbrushDotsVertSize,openbrushDotsFrag,openbrushDotsFragSize,openbrushDotsPipeline_);
     buildPipeline(panoramaVert,panoramaVertSize,panoramaFrag,panoramaFragSize,panoramaPipeline_);
     buildPipeline(organicSphereVert, organicSphereVertSize, organicSphereFrag, organicSphereFragSize, organicSpherePipeline_);
     buildPipeline(torusKnotVert, torusKnotVertSize, organicSphereFrag, organicSphereFragSize, torusKnotPipeline_);
@@ -3935,6 +3965,8 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
+    if(openbrushDotsPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushDotsPipeline_,nullptr);openbrushDotsPipeline_=VK_NULL_HANDLE;}
+    if(openbrushDotsPipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,openbrushDotsPipelineLayout_,nullptr);openbrushDotsPipelineLayout_=VK_NULL_HANDLE;}
     if(voxenMandelbulbLitPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbLitPipeline_,nullptr);voxenMandelbulbLitPipeline_=VK_NULL_HANDLE;}
 #ifdef VOXEN_WITH_GLB_IMPORT
     releaseGlbGpu();
