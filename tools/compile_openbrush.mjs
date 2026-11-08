@@ -87,6 +87,6 @@ if(materialPath){
   source:args[0],mesh:args[2],
   warning:'VXMSH001 retains GUID, UV0.xy and vertex colors, but not brush material semantics. Particle geometry is NOT equivalent to the original particle shader.',
   groups:[...materialGroups.values()].sort((a,b)=>b.meshes-a.meshes||a.guid.localeCompare(b.guid))};
- await writeFile(resolve(materialPath),JSON.stringify(manifest,null,2)+'\\n');
+ await writeFile(resolve(materialPath),JSON.stringify(manifest,null,2)+'\n');
 }
 console.log(JSON.stringify({strokes:strokes.length,meshes,triangles,skipped,filter:onlyFamily,families:Object.fromEntries(families),output:args[2]},null,2));
