@@ -1,4 +1,5 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
+#include <limits>
 #include <voxen/render/MandelbulbMesh.hpp>
 #ifdef VOXEN_WITH_GLB_IMPORT
 #include <voxen/render/PanoramaImage.hpp>
@@ -467,6 +468,7 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         immersiveGlbDecoding_=false;
         try {
             auto decoded=immersiveGlbDecodeFuture_.get();
+            if(!immersiveSceneActive_)return;
             // GLB exports may have a displaced origin. Align the lowest
             // transformed mesh vertex with the real-world floor.
             float minY=std::numeric_limits<float>::infinity();
