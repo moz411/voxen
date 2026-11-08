@@ -454,6 +454,8 @@ private:
     float galleryGrabDistance_ = 0.5f;
     float galleryPlacementDistance_ = 1.5f; // right stick Y, meters
     voxen::gallery::Pose galleryDraggedPose_{};
+    voxen::gallery::Pose galleryDragOriginalPose_{};
+    bool galleryDragFloorValid_ = false;
     std::optional<voxen::gallery::InstanceId> galleryHoveredId_;
     std::chrono::steady_clock::time_point galleryDeleteArmedUntil_{};
     [[nodiscard]] std::optional<voxen::gallery::FloorHit> galleryFloorHit() const;
