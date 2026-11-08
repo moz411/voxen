@@ -91,9 +91,46 @@ inline std::vector<DotInstance> decodeTiltDots(const std::filesystem::path& path
                                                 float worldScale=0.025f) {
     if(!std::isfinite(worldScale) || worldScale<=0)
         throw std::runtime_error("Tilt: invalid world scale");
+    // Some Open Brush files are ZIPs with a prepended container header.
+    // miniz's file reader is stricter than Python zipfile for these files.
+    // Keep the archive bytes alive until all entries have been extracted.
+    std::ifstream input(path,std::ios::binary|std::ios::ate);
+    if(!input)throw std::runtime_error("Tilt: cannot open file");
+    const auto length=input.tellg();
+    if(length<22 || length>std::streamoff(256*1024*1024))
+        throw std::runtime_error("Tilt: invalid archive size");
+    std::vector<std::uint8_t> archive(static_cast<std::size_t>(length));
+    input.seekg(0);
+    if(!input.read(reinterpret_cast<char*>(archive.data()),
+                   static_cast<std::streamsize>(archive.size())))
+        throw std::runtime_error("Tilt: cannot read archive");
     mz_zip_archive zip{};
-    if(!mz_zip_reader_init_file(&zip,path.string().c_str(),0))
-        throw std::runtime_error("Tilt: invalid ZIP archive");
+    auto init=[&](std::size_t offset) {
+        zip=mz_zip_archive{};
+        return mz_zip_reader_init_mem(&zip,archive.data()+offset,archive.size()-offset,0);
+    };
+    std::size_t offset=0;
+    if(!init(0)) {
+        const auto error=mz_zip_get_error_string(mz_zip_get_last_error(&zip));
+        // Only attempt a prefix correction when a ZIP local-file signature
+        // exists in the first 4 KiB. Never scan arbitrary unbounded data.
+        bool recovered=false;
+        for(std::size_t i=1;i+4<=archive.size() && i<4096;++i) {
+            if(archive[i]==0x50 && archive[i+1]==0x4b &&
+               archive[i+2]==0x03 && archive[i+3]==0x04 && init(i)) {
+                offset=i;
+                recovered=true;
+                break;
+            }
+        }
+        if(!recovered)
+            throw std::runtime_error(std::string("Tilt: ZIP init failed: ")+error+
+                " (first bytes "+std::to_string(archive[0])+","+
+                std::to_string(archive[1])+","+
+                std::to_string(archive[2])+","+
+                std::to_string(archive[3])+")");
+    }
+    (void)offset;
     std::vector<std::uint8_t> sketch,metadata;
     try {
         metadata=detail::zipEntry(zip,"metadata.json");
