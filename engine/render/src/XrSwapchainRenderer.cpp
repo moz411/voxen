@@ -435,7 +435,8 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         galleryExitSince_={};
         return;
     }
-    // Enter/exit using the headset's actual 3D position relative to a sphere.
+    // Enter/exit using the headset position relative to the rendered cylinder.
+    // The outer hysteresis shell absorbs tracking noise near its walls.
     // Hysteresis prevents repeated scene loads at the boundary.
     const auto portals=portalManager_->visible();
     if(suppressedPortalId_ && !immersiveSceneActive_) {
@@ -450,7 +451,7 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
                 suppressedPortalId_.reset();
                 galleryEntryCandidate_.reset();
 #ifdef __ANDROID__
-                __android_log_print(ANDROID_LOG_INFO,"VoxenGallery","Completed sphere re-enabled after moving away");
+                __android_log_print(ANDROID_LOG_INFO,"VoxenGallery","Completed cylinder re-enabled after moving away");
 #endif
             }
         }
@@ -463,7 +464,7 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         const auto& p=it->localPose.positionMeters;
         const float dx=headPosition.x-p[0],dy=headPosition.y-p[1],dz=headPosition.z-p[2];
         if(voxen::gallery::insidePortalCylinder(it->localPose,it->scale,
-                {headPosition.x,headPosition.y,headPosition.z},0.46f,0.88f)) {
+                {headPosition.x,headPosition.y,headPosition.z},0.52f,0.96f)) {
             galleryExitSince_={};
             return;
         }
@@ -472,7 +473,7 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
             galleryExitSince_=now;
             return;
         }
-        if(now-galleryExitSince_>=std::chrono::milliseconds(400))
+        if(now-galleryExitSince_>=std::chrono::milliseconds(900))
             leaveImmersiveScene();
         return;
     }
