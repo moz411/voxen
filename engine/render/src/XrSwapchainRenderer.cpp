@@ -4,6 +4,7 @@
 #include <voxen/render/MandelbulbMesh.hpp>
 #include <voxen/render/OpenBrushDotsDraw.hpp>
 #include <voxen/render/OpenBrushDotsBinary.hpp>
+#include <voxen/render/OpenBrushTilt.hpp>
 #ifdef VOXEN_WITH_GLB_IMPORT
 #include <voxen/render/PanoramaImage.hpp>
 #endif
@@ -955,6 +956,51 @@ void XrSwapchainRenderer::initialize(
                 std::fprintf(stderr,"VoxenOpenBrush: %s\\n",e.what());
 #endif
             }
+        }
+    }
+    // Load native .tilt files directly on Quest. Multiple files share one Dots
+    // instance buffer for now; gallery catalogue/portal binding comes later.
+    {
+#ifdef __ANDROID__
+        const std::filesystem::path tiltRoot="/sdcard/Android/data/org.voxen.xr/files/tilts";
+#else
+        const std::filesystem::path tiltRoot="tilts";
+#endif
+        try {
+            std::filesystem::create_directories(tiltRoot);
+            std::vector<voxen::render::openbrush::DotInstance> combined;
+            for(const auto& entry:std::filesystem::directory_iterator(tiltRoot)) {
+                if(!entry.is_regular_file() || entry.is_symlink() ||
+                   entry.path().extension()!=".tilt")continue;
+                try {
+                    auto dots=voxen::render::openbrush::decodeTiltDots(entry.path());
+                    if(dots.size()>1000000 || combined.size()>1000000-dots.size())
+                        throw std::runtime_error("Tilt: instance limit exceeded");
+                    combined.insert(combined.end(),dots.begin(),dots.end());
+#ifdef __ANDROID__
+                    __android_log_print(ANDROID_LOG_INFO,"VoxenOpenBrush",
+                        "Native tilt %s: %zu Dots",entry.path().filename().string().c_str(),dots.size());
+#endif
+                } catch(const std::exception& e) {
+#ifdef __ANDROID__
+                    __android_log_print(ANDROID_LOG_ERROR,"VoxenOpenBrush",
+                        "Native tilt failed: %s",e.what());
+#else
+                    std::fprintf(stderr,"Native tilt failed: %s\\n",e.what());
+#endif
+                }
+            }
+            if(!combined.empty()) {
+                // Native source takes precedence over the legacy precompiled payload.
+                if(openbrushDotsGpu_.buffer()!=VK_NULL_HANDLE)
+                    openbrushDotsGpu_.destroy(device_);
+                openbrushDotsGpu_.upload(device_,physicalDevice_,combined);
+            }
+        } catch(const std::exception& e) {
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_ERROR,"VoxenOpenBrush",
+                "Tilt directory error: %s",e.what());
+#endif
         }
     }
     // Three shared meshes: high/medium/low detail, extracted only once.
