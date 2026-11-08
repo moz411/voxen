@@ -4,11 +4,11 @@
 import {readFile,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {unzipSync,strFromU8} from 'fflate';
-// Import upstream source modules directly: npm's three-tiltloader package has no
-// usable index.js entrypoint in some releases. tsx resolves its TypeScript source.
-import {readTiltStrokeData} from '../node_modules/three-tiltloader/src/tilt-strokes.js';
-import {generateBrushGeometry} from '../node_modules/three-tiltloader/src/brush-geometry.ts';
-import {getOpenBrushGeometryDefaults} from '../node_modules/three-tiltloader/src/brush-defaults.js';
+// Upstream source checkout is required: the npm tarball omits source modules.
+// Clone https://github.com/icosa-foundation/three-tiltloader to tools/vendor/three-tiltloader.
+import {readTiltStrokeData} from './vendor/three-tiltloader/src/tilt-strokes.js';
+import {generateBrushGeometry} from './vendor/three-tiltloader/src/brush-geometry.ts';
+import {getOpenBrushGeometryDefaults} from './vendor/three-tiltloader/src/brush-defaults.js';
 
 const args=process.argv.slice(2);
 if(args.length!==3||args[1]!=='-o'){
