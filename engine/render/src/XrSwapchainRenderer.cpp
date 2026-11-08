@@ -3453,6 +3453,28 @@ void XrSwapchainRenderer::render(
                             imguiCarousel_.sceneAudioIndex=static_cast<int>(j)+1;
                             break;
                         }
+#ifdef VOXEN_WITH_GLB_IMPORT
+                    imguiCarousel_.sceneHeightAvailable=false;
+                    imguiCarousel_.sceneHeightOffset=0.f;
+                    if(sceneRepository_) {
+                        auto savedScene=sceneRepository_->loadScene(sceneId);
+                        if(savedScene && savedScene->second.starts_with("GLB_SCENE_V1\\n")) {
+                            const auto filename=savedScene->second.substr(sizeof("GLB_SCENE_V1\\n")-1);
+                            const auto name=std::filesystem::path(filename);
+                            if(name.filename()==name && name.extension()==".glb") {
+                                imguiCarousel_.sceneHeightAvailable=true;
+                                const auto offsetFile=glbAssetRoot_/"scenes"/
+                                    (name.stem().string()+".offset-y");
+                                if(std::ifstream input(offsetFile);input) {
+                                    float value=0.f;
+                                    if(input>>value && std::isfinite(value) &&
+                                       value>=-100.f && value<=100.f)
+                                        imguiCarousel_.sceneHeightOffset=value;
+                                }
+                            }
+                        }
+                    }
+#endif
                     imguiCarousel_.sceneAudioRadius=it->audio.audibleRadiusMeters;
                     imguiCarousel_.sceneAudioGain=it->audio.gain;
                 }
@@ -3466,6 +3488,36 @@ void XrSwapchainRenderer::render(
         }
         voxen::ui::drawCarousel(imguiCarousel_);
         if(portalManager_ && selectedPortalId_) {
+#ifdef VOXEN_WITH_GLB_IMPORT
+            if(imguiCarousel_.sceneHeightApply) {
+                imguiCarousel_.sceneHeightApply=false;
+                bool saved=false;
+                if(imguiCarousel_.sceneHeightAvailable && sceneRepository_ &&
+                   imguiCarousel_.selectedScene>=0 &&
+                   static_cast<size_t>(imguiCarousel_.selectedScene)<sceneIds_.size()) {
+                    const auto record=sceneRepository_->loadScene(
+                        sceneIds_[imguiCarousel_.selectedScene]);
+                    if(record && record->second.starts_with("GLB_SCENE_V1\\n")) {
+                        const auto name=std::filesystem::path(
+                            record->second.substr(sizeof("GLB_SCENE_V1\\n")-1));
+                        if(name.filename()==name && name.extension()==".glb" &&
+                           std::isfinite(imguiCarousel_.sceneHeightOffset)) {
+                            const auto offsetFile=glbAssetRoot_/"scenes"/
+                                (name.stem().string()+".offset-y");
+                            std::ofstream output(offsetFile,std::ios::trunc);
+                            if(output) {
+                                output<<imguiCarousel_.sceneHeightOffset<<"\\n";
+                                output.flush();
+                                saved=output.good();
+                            }
+                        }
+                    }
+                }
+                imguiCarousel_.sceneStatus=saved
+                    ?"Scene height saved (effective on next entry)"
+                    :"Cannot save scene height";
+            }
+#endif
             if(imguiCarousel_.sceneSurfaceApply) {
                 imguiCarousel_.sceneSurfaceApply=false;
                 voxen::gallery::PortalSurface surface;
