@@ -481,6 +481,12 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
         // Keep the panorama in editorSettings_ for the next edit session,
         // but Gallery must always render the live Sobel passthrough.
         imguiCarousel_.panoramaSelected=-1;
+        imguiCarousel_.backgroundSourceKind=0;
+        imguiCarousel_.backgroundTargetSurface=-1;
+        imguiCarousel_.videoSelected=-1;
+        imguiCarousel_.wallSourceKind=0;
+        imguiCarousel_.wallVideoSelected=-1;
+        imguiCarousel_.surfaceMedia.clear();
         panoramaFadeActive_=false;
         ambientMusic_.configure(0,false,0.f);
         mp3Library_.update(-1,false,0.f);
@@ -793,6 +799,10 @@ bool XrSwapchainRenderer::saveCurrentScene() {
     const int panoramaIndex=imguiCarousel_.panoramaSelected;
     if(panoramaIndex>=0 && static_cast<std::size_t>(panoramaIndex)<panoramaNames_.size())
         runtime.panoramaFile=panoramaNames_[panoramaIndex];
+    runtime.backgroundSourceKind=imguiCarousel_.backgroundSourceKind;
+    const int videoIndex=imguiCarousel_.videoSelected;
+    if(videoIndex>=0 && static_cast<std::size_t>(videoIndex)<imguiCarousel_.videoFiles.size())
+        runtime.videoFile=imguiCarousel_.videoFiles[videoIndex];
     runtime.panoramaYawDegrees=imguiCarousel_.panoramaYawDegrees;
     runtime.panoramaHorizontalDegrees=imguiCarousel_.panoramaHorizontalDegrees;
     runtime.panoramaVerticalDegrees=imguiCarousel_.panoramaVerticalDegrees;
@@ -927,6 +937,14 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     physicsAccumulator_=0.f;
 #ifdef VOXEN_WITH_IMGUI
     rescanPanoramaAssets();
+    imguiCarousel_.backgroundSourceKind=snapshot->backgroundSourceKind;
+    imguiCarousel_.backgroundTargetSurface=-1;
+    imguiCarousel_.videoFiles=scanVideoFiles();
+    const auto videoMatch=std::find(imguiCarousel_.videoFiles.begin(),
+        imguiCarousel_.videoFiles.end(),snapshot->videoFile);
+    imguiCarousel_.videoSelected=snapshot->videoFile.empty() ||
+        videoMatch==imguiCarousel_.videoFiles.end() ? -1 :
+        static_cast<int>(videoMatch-imguiCarousel_.videoFiles.begin());
     const auto match=std::find(panoramaNames_.begin(),panoramaNames_.end(),snapshot->panoramaFile);
     imguiCarousel_.panoramaSelected=snapshot->panoramaFile.empty() ||
         match==panoramaNames_.end() ? -1 : static_cast<int>(match-panoramaNames_.begin());
@@ -3790,6 +3808,8 @@ void XrSwapchainRenderer::render(
                 lastVoxenValid_=false;
                 physicsAccumulator_=0.f;
                 imguiCarousel_.panoramaSelected=-1;
+                imguiCarousel_.backgroundSourceKind=0;
+                imguiCarousel_.videoSelected=-1;
                 panoramaDecodedSelection_=-2;
                 imguiCarousel_.liquidRoom=false;
                 imguiCarousel_.wallShaderMode=0;
