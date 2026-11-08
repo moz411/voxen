@@ -17,6 +17,14 @@ struct MeshVertex {
     float position[3], normal[3], color[4], uv[4];
 };
 static_assert(sizeof(MeshVertex)==56);
+// Per-eye billboard frame for Smoke; matches the GLSL push-constant layout.
+struct alignas(16) SmokeCameraPush {
+    std::array<float,16> viewProjection{};
+    std::array<float,4> right{};
+    std::array<float,4> up{};
+    std::array<float,4> settings{}; // x: elapsed seconds
+};
+static_assert(sizeof(SmokeCameraPush)==112);
 struct MeshDraw {
     std::string brushGuid;
     std::uint32_t firstIndex=0, indexCount=0;
@@ -82,16 +90,34 @@ public:
             draws_=data.draws;
         } catch(...) {destroy(device);throw;}
     }
+    // Draw all opaque fallback geometry first; Smoke draws last with alpha blend.
+    // Alpha sorting remains a future fidelity improvement.
     void record(VkCommandBuffer command,VkPipeline pipeline,VkPipelineLayout layout,
-                const std::array<float,16>& viewProjection) const {
+                const std::array<float,16>& viewProjection,
+                VkPipeline smokePipeline=VK_NULL_HANDLE,
+                VkPipelineLayout smokeLayout=VK_NULL_HANDLE,
+                VkDescriptorSet smokeTexture=VK_NULL_HANDLE,
+                const SmokeCameraPush* smokeCamera=nullptr) const {
         if(empty()||!pipeline)return;
-        vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);
+        const bool useSmoke=smokePipeline && smokeLayout && smokeTexture && smokeCamera;
         VkDeviceSize offset=0;
         vkCmdBindVertexBuffers(command,0,1,&vertex_,&offset);
         vkCmdBindIndexBuffer(command,index_,0,VK_INDEX_TYPE_UINT32);
+        vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);
         vkCmdPushConstants(command,layout,VK_SHADER_STAGE_VERTEX_BIT,0,64,viewProjection.data());
+        constexpr const char* smokeGuid="70d79cca-b159-4f35-990c-f02193947fe8";
         for(const auto& draw:draws_)
-            if(draw.indexCount)vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+            if(draw.indexCount && (!useSmoke || draw.brushGuid!=smokeGuid))
+                vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+        if(!useSmoke)return;
+        vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,smokePipeline);
+        vkCmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                smokeLayout,0,1,&smokeTexture,0,nullptr);
+        vkCmdPushConstants(command,smokeLayout,VK_SHADER_STAGE_VERTEX_BIT,
+                           0,sizeof(*smokeCamera),smokeCamera);
+        for(const auto& draw:draws_)
+            if(draw.indexCount && draw.brushGuid==smokeGuid)
+                vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
     }
     void destroy(VkDevice device) {
         if(vertex_)vkDestroyBuffer(device,vertex_,nullptr);
