@@ -27,6 +27,9 @@ struct CarouselState {
     std::string scenePortalSettingsId;
     bool sceneSurfaceApply = false;
     bool sceneAudioApply = false;
+    bool sceneHeightApply = false;
+    bool sceneHeightAvailable = false;
+    float sceneHeightOffset = 0.f;
     int sceneSurfaceKind = 0; // 0 default, 1 picture, 2 procedural
     int scenePictureIndex = 0;
     int sceneProceduralMode = 0;

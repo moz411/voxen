@@ -1,4 +1,6 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
+#include <limits>
+#include <fstream>
 #include <voxen/render/MandelbulbMesh.hpp>
 #ifdef VOXEN_WITH_GLB_IMPORT
 #include <voxen/render/PanoramaImage.hpp>
@@ -278,12 +280,44 @@ void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& roo
     glbAssetRoot_=root / "assets";
 #endif
     rescanGlbAssets();
+    refreshSceneIndex();
 #endif
 }
 
 void XrSwapchainRenderer::refreshSceneIndex() {
     sceneIds_=sceneRepository_?sceneRepository_->listScenes():
         std::vector<voxen::gallery::SceneId>{};
+#ifdef VOXEN_WITH_GLB_IMPORT
+    // Explicit scenes/ directory: never promote small object GLBs.
+    // Persist a lightweight scene record so PortalManager can place it.
+    const auto scenesDir=glbAssetRoot_/"scenes";
+    if(!glbAssetRoot_.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(scenesDir,ec);
+        for(std::filesystem::directory_iterator it(scenesDir,ec),end;!ec && it!=end;it.increment(ec)) {
+            if(!it->is_regular_file(ec) || it->is_symlink(ec))continue;
+            auto ext=it->path().extension().string();
+            std::transform(ext.begin(),ext.end(),ext.begin(),
+                [](unsigned char c){return static_cast<char>(std::tolower(c));});
+            if(ext!=".glb")continue;
+            const auto filename=it->path().filename().string();
+            // Deterministic ID, independent of directory iteration order.
+            std::uint64_t hash=14695981039346656037ull;
+            for(unsigned char c:filename){hash^=c;hash*=1099511628211ull;}
+            const auto id=std::string("glb-")+std::to_string(hash);
+            if(!sceneRepository_->loadSceneMetadata(id)) {
+                voxen::gallery::SceneRecord record;
+                record.id=id;
+                record.displayName=it->path().stem().string()+" [GLB]";
+                record.preview.boundingRadiusMeters=2.5f;
+                record.preview.materialPreset=4;
+                record.payloadAsset="scene.bin";
+                sceneRepository_->saveScene(record,"GLB_SCENE_V1\n"+filename);
+            }
+        }
+        sceneIds_=sceneRepository_->listScenes();
+    }
+#endif
     sceneLabels_.clear();
     scenePreviewCache_.clear();
     sceneLabels_.reserve(sceneIds_.size());
@@ -429,6 +463,47 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
 
 void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
     galleryHeadPosition_=headPosition;
+#ifdef VOXEN_WITH_GLB_IMPORT
+    if(immersiveGlbDecoding_ &&
+       immersiveGlbDecodeFuture_.wait_for(std::chrono::seconds(0))==std::future_status::ready) {
+        immersiveGlbDecoding_=false;
+        try {
+            auto decoded=immersiveGlbDecodeFuture_.get();
+            if(!immersiveSceneActive_)return;
+            // Height belongs to the selected portal placement in room gallery metadata.
+            float offsetY=0.f;
+            if(portalManager_ && immersivePortalId_) {
+                for(const auto& portal:portalManager_->visible())
+                    if(portal.id==*immersivePortalId_) {
+                        offsetY=portal.sceneHeightOffsetMeters;
+                        break;
+                    }
+            }
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_INFO,"VoxenGLB",
+                "Scene vertical offset from gallery=%.3f m",offsetY);
+#endif
+            if(loadDemoGlb(immersiveGlbDecodePath_,std::move(decoded))) {
+                glbPlacement_={headPosition.x,offsetY,headPosition.z};
+                glbPlaced_=true;
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_INFO,"VoxenGLB",
+                    "Immersive GLB GPU ready, vertical offset %.3f m",offsetY);
+#endif
+            } else {
+#ifdef __ANDROID__
+                __android_log_print(ANDROID_LOG_ERROR,"VoxenGLB","Immersive GPU upload failed");
+#endif
+                leaveImmersiveScene();
+            }
+        } catch(const std::exception& e) {
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_ERROR,"VoxenGLB","Async GLB decode failed: %s",e.what());
+#endif
+            leaveImmersiveScene();
+        }
+    }
+#endif
     if(editingMode() || pendingGalleryFloorAction_!=0 || galleryDragging_)return;
     if(!portalManager_ || !portalManager_->localized()) {
         galleryEntryCandidate_.reset();
@@ -445,9 +520,9 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         if(it==portals.end())suppressedPortalId_.reset();
         else {
             const auto& pos=it->localPose.positionMeters;
-            const float x=headPosition.x-pos[0],y=headPosition.y-pos[1],z=headPosition.z-pos[2];
+            const float x=headPosition.x-pos[0],z=headPosition.z-pos[2];
             const float rearmRadius=0.57f*std::clamp(it->scale,0.1f,4.f);
-            if(x*x+z*z>rearmRadius*rearmRadius || std::abs(y)>1.0f*std::clamp(it->scale,0.1f,4.f)) {
+            if(x*x+z*z>rearmRadius*rearmRadius) {
                 suppressedPortalId_.reset();
                 galleryEntryCandidate_.reset();
 #ifdef __ANDROID__
@@ -511,6 +586,9 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         immersivePortalId_=inside->id;
         galleryExitSince_={};
     } else {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_ERROR,"VoxenGallery","Portal entry failed scene=%s",sceneId.c_str());
+#endif
 #ifdef VOXEN_WITH_IMGUI
         imguiCarousel_.sceneStatus="Automatic portal entry failed";
 #endif
@@ -519,8 +597,63 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
 
 bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id) {
     if(immersiveSceneActive_ || !sceneRepository_) return false;
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO,"VoxenGallery","Portal enter request scene=%s",id.c_str());
+#endif
     // Validate and parse before touching the current live scene.
     auto saved=sceneRepository_->loadScene(id);
+#ifdef __ANDROID__
+    __android_log_print(saved?ANDROID_LOG_INFO:ANDROID_LOG_ERROR,"VoxenGallery",
+        "Scene repository load: %s",saved?"found":"missing");
+#endif
+#ifdef VOXEN_WITH_GLB_IMPORT
+    if(saved && saved->second.starts_with("GLB_SCENE_V1\n")) {
+        const auto filename=saved->second.substr(sizeof("GLB_SCENE_V1\n")-1);
+        // Only basename references from our auto-discovered scene directory.
+        if(filename.empty() || std::filesystem::path(filename).filename()!=filename ||
+           std::filesystem::path(filename).extension()!=".glb")return false;
+        const auto path=glbAssetRoot_/"scenes"/filename;
+        if(!std::filesystem::is_regular_file(path)) {
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_ERROR,"VoxenGallery","GLB scene missing: %s",path.string().c_str());
+#endif
+            return false;
+        }
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenGallery","Loading GLB scene: %s",path.string().c_str());
+#endif
+        // Decode on a worker. Vulkan allocations remain on the render thread
+        // when the future is ready; never touch VkDevice from the worker.
+        immersiveGlbDecodePath_=path;
+        immersiveGlbDecoding_=true;
+        immersiveGlbDecodeFuture_=std::async(std::launch::async,[path] {
+            voxen::scene::gltf::Limits limits{};
+            limits.maxFileBytes=256u*1024u*1024u;
+            return voxen::scene::gltf::loadMeshGlb(path,limits);
+        });
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenGLB","Async CPU decode started");
+#endif
+        std::vector<PlasmaVoxen>{}.swap(voxens_);
+        glbPreview_=false;
+        glbPlaced_=false; // enabled only after CPU decode and GPU upload
+        glbInGallery_=false;
+        glbScale_=1.f;
+#ifdef VOXEN_WITH_IMGUI
+        imguiCarousel_.editMode=false;
+        imguiCarousel_.visible=false;
+        imguiCarousel_.glbMaterialMode=0;
+        imguiCarousel_.musicPlaying=false;
+#endif
+        immersiveSceneActive_=true;
+        galleryRevealStarted_={};
+        transitionWhiteCoverage_=0.f;
+        victoryExitAt_={};
+        spikeProjectiles_.clear();
+        spikeImpacts_.clear();
+        return true;
+    }
+#endif
     auto immersiveSnapshot=saved ? voxen::gallery::decodeRuntime(saved->second) : std::nullopt;
     if(!immersiveSnapshot)return false;
     // Enter with only the requested scene instances resident.
@@ -556,6 +689,12 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
     immersiveSceneActive_=false;
+#ifdef VOXEN_WITH_GLB_IMPORT
+    if(glbPlaced_ && !glbInGallery_) {
+        glbPlaced_=false;
+        glbPreview_=false;
+    }
+#endif
     if(victoryExitAt_.time_since_epoch().count()!=0 && immersivePortalId_)
         suppressedPortalId_=immersivePortalId_;
     if(victoryExitAt_.time_since_epoch().count()!=0)
@@ -2183,7 +2322,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 ? galleryDraggedPose_.positionMeters : p.localPose.positionMeters;
             const float s=std::clamp(p.scale,0.1f,4.f);
             const Mat4 mvp=multiply(projView,
-                modelMatrix(xyz[0],xyz[1],0.4f*s,xyz[2],0.f));
+                modelMatrix(xyz[0],xyz[1]+0.8f*s,0.4f*s,xyz[2],0.f));
             const auto preview=scenePreviewCache_.find(p.sceneId);
             const float preset=preview==scenePreviewCache_.end()?0.f:
                 float(preview->second.materialPreset%8u);
@@ -3310,6 +3449,15 @@ void XrSwapchainRenderer::render(
                             imguiCarousel_.sceneAudioIndex=static_cast<int>(j)+1;
                             break;
                         }
+#ifdef VOXEN_WITH_GLB_IMPORT
+                    imguiCarousel_.sceneHeightAvailable=false;
+                    imguiCarousel_.sceneHeightOffset=it->sceneHeightOffsetMeters;
+                    if(sceneRepository_) {
+                        const auto savedScene=sceneRepository_->loadScene(sceneId);
+                        imguiCarousel_.sceneHeightAvailable=savedScene &&
+                            savedScene->second.starts_with("GLB_SCENE_V1\n");
+                    }
+#endif
                     imguiCarousel_.sceneAudioRadius=it->audio.audibleRadiusMeters;
                     imguiCarousel_.sceneAudioGain=it->audio.gain;
                 }
@@ -3323,6 +3471,17 @@ void XrSwapchainRenderer::render(
         }
         voxen::ui::drawCarousel(imguiCarousel_);
         if(portalManager_ && selectedPortalId_) {
+#ifdef VOXEN_WITH_GLB_IMPORT
+            if(imguiCarousel_.sceneHeightApply) {
+                imguiCarousel_.sceneHeightApply=false;
+                const bool saved=imguiCarousel_.sceneHeightAvailable &&
+                    portalManager_->setSceneHeight(*selectedPortalId_,
+                        imguiCarousel_.sceneHeightOffset);
+                imguiCarousel_.sceneStatus=saved
+                    ?"Scene height saved in gallery (effective on next entry)"
+                    :"Cannot save scene height";
+            }
+#endif
             if(imguiCarousel_.sceneSurfaceApply) {
                 imguiCarousel_.sceneSurfaceApply=false;
                 voxen::gallery::PortalSurface surface;

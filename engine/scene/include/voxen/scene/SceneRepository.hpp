@@ -114,7 +114,7 @@ public:
         if (!safe(g.roomId) || g.persistentAnchorId.empty() ||
             g.persistentAnchorId.size() > 4096 || g.placements.size() > 2048) return false;
         std::ostringstream out;
-        out << "VOXEN_GALLERY 3\n" << std::quoted(g.roomId) << '\n'
+        out << "VOXEN_GALLERY 4\n" << std::quoted(g.roomId) << '\n'
             << std::quoted(g.persistentAnchorId) << '\n' << g.placements.size() << '\n'
             << std::setprecision(std::numeric_limits<float>::max_digits10);
         for (const auto& p : g.placements) {
@@ -135,13 +135,17 @@ public:
                p.audio.audibleRadiusMeters<0.5f || p.audio.audibleRadiusMeters>20.f ||
                !std::isfinite(p.audio.gain) || p.audio.gain<0.f || p.audio.gain>1.f)
                 return false;
+            if(!std::isfinite(p.sceneHeightOffsetMeters) ||
+               p.sceneHeightOffsetMeters < -100.f || p.sceneHeightOffsetMeters > 100.f)
+                return false;
             out << ' ' << static_cast<int>(p.geometry)
                 << ' ' << static_cast<int>(p.surface.kind)
                 << ' ' << std::quoted(p.surface.pictureFilename)
                 << ' ' << p.surface.proceduralShaderMode
                 << ' ' << std::quoted(p.audio.filename)
                 << ' ' << p.audio.audibleRadiusMeters
-                << ' ' << p.audio.gain << '\n';
+                << ' ' << p.audio.gain
+                << ' ' << p.sceneHeightOffsetMeters << '\n';
         }
         return write(root_/"rooms"/(g.roomId+".vxg"), out.str());
     }
@@ -153,7 +157,7 @@ public:
         std::istringstream in(*data);
         std::string magic; unsigned version=0; size_t count=0;
         RoomGallery g;
-        if (!(in >> magic >> version) || magic!="VOXEN_GALLERY" || (version!=1 && version!=2 && version!=3) ||
+        if (!(in >> magic >> version) || magic!="VOXEN_GALLERY" || (version!=1 && version!=2 && version!=3 && version!=4) ||
             !(in >> std::quoted(g.roomId) >> std::quoted(g.persistentAnchorId) >> count) ||
             g.roomId!=id || g.persistentAnchorId.empty() ||
             g.persistentAnchorId.size()>4096 || count>2048) return std::nullopt;
@@ -188,6 +192,10 @@ public:
                     p.audio.audibleRadiusMeters<0.5f || p.audio.audibleRadiusMeters>20.f ||
                     !std::isfinite(p.audio.gain) || p.audio.gain<0.f || p.audio.gain>1.f))
                     return std::nullopt;
+                if(version>=4 && (!(in >> p.sceneHeightOffsetMeters) ||
+                    !std::isfinite(p.sceneHeightOffsetMeters) ||
+                    p.sceneHeightOffsetMeters < -100.f ||
+                    p.sceneHeightOffsetMeters > 100.f))return std::nullopt;
             } else p.geometry=PortalGeometry::Cylinder;
             g.placements.push_back(std::move(p));
         }

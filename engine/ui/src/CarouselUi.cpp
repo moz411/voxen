@@ -414,6 +414,11 @@ void drawCarousel(CarouselState& state) {
                 ImGui::SliderFloat("Audible radius (m)",&state.sceneAudioRadius,0.5f,10.f);
                 ImGui::SliderFloat("Approach gain",&state.sceneAudioGain,0.f,1.f);
                 if(ImGui::Button("APPLY SOUND"))state.sceneAudioApply=true;
+                if(state.sceneHeightAvailable) {
+                    ImGui::Separator();
+                    ImGui::DragFloat("Scene height offset (m)",&state.sceneHeightOffset,0.1f,-100.f,100.f,"%.2f m");
+                    if(ImGui::Button("APPLY HEIGHT"))state.sceneHeightApply=true;
+                }
             }
             if(state.sceneDeleteConfirm) {
                 ImGui::TextUnformatted("Delete selected saved scene?");

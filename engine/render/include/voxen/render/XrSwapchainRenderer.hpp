@@ -16,6 +16,9 @@
 #include <voxen/scene/RuntimeSnapshot.hpp>
 #include <voxen/scene/MechanicalCannon.hpp>
 #include <voxen/scene/SceneRepository.hpp>
+#ifdef VOXEN_WITH_GLB_IMPORT
+#include <voxen/scene/GlbMeshDecoder.hpp>
+#endif
 #include <unordered_map>
 #include <chrono>
 #include <voxen/scene/PortalManager.hpp>
@@ -60,7 +63,8 @@ public:
     void configureSceneStorage(const std::filesystem::path& root);
 #ifdef VOXEN_WITH_GLB_IMPORT
     // Explicit prototype import: app-private assets/demo.glb.
-    bool loadDemoGlb(const std::filesystem::path& file);
+    bool loadDemoGlb(const std::filesystem::path& file,
+        std::optional<voxen::scene::gltf::MeshAsset> decoded=std::nullopt);
 #endif
     bool consumePanoramaImportRequest() noexcept {
 #ifdef VOXEN_WITH_IMGUI
@@ -246,6 +250,9 @@ private:
     std::chrono::steady_clock::time_point panoramaFadeStart_{};
     void releasePanoramaGpu() noexcept;
     std::filesystem::path pendingDemoGlb_;
+    std::future<voxen::scene::gltf::MeshAsset> immersiveGlbDecodeFuture_;
+    std::filesystem::path immersiveGlbDecodePath_;
+    bool immersiveGlbDecoding_=false;
     std::filesystem::path glbAssetRoot_;
     std::vector<std::filesystem::path> glbAssetPaths_;
     std::vector<std::string> glbAssetNames_;

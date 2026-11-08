@@ -164,13 +164,37 @@ void XrSwapchainRenderer::releaseGlbGpu() noexcept {
         glbTextureDescriptorPool_=VK_NULL_HANDLE;
     }
 }
-bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
-    if(device_==VK_NULL_HANDLE)return false;
+bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file,
+    std::optional<voxen::scene::gltf::MeshAsset> decoded) {
+    if(device_==VK_NULL_HANDLE) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_ERROR,"VoxenGLB","GPU load failed: Vulkan device unavailable");
+#endif
+        return false;
+    }
     std::vector<GlbGpuPrimitive> incoming;
     std::vector<GlbTexture> incomingTextures;
     VkDescriptorPool incomingPool=VK_NULL_HANDLE;
     try {
-        const auto model=voxen::scene::gltf::loadMeshGlb(file);
+        // Full OpenBrush scenes are larger than the 64 MiB object-preview budget.
+        // Keep the existing limits for ordinary assets; only assets/scenes
+        // receives an elevated encoded-file allowance.
+        voxen::scene::gltf::Limits limits{};
+        if(file.parent_path().filename()=="scenes") {
+            limits.maxFileBytes=256u*1024u*1024u;
+        }
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenGLB",
+            "GLB input size=%llu bytes, budget=%zu bytes",
+            static_cast<unsigned long long>(std::filesystem::file_size(file)),
+            limits.maxFileBytes);
+#endif
+        auto model=decoded ? std::move(*decoded) : voxen::scene::gltf::loadMeshGlb(file,limits);
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenGLB",
+            "GLB parsed: nodes=%zu primitives=%zu images=%zu",
+            model.nodes.size(),model.primitives.size(),model.images.size());
+#endif
         if(!model.images.empty() && glbTextureSetLayout_ && commandPool_) {
             VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                                      static_cast<uint32_t>(model.images.size())};
@@ -219,8 +243,16 @@ bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file) {
         glbPrimitives_=std::move(incoming);
         glbTextures_=std::move(incomingTextures);
         glbTextureDescriptorPool_=incomingPool;
+#ifdef __ANDROID__
+        __android_log_print(glbPrimitives_.empty()?ANDROID_LOG_ERROR:ANDROID_LOG_INFO,
+            "VoxenGLB","GPU load finished: drawable primitives=%zu",glbPrimitives_.size());
+#endif
         return !glbPrimitives_.empty();
-    } catch(const std::exception&) {
+    } catch(const std::exception& e) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_ERROR,"VoxenGLB",
+            "GPU load exception for %s: %s",file.string().c_str(),e.what());
+#endif
         for(auto& tex:incomingTextures) {
             if(tex.sampler)vkDestroySampler(device_,tex.sampler,nullptr);
             if(tex.view)vkDestroyImageView(device_,tex.view,nullptr);
