@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Offline Open Brush .tilt -> VXMSH001 geometry compiler.
+// Offline Open Brush .tilt -> VXMSH002 geometry compiler (with --format v1 compatibility).
 // Node.js >= 20; npm install --no-save three three-tiltloader fflate
 import {readFile,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
@@ -12,6 +12,13 @@ import {getOpenBrushGeometryDefaults} from './vendor/three-tiltloader/src/brush-
 import {identifyBrush} from './openbrush-brush-registry.mjs';
 
 const args=process.argv.slice(2);
+const formatArg=args.indexOf('--format');
+let format='v2';
+if(formatArg>=0){
+ if(formatArg+1>=args.length)throw Error('--format requires v1 or v2');
+ format=args.splice(formatArg,2)[1];
+ if(format!=='v1'&&format!=='v2')throw Error('Unknown format: '+format);
+}
 const materialArg=args.indexOf('--materials');
 let materialPath=null;
 if(materialArg>=0){
@@ -27,7 +34,7 @@ if(familyArg>=0){
   throw Error('Unknown family: '+onlyFamily);
 }
 if(args.length!==3||args[1]!=='-o'){
- console.error('Usage: node tools/compile_openbrush.mjs scene.tilt -o scene.vxmesh [--family ribbon|tube|hull|particle] [--materials materials.json]');
+ console.error('Usage: node tools/compile_openbrush.mjs scene.tilt -o scene.vxmesh [--family ribbon|tube|hull|particle] [--materials materials.json] [--format v1|v2]');
  process.exit(2);
 }
 const source=await readFile(resolve(args[0]));
@@ -64,12 +71,17 @@ for(const stroke of strokes){
  materialGroups.set(guid,group);
  if(!Number.isInteger(count)||count>10000000||ic>30000000)throw Error('Excessive mesh size');
  if(g.normals.length!==count*3||g.colors.length!==count*4)throw Error('Invalid attribute layout');
- // V1 stores UV0.xy; brush-specific packed UV0.zw, UV1, tangents and materials
- // are intentionally deferred to v2, not silently claimed to be faithful.
+ // v2 preserves up to four UV0 components; v1 retains historical UV.xy.
+ // The geometry generator exposes per-brush uv0Size (2, 3 or 4).
  const uv=g.packedUvs??g.uvs;
  const uvStride=g.uv0Size;
- const uv2=new Float32Array(count*2);
- for(let i=0;i<count;i++){uv2[i*2]=uv[i*uvStride];uv2[i*2+1]=uv[i*uvStride+1];}
+ if(!Number.isInteger(uvStride)||uvStride<2||uvStride>4||
+    !uv||uv.length<count*uvStride)throw Error('Invalid UV0 layout');
+ const uvWidth=format==='v2'?4:2;
+ const packedUv=new Float32Array(count*uvWidth);
+ for(let i=0;i<count;i++)
+  for(let k=0;k<Math.min(uvWidth,uvStride);k++)
+   packedUv[i*uvWidth+k]=uv[i*uvStride+k];
  const bounds=[Infinity,Infinity,Infinity,-Infinity,-Infinity,-Infinity];
  for(let i=0;i<count;i++)for(let k=0;k<3;k++){
   const v=g.positions[i*3+k];
@@ -78,16 +90,16 @@ for(const stroke of strokes){
  }
  for(const index of g.indices)if(index>=count)throw Error('Index outside vertex buffer');
  const guidBuf=Buffer.alloc(36);guidBuf.write(guid.slice(0,36),'ascii');
- chunks.push(guidBuf,u32(count),u32(ic),f32(bounds),f32(g.positions),f32(g.normals),f32(g.colors),f32(uv2),uints(g.indices));
+ chunks.push(guidBuf,u32(count),u32(ic),f32(bounds),f32(g.positions),f32(g.normals),f32(g.colors),f32(packedUv),uints(g.indices));
  meshes++;triangles+=ic/3;
 }
 if(!meshes)throw Error('No geometry generated');
-await writeFile(resolve(args[2]),Buffer.concat([Buffer.from('VXMSH001'),u32(1),u32(meshes),...chunks]));
+await writeFile(resolve(args[2]),Buffer.concat([Buffer.from(format==='v2'?'VXMSH002':'VXMSH001'),u32(format==='v2'?2:1),u32(meshes),...chunks]));
 if(materialPath){
- const manifest={schema:'voxen.openbrush.materials.v1',meshFormat:'VXMSH001',
+ const manifest={schema:'voxen.openbrush.materials.v1',meshFormat:format==='v2'?'VXMSH002':'VXMSH001',
   source:args[0],mesh:args[2],
-  warning:'VXMSH001 retains GUID, UV0.xy and vertex colors, but not brush material semantics. Particle geometry is NOT equivalent to the original particle shader.',
+  warning:'UV0 is normalized to '+(format==='v2'?'four':'two')+' floats. Material semantics and animation are not implemented. Particle geometry is NOT equivalent to the original particle shader.',
   groups:[...materialGroups.values()].sort((a,b)=>b.meshes-a.meshes||a.guid.localeCompare(b.guid))};
  await writeFile(resolve(materialPath),JSON.stringify(manifest,null,2)+'\n');
 }
-console.log(JSON.stringify({strokes:strokes.length,meshes,triangles,skipped,filter:onlyFamily,families:Object.fromEntries(families),output:args[2]},null,2));
+console.log(JSON.stringify({format,strokes:strokes.length,meshes,triangles,skipped,filter:onlyFamily,families:Object.fromEntries(families),output:args[2]},null,2));
