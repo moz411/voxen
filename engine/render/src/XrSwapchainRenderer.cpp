@@ -863,13 +863,16 @@ bool XrSwapchainRenderer::deleteSavedScene(const voxen::gallery::SceneId& id) {
     if(const auto stored=sceneRepository_->loadScene(id)) {
         const auto& payload=stored->second;
         std::filesystem::path source;
-        if(payload.starts_with("GLB_SCENE_V1\\n")) {
-            const auto filename=payload.substr(sizeof("GLB_SCENE_V1\\n")-1);
-            if(std::filesystem::path(filename).filename()!=filename)return false;
+#ifdef VOXEN_WITH_GLB_IMPORT
+        if(payload.starts_with("GLB_SCENE_V1\n")) {
+            const auto filename=payload.substr(sizeof("GLB_SCENE_V1\n")-1);
+            if(filename.empty() || std::filesystem::path(filename).filename()!=filename)return false;
             source=glbAssetRoot_/"scenes"/filename;
-        } else if(payload.starts_with("TILT_SCENE_V1\\\\n")) {
-            const auto filename=payload.substr(sizeof("TILT_SCENE_V1\\\\n")-1);
-            if(std::filesystem::path(filename).filename()!=filename)return false;
+        } else
+#endif
+        if(payload.starts_with("TILT_SCENE_V1\\n")) {
+            const auto filename=payload.substr(sizeof("TILT_SCENE_V1\\n")-1);
+            if(filename.empty() || std::filesystem::path(filename).filename()!=filename)return false;
 #ifdef __ANDROID__
             source="/sdcard/Android/data/org.voxen.xr/files/tilts";
 #else
