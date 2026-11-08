@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <cstring>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #ifdef __ANDROID__
 #include <android/log.h>
