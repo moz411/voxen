@@ -1386,7 +1386,7 @@ void XrSwapchainRenderer::createPipeline() {
         if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &galleryCylinderPipeline_ || &out == &galleryCylinderMatrixPipeline_ || &out == &galleryCylinderOceanPipeline_ || &out == &galleryCylinderLiquidPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &galleryCylinderPipeline_ || &out == &galleryCylinderMatrixPipeline_ || &out == &galleryCylinderOceanPipeline_ || &out == &galleryCylinderLiquidPipeline_ || &out == &panoramaPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -1841,6 +1841,18 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 std::chrono::steady_clock::now()-panoramaFadeStart_).count()/1.5f,0.f,1.f)
             : 1.f;
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,panoramaPipeline_);
+        if(panoramaPreviousTexture_.descriptor && panoramaFadeActive_) {
+            // Draw the outgoing image fully opaque, then blend the incoming
+            // image over it using smoothstep(progress). No white flash.
+            const float incomingAlpha=pc.controls[3];
+            pc.controls[3]=1.f;
+            vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                panoramaPipelineLayout_,0,1,&panoramaPreviousTexture_.descriptor,0,nullptr);
+            vkCmdPushConstants(commandBuffer_,panoramaPipelineLayout_,
+                VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,3,1,0,0);
+            pc.controls[3]=incomingAlpha;
+        }
         vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
             panoramaPipelineLayout_,0,1,&panoramaTexture_.descriptor,0,nullptr);
         vkCmdPushConstants(commandBuffer_,panoramaPipelineLayout_,
@@ -3172,7 +3184,7 @@ void XrSwapchainRenderer::render(
                         // Slideshow switches should not fade from pure white.
                         // Show the decoded image immediately instead of flashing white;
                         // a real two-texture crossfade requires retaining both GPU textures.
-                        panoramaFadeActive_=!imguiCarousel_.panoramaSlideshow;
+                        panoramaFadeActive_=true;
                         imguiCarousel_.panoramaStatus="Panorama ready";
                         panoramaSlideReadyAt_=std::chrono::steady_clock::now();
                         panoramaSlideReadyIndex_=panoramaDecodeIndex_;
@@ -3189,9 +3201,13 @@ void XrSwapchainRenderer::render(
             panoramaDecodedSelection_=imguiCarousel_.panoramaSelected;
             panoramaSlideReadyIndex_=-1;
 #ifdef VOXEN_WITH_GLB_IMPORT
-            panoramaFadeActive_=false;
-            if(device_)vkDeviceWaitIdle(device_);
-            releasePanoramaGpu();
+            // Keep the displayed panorama while the next image decodes.
+            // Only release when the panorama is explicitly deselected.
+            if(panoramaDecodedSelection_<0) {
+                panoramaFadeActive_=false;
+                if(device_)vkDeviceWaitIdle(device_);
+                releasePanoramaGpu();
+            }
             imguiCarousel_.panoramaStatus=panoramaDecodedSelection_<0
                 ? std::string{} : "Loading panorama in background...";
 #endif
@@ -3199,7 +3215,7 @@ void XrSwapchainRenderer::render(
 #ifdef VOXEN_WITH_GLB_IMPORT
         const int selected=imguiCarousel_.panoramaSelected;
         if(selected>=0 && static_cast<std::size_t>(selected)<panoramaNames_.size() &&
-           !panoramaTexture_.descriptor && !panoramaDecodeFuture_.valid() &&
+           !panoramaDecodeFuture_.valid() &&
            panoramaDecodeIndex_<0 &&
            imguiCarousel_.panoramaStatus=="Loading panorama in background...") {
             const auto file=panoramaRoot_/panoramaNames_[selected];
