@@ -5,6 +5,7 @@
 #include <voxen/render/OpenBrushDotsDraw.hpp>
 #include <voxen/render/OpenBrushDotsBinary.hpp>
 #include <voxen/render/OpenBrushTilt.hpp>
+#include <voxen/render/OpenBrushTiltCache.hpp>
 #ifdef VOXEN_WITH_GLB_IMPORT
 #include <voxen/render/PanoramaImage.hpp>
 #endif
@@ -926,83 +927,6 @@ void XrSwapchainRenderer::initialize(
     imguiSurface_.initialize(vulkanInstance,physicalDevice_,device_,queue_,queueFamilyIndex_);
 #endif
     createPipeline();
-    // Optional experimental Open Brush Dots payload, generated offline from a
-    // .tilt sketch. Missing/invalid files leave the existing gallery untouched.
-    {
-#ifdef __ANDROID__
-        const char* dotsPath="/sdcard/Android/data/org.voxen.xr/files/openbrush-dots.bin";
-#else
-        const char* dotsPath="openbrush-dots.bin";
-#endif
-        std::ifstream file(dotsPath, std::ios::binary | std::ios::ate);
-        if (file) {
-            try {
-                const auto end=file.tellg();
-                if (end < 16 || end > std::streamoff(32*1024*1024))
-                    throw std::runtime_error("Dots payload size out of range");
-                std::vector<std::uint8_t> bytes(static_cast<std::size_t>(end));
-                file.seekg(0);
-                if (!file.read(reinterpret_cast<char*>(bytes.data()), end))
-                    throw std::runtime_error("Dots payload read failed");
-                auto instances=voxen::render::openbrush::decodeDotsBinary(bytes.data(),bytes.size());
-                openbrushDotsGpu_.upload(device_,physicalDevice_,instances);
-#ifdef __ANDROID__
-                __android_log_print(ANDROID_LOG_INFO,"VoxenOpenBrush","Loaded Dots instances=%u",openbrushDotsGpu_.count());
-#endif
-            } catch (const std::exception& e) {
-#ifdef __ANDROID__
-                __android_log_print(ANDROID_LOG_ERROR,"VoxenOpenBrush","Dots load failed: %s",e.what());
-#else
-                std::fprintf(stderr,"VoxenOpenBrush: %s\\n",e.what());
-#endif
-            }
-        }
-    }
-    // Load native .tilt files directly on Quest. Multiple files share one Dots
-    // instance buffer for now; gallery catalogue/portal binding comes later.
-    {
-#ifdef __ANDROID__
-        const std::filesystem::path tiltRoot="/sdcard/Android/data/org.voxen.xr/files/tilts";
-#else
-        const std::filesystem::path tiltRoot="tilts";
-#endif
-        try {
-            std::filesystem::create_directories(tiltRoot);
-            std::vector<voxen::render::openbrush::DotInstance> combined;
-            for(const auto& entry:std::filesystem::directory_iterator(tiltRoot)) {
-                if(!entry.is_regular_file() || entry.is_symlink() ||
-                   entry.path().extension()!=".tilt")continue;
-                try {
-                    auto dots=voxen::render::openbrush::decodeTiltDots(entry.path());
-                    if(dots.size()>1000000 || combined.size()>1000000-dots.size())
-                        throw std::runtime_error("Tilt: instance limit exceeded");
-                    combined.insert(combined.end(),dots.begin(),dots.end());
-#ifdef __ANDROID__
-                    __android_log_print(ANDROID_LOG_INFO,"VoxenOpenBrush",
-                        "Native tilt %s: %zu Dots",entry.path().filename().string().c_str(),dots.size());
-#endif
-                } catch(const std::exception& e) {
-#ifdef __ANDROID__
-                    __android_log_print(ANDROID_LOG_ERROR,"VoxenOpenBrush",
-                        "Native tilt failed: %s",e.what());
-#else
-                    std::fprintf(stderr,"Native tilt failed: %s\\n",e.what());
-#endif
-                }
-            }
-            if(!combined.empty()) {
-                // Native source takes precedence over the legacy precompiled payload.
-                if(openbrushDotsGpu_.buffer()!=VK_NULL_HANDLE)
-                    openbrushDotsGpu_.destroy(device_);
-                openbrushDotsGpu_.upload(device_,physicalDevice_,combined);
-            }
-        } catch(const std::exception& e) {
-#ifdef __ANDROID__
-            __android_log_print(ANDROID_LOG_ERROR,"VoxenOpenBrush",
-                "Tilt directory error: %s",e.what());
-#endif
-        }
-    }
     // Three shared meshes: high/medium/low detail, extracted only once.
     {
         auto upload=[&](const void* data,VkDeviceSize bytes,VkBufferUsageFlags usage,
@@ -3993,6 +3917,51 @@ void XrSwapchainRenderer::render(
         std::printf("[Voxen] First stereo projection frame rendered\n");
 #endif
         firstFrameLogged_ = true;
+    }
+}
+
+bool XrSwapchainRenderer::activateTiltScene(const std::filesystem::path& source) {
+    try {
+#ifdef __ANDROID__
+        const std::filesystem::path root="/sdcard/Android/data/org.voxen.xr/files";
+#else
+        const std::filesystem::path root=".";
+#endif
+        // Source files are immutable inputs. Cache is isolated per file and
+        // invalidated when size or modification time changes.
+        auto result=voxen::render::openbrush::loadTiltDotsCached(source,root/"tilt-cache");
+        if(result.dots.empty()) {
+#ifdef __ANDROID__
+            __android_log_print(ANDROID_LOG_WARN,"VoxenOpenBrush",
+                "Tilt has no supported Dots: %s",source.string().c_str());
+#endif
+            return false;
+        }
+        if(device_==VK_NULL_HANDLE)return false;
+        // Caller must invoke this at a scene transition, not mid-frame.
+        vkDeviceWaitIdle(device_);
+        openbrushDotsGpu_.destroy(device_);
+        openbrushDotsGpu_.upload(device_,physicalDevice_,result.dots);
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenOpenBrush",
+            "Activated %s: %u Dots (%s)",source.filename().string().c_str(),
+            openbrushDotsGpu_.count(),result.cacheHit?"cache":"decoded");
+#endif
+        return true;
+    } catch(const std::exception& e) {
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_ERROR,"VoxenOpenBrush",
+            "Tilt activation failed: %s",e.what());
+#else
+        std::fprintf(stderr,"Tilt activation failed: %s\\n",e.what());
+#endif
+        return false;
+    }
+}
+void XrSwapchainRenderer::deactivateTiltScene() {
+    if(device_!=VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(device_);
+        openbrushDotsGpu_.destroy(device_);
     }
 }
 
