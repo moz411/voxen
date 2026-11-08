@@ -56,6 +56,7 @@ struct Placement {
     PortalGeometry geometry = PortalGeometry::Cylinder;
     PortalSurface surface{};
     PortalAudio audio{};
+    float sceneHeightOffsetMeters=0.f;
 };
 
 struct RoomGallery {
