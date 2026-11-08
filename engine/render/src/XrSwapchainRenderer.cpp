@@ -87,6 +87,11 @@
 #include "mandelbrotZoomFrag.spv.hpp"
 #include "carouselFrag.spv.hpp"
 #include "galleryPortalFrag.spv.hpp"
+#include "galleryCylinderVert.spv.hpp"
+#include "galleryCylinderFrag.spv.hpp"
+#include "galleryCylinderPictureFrag.spv.hpp"
+#include <voxen/scene/PortalCylinderInteraction.hpp>
+#include <voxen/scene/PortalProximityAudio.hpp>
 #include "mechanicalCannonFrag.spv.hpp"
 #include "imguiPanelFrag.spv.hpp"
 #include "panoramaVert.spv.hpp"
@@ -423,6 +428,7 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
 }
 
 void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
+    galleryHeadPosition_=headPosition;
     if(editingMode() || pendingGalleryFloorAction_!=0 || galleryDragging_)return;
     if(!portalManager_ || !portalManager_->localized()) {
         galleryEntryCandidate_.reset();
@@ -439,8 +445,8 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         else {
             const auto& pos=it->localPose.positionMeters;
             const float x=headPosition.x-pos[0],y=headPosition.y-pos[1],z=headPosition.z-pos[2];
-            const float rearmRadius=0.42f*std::clamp(it->scale,0.1f,4.f);
-            if(x*x+y*y+z*z>rearmRadius*rearmRadius) {
+            const float rearmRadius=0.57f*std::clamp(it->scale,0.1f,4.f);
+            if(x*x+z*z>rearmRadius*rearmRadius || std::abs(y)>1.0f*std::clamp(it->scale,0.1f,4.f)) {
                 suppressedPortalId_.reset();
                 galleryEntryCandidate_.reset();
 #ifdef __ANDROID__
@@ -456,8 +462,8 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         if(it==portals.end()) { leaveImmersiveScene(); return; }
         const auto& p=it->localPose.positionMeters;
         const float dx=headPosition.x-p[0],dy=headPosition.y-p[1],dz=headPosition.z-p[2];
-        const float radius=0.30f*std::clamp(it->scale,0.1f,4.f);
-        if(dx*dx+dy*dy+dz*dz<=radius*radius) {
+        if(voxen::gallery::insidePortalCylinder(it->localPose,it->scale,
+                {headPosition.x,headPosition.y,headPosition.z},0.46f,0.88f)) {
             galleryExitSince_={};
             return;
         }
@@ -476,9 +482,9 @@ void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
         if(suppressedPortalId_ && portal.id==*suppressedPortalId_)continue;
         const auto& p=portal.localPose.positionMeters;
         const float dx=headPosition.x-p[0],dy=headPosition.y-p[1],dz=headPosition.z-p[2];
-        const float d2=dx*dx+dy*dy+dz*dz;
-        const float radius=0.25f*std::clamp(portal.scale,0.1f,4.f);
-        if(d2<radius*radius && d2<bestDistance2) {
+        const float d2=dx*dx+dz*dz;
+        if(voxen::gallery::insidePortalCylinder(portal.localPose,portal.scale,
+                {headPosition.x,headPosition.y,headPosition.z}) && d2<bestDistance2) {
             inside=&portal;
             bestDistance2=d2;
         }
@@ -1277,6 +1283,17 @@ void XrSwapchainRenderer::createPipeline() {
         checkVk(vkCreatePipelineLayout(device_,&layout,nullptr,&panoramaPipelineLayout_),
                 "panorama pipeline layout");
     }
+    {
+        VkPushConstantRange range{};
+        range.stageFlags=VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT;
+        range.size=sizeof(ProceduralPushConstants);
+        VkPipelineLayoutCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        info.setLayoutCount=1;
+        info.pSetLayouts=&panoramaSetLayout_;
+        info.pushConstantRangeCount=1;
+        info.pPushConstantRanges=&range;
+        checkVk(vkCreatePipelineLayout(device_,&info,nullptr,&galleryPicturePipelineLayout_),"gallery picture layout");
+    }
     // Shared render pass and push constants.
     auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
                              const std::uint8_t* fb, std::size_t fsz,
@@ -1369,7 +1386,7 @@ void XrSwapchainRenderer::createPipeline() {
         if(&out==&panoramaPipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &galleryCylinderPipeline_ || &out == &galleryCylinderMatrixPipeline_ || &out == &galleryCylinderOceanPipeline_ || &out == &galleryCylinderLiquidPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -1404,6 +1421,7 @@ void XrSwapchainRenderer::createPipeline() {
         if(&out==&glbTexturedPipeline_)pi.layout=glbTexturePipelineLayout_;
 #endif
         if(&out==&panoramaPipeline_)pi.layout=panoramaPipelineLayout_;
+        if(&out==&galleryCylinderPicturePipeline_)pi.layout=galleryPicturePipelineLayout_;
         pi.renderPass=renderPass_;
         checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &out), "vkCreateGraphicsPipelines");
         vkDestroyShaderModule(device_, fs, nullptr);
@@ -1462,6 +1480,11 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, mandelbrotZoomFrag, mandelbrotZoomFragSize, mandelbrotZoomPipeline_);
     buildPipeline(fractalVert, fractalVertSize, carouselFrag, carouselFragSize, carouselPipeline_);
     buildPipeline(fractalVert, fractalVertSize, galleryPortalFrag, galleryPortalFragSize, galleryPortalPipeline_);
+    buildPipeline(galleryCylinderVert, galleryCylinderVertSize, galleryCylinderFrag, galleryCylinderFragSize, galleryCylinderPipeline_);
+    buildPipeline(galleryCylinderVert, galleryCylinderVertSize, galleryCylinderPictureFrag, galleryCylinderPictureFragSize, galleryCylinderPicturePipeline_);
+    buildPipeline(galleryCylinderVert, galleryCylinderVertSize, matrixRainFrag, matrixRainFragSize, galleryCylinderMatrixPipeline_);
+    buildPipeline(galleryCylinderVert, galleryCylinderVertSize, oceanWavesFrag, oceanWavesFragSize, galleryCylinderOceanPipeline_);
+    buildPipeline(galleryCylinderVert, galleryCylinderVertSize, liquidRoomFrag, liquidRoomFragSize, galleryCylinderLiquidPipeline_);
     buildPipeline(cubeVert, cubeVertSize, mechanicalCannonFrag, mechanicalCannonFragSize, mechanicalCannonPipeline_);
 #ifdef VOXEN_WITH_IMGUI
     buildPipeline(fractalVert, fractalVertSize, imguiPanelFrag, imguiPanelFragSize, imguiPanelPipeline_);
@@ -2135,9 +2158,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     }
     // Saved scene instances are static 3D Voxen, not floor rings.
     if(!immersiveSceneActive_ && !editingMode() && portalManager_ &&
-       organicSpherePipeline_!=VK_NULL_HANDLE) {
+       galleryCylinderPipeline_!=VK_NULL_HANDLE) {
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
-                          organicSpherePipeline_);
+                          galleryCylinderPipeline_);
         const auto portals=portalManager_->visible();
         const auto count=std::min<std::size_t>(portals.size(),64);
         for(std::size_t i=0;i<count;++i) {
@@ -2145,18 +2168,38 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             if(suppressedPortalId_ && p.id==*suppressedPortalId_)continue;
             const auto& xyz=(galleryDragging_ && selectedPortalId_ && p.id==*selectedPortalId_)
                 ? galleryDraggedPose_.positionMeters : p.localPose.positionMeters;
-            const float radius=0.125f*std::clamp(p.scale,0.1f,4.f);
+            const float s=std::clamp(p.scale,0.1f,4.f);
             const Mat4 mvp=multiply(projView,
-                modelMatrix(xyz[0],xyz[1],radius*2.f,xyz[2],0.f));
+                modelMatrix(xyz[0],xyz[1],0.4f*s,xyz[2],0.f));
             const auto preview=scenePreviewCache_.find(p.sceneId);
-            const float preset=preview==scenePreviewCache_.end()?4.f:
-                float(4u+preview->second.materialPreset%4u);
+            const float preset=preview==scenePreviewCache_.end()?0.f:
+                float(preview->second.materialPreset%8u);
+            const float shaderPreset=p.surface.kind==voxen::gallery::PortalSurfaceKind::Procedural
+                ? float(p.surface.proceduralShaderMode) : preset;
             const float selected=(selectedPortalId_ && p.id==*selectedPortalId_) ? 1.5f : 1.f;
-            ProceduralPushConstants pc{mvp,{seconds,selected,preset,0.5f}};
+            const bool useBackground=p.surface.kind==voxen::gallery::PortalSurfaceKind::Procedural;
+            const int shaderMode=((p.surface.proceduralShaderMode%3)+3)%3;
+            VkPipeline pipeline=galleryCylinderPipeline_;
+            if(useBackground) {
+                pipeline=shaderMode==0?galleryCylinderMatrixPipeline_:
+                    shaderMode==1?galleryCylinderOceanPipeline_:galleryCylinderLiquidPipeline_;
+            }
+            const bool textured=p.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
+                galleryPictureTexture_.descriptor &&
+                p.surface.pictureFilename==galleryPictureLoadedFilename_;
+            if(textured) {
+                pipeline=galleryCylinderPicturePipeline_;
+                vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    galleryPicturePipelineLayout_,0,1,&galleryPictureTexture_.descriptor,0,nullptr);
+            }
+            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);
+            ProceduralPushConstants pc{mvp,{seconds,useBackground?1.f:selected,
+                useBackground?1.f:shaderPreset,
+                float(static_cast<int>(p.surface.kind))}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,sizeof(pc),&pc);
-            vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
+            vkCmdDraw(commandBuffer_,48*6,1,0,0);
         }
         // DISPOSE preview follows the right controller until trigger release.
         if(pendingGalleryFloorAction_==1 && controllerTracked_[1]) {
@@ -2172,7 +2215,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,sizeof(pc),&pc);
-            vkCmdDraw(commandBuffer_,48*32*6,1,0,0);
+            vkCmdDraw(commandBuffer_,48*6,1,0,0);
         }
     }
     // Cheap optical skeleton: thin white translucent finger segments and palm.
@@ -2458,9 +2501,29 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 #endif
     // Ray is shown only on the right controller when it points at the UI.
 #ifdef VOXEN_WITH_IMGUI
-    if(controllerTracked_[1] && panelAimed_){
+    if(controllerTracked_[1] &&
+       (panelAimed_ || (!editingMode() && !immersiveSceneActive_ &&
+                         pendingGalleryFloorAction_==0 && portalManager_ &&
+                         portalManager_->localized()))) {
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,laserPipeline_);
-        const float length=std::max(0.05f,panelHitDistance_);
+        float length=panelAimed_?std::max(0.05f,panelHitDistance_):5.0f;
+        if(!panelAimed_ && galleryHoveredId_) {
+            const auto& hand=controllerPoses_[1];
+            const auto& q=hand.orientation;
+            const std::array<float,3> forward{
+                -2.f*(q.x*q.z+q.w*q.y),
+                -2.f*(q.y*q.z-q.w*q.x),
+                -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+            for(const auto& portal:portalManager_->visible()) {
+                if(portal.id!=*galleryHoveredId_)continue;
+                const auto& p=portal.localPose.positionMeters;
+                const float dx=p[0]-hand.position.x,dy=p[1]-hand.position.y,
+                    dz=p[2]-hand.position.z;
+                length=std::clamp(dx*forward[0]+dy*forward[1]+dz*forward[2],
+                                  0.05f,5.f);
+                break;
+            }
+        }
         const Mat4 beamMvp=multiply(projView,laserMatrix(controllerPoses_[1],length));
         ProceduralPushConstants constants{beamMvp,{seconds,1.0F,1.0F,0.0F}};
         vkCmdPushConstants(commandBuffer_,pipelineLayout_,
@@ -3053,6 +3116,45 @@ void XrSwapchainRenderer::render(
             rescanPanoramaAssets();
         }
         imguiCarousel_.panoramaFiles=panoramaNames_;
+#ifdef VOXEN_WITH_GLB_IMPORT
+        // Decode gallery Pictures asynchronously, independently of the immersive
+        // panorama texture. A single gallery texture is resident at a time.
+        if(galleryPictureDecodeFuture_.valid() &&
+           galleryPictureDecodeFuture_.wait_for(std::chrono::seconds(0))==
+               std::future_status::ready) {
+            try {
+                auto decoded=galleryPictureDecodeFuture_.get();
+                if(loadGalleryPictureGpu(std::move(decoded)))
+                    galleryPictureLoadedFilename_=galleryPictureRequestedFilename_;
+            } catch(...) { galleryPictureLoadedFilename_.clear(); }
+        }
+        std::string requestedPicture;
+        if(!immersiveSceneActive_ && portalManager_) {
+            for(const auto& portal:portalManager_->visible()) {
+                if(portal.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
+                   !portal.surface.pictureFilename.empty()) {
+                    requestedPicture=portal.surface.pictureFilename;
+                    break;
+                }
+            }
+        }
+        if(!requestedPicture.empty() &&
+           requestedPicture!=galleryPictureLoadedFilename_ &&
+           !galleryPictureDecodeFuture_.valid() &&
+           requestedPicture!=galleryPictureRequestedFilename_) {
+            const auto it=std::find(panoramaNames_.begin(),panoramaNames_.end(),requestedPicture);
+            if(it!=panoramaNames_.end()) {
+                galleryPictureRequestedFilename_=requestedPicture;
+                const auto file=panoramaRoot_/requestedPicture;
+                VkPhysicalDeviceProperties props{};
+                vkGetPhysicalDeviceProperties(physicalDevice_,&props);
+                const int limit=static_cast<int>(std::min(props.limits.maxImageDimension2D,4096u));
+                galleryPictureDecodeFuture_=std::async(std::launch::async,[file,limit] {
+                    return decodePanoramaImage(file,limit,8ull*1024ull*1024ull);
+                });
+            }
+        }
+#endif
         if(imguiCarousel_.panoramaSlideshow && imguiCarousel_.backgroundSourceKind==1 &&
            imguiCarousel_.panoramaSelected<0 && !panoramaNames_.empty())
             imguiCarousel_.panoramaSelected=0;
@@ -3164,7 +3266,71 @@ void XrSwapchainRenderer::render(
         imguiCarousel_.sceneImmersive=immersiveSceneActive_;
         imguiCarousel_.visiblePortalCount=visibleGalleryPortals().size();
         imguiCarousel_.scenePortalSelected=selectedPortalId_.has_value();
+        // The saved-scenes selection owns the cylinder options: no second
+        // selection gesture is required when there is a matching placement.
+        if(portalManager_ && imguiCarousel_.selectedScene>=0 &&
+           static_cast<std::size_t>(imguiCarousel_.selectedScene)<sceneIds_.size()) {
+            const auto portals=portalManager_->visible();
+            const auto& sceneId=sceneIds_[imguiCarousel_.selectedScene];
+            const auto it=std::find_if(portals.begin(),portals.end(),
+                [&](const voxen::gallery::VisiblePortal& p){return p.sceneId==sceneId;});
+            if(it!=portals.end()) {
+                selectedPortalId_=it->id;
+                imguiCarousel_.scenePortalSelected=true;
+                if(imguiCarousel_.scenePortalSettingsId!=it->id) {
+                    imguiCarousel_.scenePortalSettingsId=it->id;
+                    imguiCarousel_.sceneSurfaceKind=static_cast<int>(it->surface.kind);
+                    imguiCarousel_.sceneProceduralMode=it->surface.proceduralShaderMode;
+                    imguiCarousel_.scenePictureIndex=0;
+                    for(std::size_t j=0;j<imguiCarousel_.panoramaFiles.size();++j)
+                        if(imguiCarousel_.panoramaFiles[j]==it->surface.pictureFilename) {
+                            imguiCarousel_.scenePictureIndex=static_cast<int>(j);
+                            break;
+                        }
+                    imguiCarousel_.sceneAudioIndex=0;
+                    for(std::size_t j=0;j<imguiCarousel_.musicFiles.size();++j)
+                        if(imguiCarousel_.musicFiles[j]==it->audio.filename) {
+                            imguiCarousel_.sceneAudioIndex=static_cast<int>(j)+1;
+                            break;
+                        }
+                    imguiCarousel_.sceneAudioRadius=it->audio.audibleRadiusMeters;
+                    imguiCarousel_.sceneAudioGain=it->audio.gain;
+                }
+            } else {
+                selectedPortalId_.reset();
+                imguiCarousel_.scenePortalSelected=false;
+            }
+        } else {
+            selectedPortalId_.reset();
+            imguiCarousel_.scenePortalSelected=false;
+        }
         voxen::ui::drawCarousel(imguiCarousel_);
+        if(portalManager_ && selectedPortalId_) {
+            if(imguiCarousel_.sceneSurfaceApply) {
+                imguiCarousel_.sceneSurfaceApply=false;
+                voxen::gallery::PortalSurface surface;
+                surface.kind=static_cast<voxen::gallery::PortalSurfaceKind>(
+                    std::clamp(imguiCarousel_.sceneSurfaceKind,0,2));
+                surface.proceduralShaderMode=imguiCarousel_.sceneProceduralMode;
+                if(surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
+                   imguiCarousel_.scenePictureIndex>=0 &&
+                   static_cast<std::size_t>(imguiCarousel_.scenePictureIndex)<imguiCarousel_.panoramaFiles.size())
+                    surface.pictureFilename=imguiCarousel_.panoramaFiles[imguiCarousel_.scenePictureIndex];
+                imguiCarousel_.sceneStatus=portalManager_->setSurface(*selectedPortalId_,surface)
+                    ?"Cylinder surface saved":"Cannot save cylinder surface";
+            }
+            if(imguiCarousel_.sceneAudioApply) {
+                imguiCarousel_.sceneAudioApply=false;
+                voxen::gallery::PortalAudio audio;
+                audio.audibleRadiusMeters=imguiCarousel_.sceneAudioRadius;
+                audio.gain=imguiCarousel_.sceneAudioGain;
+                const int idx=imguiCarousel_.sceneAudioIndex-1;
+                if(idx>=0 && static_cast<std::size_t>(idx)<imguiCarousel_.musicFiles.size())
+                    audio.filename=imguiCarousel_.musicFiles[idx];
+                imguiCarousel_.sceneStatus=portalManager_->setAudio(*selectedPortalId_,audio)
+                    ?"Cylinder audio saved":"Cannot save cylinder audio";
+            }
+        }
 #ifdef VOXEN_WITH_GLB_IMPORT
         if(imguiCarousel_.voxenPaintEnabled && glbPreview_)glbPreview_=false;
 #endif
@@ -3314,8 +3480,70 @@ void XrSwapchainRenderer::render(
         const bool sceneAudio=(editingMode() || immersiveSceneActive_) && imguiCarousel_.musicPlaying;
         ambientMusic_.configure(imguiCarousel_.musicTrack,
             procedural&&sceneAudio,imguiCarousel_.musicVolume);
-        mp3Library_.update(procedural?-1:imguiCarousel_.musicFile,
-            !procedural&&sceneAudio,imguiCarousel_.musicVolume);
+        int activeMp3=procedural?-1:imguiCarousel_.musicFile;
+        bool playMp3=!procedural&&sceneAudio;
+        float mp3Gain=imguiCarousel_.musicVolume;
+        // Gallery preview: reuse the MP3 decoder for the nearest audible portal.
+        // Only one MediaPlayer is available; multiple sources cannot overlap.
+        if(!editingMode() && !immersiveSceneActive_ && portalManager_ &&
+           portalManager_->localized() && pendingGalleryFloorAction_==0) {
+            float loudest=0.f;
+            float bestPan=0.f;
+            const auto& tracks=mp3Library_.titles();
+            for(const auto& portal:portalManager_->visible()) {
+                if(portal.audio.filename.empty())continue;
+                const auto& p=portal.localPose.positionMeters;
+                const float dx=galleryHeadPosition_.x-p[0];
+                const float dy=galleryHeadPosition_.y-p[1];
+                const float dz=galleryHeadPosition_.z-p[2];
+                const float distance=std::sqrt(dx*dx+dy*dy+dz*dz);
+                const float gain=voxen::gallery::portalProximityGain(portal.audio,distance);
+                if(gain<=loudest)continue;
+                const auto it=std::find(tracks.begin(),tracks.end(),portal.audio.filename);
+                if(it==tracks.end())continue;
+                loudest=gain;
+                const float horizontal=std::sqrt(dx*dx+dz*dz);
+                bestPan=horizontal>0.001f?std::clamp(
+                    -(dx*galleryHeadRight_.x+dz*galleryHeadRight_.z)/horizontal,
+                    -1.f,1.f):0.f;
+                activeMp3=static_cast<int>(std::distance(tracks.begin(),it));
+            }
+            const auto now=std::chrono::steady_clock::now();
+            const float dt=galleryAudioUpdatedAt_.time_since_epoch().count()==0
+                ? 0.016f : std::clamp(std::chrono::duration<float>(
+                    now-galleryAudioUpdatedAt_).count(),0.f,0.1f);
+            galleryAudioUpdatedAt_=now;
+            // Fade out before changing MediaPlayer source; otherwise switching
+            // cylinders restarts the next MP3 at full gain.
+            if(activeMp3!=galleryAudioTrack_ && galleryAudioSmoothedGain_>0.015f) {
+                loudest=0.f;
+                activeMp3=galleryAudioTrack_;
+            } else if(activeMp3!=galleryAudioTrack_) {
+                galleryAudioTrack_=activeMp3;
+                galleryAudioSmoothedGain_=0.f;
+            }
+            const float tau=loudest>galleryAudioSmoothedGain_?0.35f:0.22f;
+            const float alpha=1.f-std::exp(-dt/tau);
+            galleryAudioSmoothedGain_+=alpha*(loudest-galleryAudioSmoothedGain_);
+            mp3Gain=galleryAudioSmoothedGain_;
+            galleryAudioPan_=bestPan;
+            playMp3=galleryAudioTrack_>=0 && mp3Gain>0.001f;
+            activeMp3=galleryAudioTrack_;
+        }
+        else {
+            galleryAudioTrack_=-1;
+            galleryAudioSmoothedGain_=0.f;
+            galleryAudioUpdatedAt_={};
+        }
+        if(!editingMode() && !immersiveSceneActive_) {
+            // Equal-power pan. Android MediaPlayer supports independent L/R gains,
+            // but this is stereo panning, not HRTF or acoustic occlusion.
+            const float pan=std::clamp(galleryAudioPan_,-1.f,1.f);
+            const float angle=(pan+1.f)*0.78539816339f;
+            mp3Library_.updateStereo(activeMp3,playMp3,
+                mp3Gain*std::cos(angle)*1.41421356f,
+                mp3Gain*std::sin(angle)*1.41421356f);
+        } else mp3Library_.update(activeMp3,playMp3,mp3Gain);
         // Visible cursor proves that ray → panel UV mapping reaches ImGui.
         if(aiming) {
             ImGui::GetForegroundDrawList()->AddCircleFilled(
@@ -3363,6 +3591,11 @@ void XrSwapchainRenderer::render(
         0.5f*(views[0].pose.position.z+views[1].pose.position.z)
     };
     viewerPosition_={center.x,center.y,center.z};
+    // Rotate local +X into world space for head-relative stereo panning.
+    const auto& hq=views[0].pose.orientation;
+    galleryHeadRight_={1.f-2.f*(hq.y*hq.y+hq.z*hq.z),
+        2.f*(hq.x*hq.y+hq.z*hq.w),
+        2.f*(hq.x*hq.z-hq.y*hq.w)};
     // Compute the spatial white wipe once per stereo frame. 550 ms of final
     // explosion, followed by a 600 ms white sweep; reverse it over Gallery.
     transitionWhiteCoverage_=0.f;
@@ -3505,6 +3738,11 @@ void XrSwapchainRenderer::shutdown() noexcept {
     }
 
 #ifdef VOXEN_WITH_GLB_IMPORT
+    if(galleryPictureDecodeFuture_.valid()) {
+        galleryPictureDecodeFuture_.wait();
+        try { (void)galleryPictureDecodeFuture_.get(); } catch(...) {}
+    }
+    releaseGalleryPictureGpu();
     releasePanoramaGpu();
 #endif
     if(panoramaPipeline_) { vkDestroyPipeline(device_,panoramaPipeline_,nullptr); panoramaPipeline_=VK_NULL_HANDLE; }
@@ -3579,6 +3817,12 @@ void XrSwapchainRenderer::shutdown() noexcept {
     meshWireVertexCount_=0;
     if (carouselPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,carouselPipeline_,nullptr); carouselPipeline_=VK_NULL_HANDLE; }
     if (galleryPortalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryPortalPipeline_,nullptr); galleryPortalPipeline_=VK_NULL_HANDLE; }
+    if (galleryCylinderPicturePipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderPicturePipeline_,nullptr); galleryCylinderPicturePipeline_=VK_NULL_HANDLE; }
+    if (galleryPicturePipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device_,galleryPicturePipelineLayout_,nullptr); galleryPicturePipelineLayout_=VK_NULL_HANDLE; }
+    if (galleryCylinderPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderPipeline_,nullptr); galleryCylinderPipeline_=VK_NULL_HANDLE; }
+    if (galleryCylinderMatrixPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderMatrixPipeline_,nullptr); galleryCylinderMatrixPipeline_=VK_NULL_HANDLE; }
+    if (galleryCylinderOceanPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderOceanPipeline_,nullptr); galleryCylinderOceanPipeline_=VK_NULL_HANDLE; }
+    if (galleryCylinderLiquidPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderLiquidPipeline_,nullptr); galleryCylinderLiquidPipeline_=VK_NULL_HANDLE; }
     if (mechanicalCannonPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,mechanicalCannonPipeline_,nullptr); mechanicalCannonPipeline_=VK_NULL_HANDLE; }
 #ifdef VOXEN_WITH_IMGUI
     if (imguiPanelPipeline_ != VK_NULL_HANDLE) {vkDestroyPipeline(device_,imguiPanelPipeline_,nullptr);imguiPanelPipeline_=VK_NULL_HANDLE;}

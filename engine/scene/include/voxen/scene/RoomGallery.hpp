@@ -33,11 +33,29 @@ struct SceneRecord {
     Preview preview;
 };
 
+enum class PortalGeometry : std::uint8_t { Sphere = 0, Cylinder = 1 };
+enum class PortalSurfaceKind : std::uint8_t { Default = 0, Picture = 1, Procedural = 2 };
+
+struct PortalSurface {
+    PortalSurfaceKind kind = PortalSurfaceKind::Default;
+    std::string pictureFilename; // Existing Pictures library filename, never an absolute path.
+    int proceduralShaderMode = 0; // Existing background shader selection.
+};
+
+struct PortalAudio {
+    std::string filename; // Existing audio library filename; empty disables audio.
+    float audibleRadiusMeters = 3.0f;
+    float gain = 0.65f;
+};
+
 struct Placement {
     InstanceId id;
     SceneId sceneId;
     Pose roomLocalPose; // Valid only after the corresponding persistent room anchor is localized.
     float scale = 1.f;
+    PortalGeometry geometry = PortalGeometry::Cylinder;
+    PortalSurface surface{};
+    PortalAudio audio{};
 };
 
 struct RoomGallery {

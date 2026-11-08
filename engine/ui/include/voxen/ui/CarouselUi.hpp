@@ -24,6 +24,15 @@ struct CarouselState {
     bool scenePortalDelete = false;
     bool scenePortalDeleteConfirm = false;
     bool scenePortalSelected = false;
+    std::string scenePortalSettingsId;
+    bool sceneSurfaceApply = false;
+    bool sceneAudioApply = false;
+    int sceneSurfaceKind = 0; // 0 default, 1 picture, 2 procedural
+    int scenePictureIndex = 0;
+    int sceneProceduralMode = 0;
+    int sceneAudioIndex = 0; // 0 disabled, otherwise 1-based MP3 index
+    float sceneAudioRadius = 3.f;
+    float sceneAudioGain = 0.65f;
     bool sceneEnter = false;
     bool sceneLeave = false;
     bool sceneImmersive = false;

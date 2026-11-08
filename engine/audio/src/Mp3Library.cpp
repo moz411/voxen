@@ -75,12 +75,17 @@ void Mp3Library::shutdown() noexcept {
     selected_=-1;
     wasPlaying_=false;
     lastVolume_=-1.f;
+    lastRightVolume_=-1.f;
 }
 void Mp3Library::update(int selection,bool playing,float volume){
+    updateStereo(selection,playing,volume,volume);
+}
+void Mp3Library::updateStereo(int selection,bool playing,float leftGain,float rightGain){
 #ifdef __ANDROID__
     JNIEnv* env=envFor(vm_);
     if(!env)return;
-    volume=std::clamp(volume,0.f,1.f);
+    leftGain=std::clamp(leftGain,0.f,1.f);
+    rightGain=std::clamp(rightGain,0.f,1.f);
     if(selection<0||selection>=static_cast<int>(paths_.size())){
         if(selected_!=-1)shutdown();
         return;
@@ -114,10 +119,10 @@ void Mp3Library::update(int selection,bool playing,float volume){
     if(!player_)return;
     jclass cls=env->GetObjectClass(player_);
     if(!cls)return;
-    if(volume!=lastVolume_){
+    if(leftGain!=lastVolume_ || rightGain!=lastRightVolume_){
         auto setVolume=env->GetMethodID(cls,"setVolume","(FF)V");
-        if(setVolume)env->CallVoidMethod(player_,setVolume,volume,volume);
-        check(env);lastVolume_=volume;
+        if(setVolume)env->CallVoidMethod(player_,setVolume,leftGain,rightGain);
+        check(env);lastVolume_=leftGain;lastRightVolume_=rightGain;
     }
     if(playing!=wasPlaying_){
         invokeVoid(env,player_,cls,playing?"start":"pause","()V");
@@ -125,7 +130,7 @@ void Mp3Library::update(int selection,bool playing,float volume){
     }
     env->DeleteLocalRef(cls);
 #else
-    (void)selection;(void)playing;(void)volume;
+    (void)selection;(void)playing;(void)leftGain;(void)rightGain;
 #endif
 }
 double Mp3Library::playbackSeconds() const noexcept {
