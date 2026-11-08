@@ -3454,6 +3454,35 @@ void XrSwapchainRenderer::render(
         if(!immersiveSceneActive_ && portalManager_ &&
            !galleryPictureDecodeFuture_.valid()) {
             const auto portals=portalManager_->visible();
+            // Release textures no longer referenced by any visible portal.
+            // GPU commands may still reference them, so synchronize before freeing.
+            bool stale=false;
+            for(const auto& entry:galleryPictureCache_) {
+                const bool used=std::any_of(portals.begin(),portals.end(),
+                    [&](const voxen::gallery::VisiblePortal& p) {
+                        return p.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
+                               p.surface.pictureFilename==entry.first;
+                    });
+                if(!used){stale=true;break;}
+            }
+            if(stale) {
+                vkDeviceWaitIdle(device_);
+                for(auto it=galleryPictureCache_.begin();it!=galleryPictureCache_.end();) {
+                    const bool used=std::any_of(portals.begin(),portals.end(),
+                        [&](const voxen::gallery::VisiblePortal& p) {
+                            return p.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
+                                   p.surface.pictureFilename==it->first;
+                        });
+                    if(used){++it;continue;}
+                    auto& tex=it->second.texture;
+                    if(tex.sampler)vkDestroySampler(device_,tex.sampler,nullptr);
+                    if(tex.view)vkDestroyImageView(device_,tex.view,nullptr);
+                    if(tex.image)vkDestroyImage(device_,tex.image,nullptr);
+                    if(tex.memory)vkFreeMemory(device_,tex.memory,nullptr);
+                    if(it->second.pool)vkDestroyDescriptorPool(device_,it->second.pool,nullptr);
+                    it=galleryPictureCache_.erase(it);
+                }
+            }
             // Load all distinct gallery pictures, not only the selected portal.
             for(const auto& portal:portals) {
                 if(portal.surface.kind!=voxen::gallery::PortalSurfaceKind::Picture ||
@@ -3467,7 +3496,7 @@ void XrSwapchainRenderer::render(
                 VkPhysicalDeviceProperties props{};
                 vkGetPhysicalDeviceProperties(physicalDevice_,&props);
                 // Portal cylinders need less resolution than immersive panoramas.
-                const int limit=static_cast<int>(std::min(props.limits.maxImageDimension2D,1536u));
+                const int limit=static_cast<int>(std::min(props.limits.maxImageDimension2D,1024u));
                 galleryPictureDecodeFuture_=std::async(std::launch::async,[file,limit] {
                     return decodePanoramaImage(file,limit,8ull*1024ull*1024ull);
                 });
