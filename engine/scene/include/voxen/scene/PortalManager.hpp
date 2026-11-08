@@ -61,6 +61,7 @@ struct VisiblePortal {
     PortalGeometry geometry=PortalGeometry::Cylinder;
     PortalSurface surface{};
     PortalAudio audio{};
+    float sceneHeightOffsetMeters=0.f;
 };
 
 class PortalManager {
@@ -106,7 +107,7 @@ public:
         if (!localized_ || !gallery_) return out;
         for(const auto& p:gallery_->placements) {
             out.push_back({p.id,p.sceneId,
-                           compose(localized_->anchorInLocal,p.roomLocalPose),p.scale,p.geometry,p.surface,p.audio});
+                           compose(localized_->anchorInLocal,p.roomLocalPose),p.scale,p.geometry,p.surface,p.audio,p.sceneHeightOffsetMeters});
         }
         return out;
     }
@@ -225,6 +226,19 @@ public:
         it->audio=audio;
         if(repository_.saveGallery(*gallery_))return true;
         it->audio=previous;
+        return false;
+    }
+
+    [[nodiscard]] bool setSceneHeight(const InstanceId& id,float offset) {
+        if(!localized_ || !gallery_ || !std::isfinite(offset) ||
+           offset < -100.f || offset > 100.f)return false;
+        auto it=std::find_if(gallery_->placements.begin(),gallery_->placements.end(),
+            [&](const Placement& p){return p.id==id;});
+        if(it==gallery_->placements.end())return false;
+        const float previous=it->sceneHeightOffsetMeters;
+        it->sceneHeightOffsetMeters=offset;
+        if(repository_.saveGallery(*gallery_))return true;
+        it->sceneHeightOffsetMeters=previous;
         return false;
     }
 
