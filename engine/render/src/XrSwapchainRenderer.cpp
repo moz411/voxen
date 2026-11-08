@@ -2501,9 +2501,29 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 #endif
     // Ray is shown only on the right controller when it points at the UI.
 #ifdef VOXEN_WITH_IMGUI
-    if(controllerTracked_[1] && panelAimed_){
+    if(controllerTracked_[1] &&
+       (panelAimed_ || (!editingMode() && !immersiveSceneActive_ &&
+                         pendingGalleryFloorAction_==0 && portalManager_ &&
+                         portalManager_->localized()))) {
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,laserPipeline_);
-        const float length=std::max(0.05f,panelHitDistance_);
+        float length=panelAimed_?std::max(0.05f,panelHitDistance_):5.0f;
+        if(!panelAimed_ && galleryHoveredId_) {
+            const auto& hand=controllerPoses_[1];
+            const auto& q=hand.orientation;
+            const std::array<float,3> forward{
+                -2.f*(q.x*q.z+q.w*q.y),
+                -2.f*(q.y*q.z-q.w*q.x),
+                -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+            for(const auto& portal:portalManager_->visible()) {
+                if(portal.id!=*galleryHoveredId_)continue;
+                const auto& p=portal.localPose.positionMeters;
+                const float dx=p[0]-hand.position.x,dy=p[1]-hand.position.y,
+                    dz=p[2]-hand.position.z;
+                length=std::clamp(dx*forward[0]+dy*forward[1]+dz*forward[2],
+                                  0.05f,5.f);
+                break;
+            }
+        }
         const Mat4 beamMvp=multiply(projView,laserMatrix(controllerPoses_[1],length));
         ProceduralPushConstants constants{beamMvp,{seconds,1.0F,1.0F,0.0F}};
         vkCmdPushConstants(commandBuffer_,pipelineLayout_,
