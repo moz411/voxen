@@ -190,7 +190,7 @@ add_library(voxen_miniz_impl STATIC
 set(VOXEN_MINIZ_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/miniz-generated")
 file(MAKE_DIRECTORY "${VOXEN_MINIZ_GENERATED_DIR}")
 file(WRITE "${VOXEN_MINIZ_GENERATED_DIR}/miniz_export.h"
-    "#pragma once\\n#define MINIZ_EXPORT\\n#define MINIZ_NO_EXPORT\\n")
+    "#pragma once\n#define MINIZ_EXPORT\n#define MINIZ_NO_EXPORT\n")
 target_include_directories(voxen_miniz_impl PUBLIC
     ${voxen_miniz_SOURCE_DIR}
     "${VOXEN_MINIZ_GENERATED_DIR}")
