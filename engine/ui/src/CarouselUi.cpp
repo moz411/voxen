@@ -358,13 +358,15 @@ void drawCarousel(CarouselState& state) {
                 ImGui::PopID();
             }
             ImGui::EndChild();
-            // Compact buttons: fit all four actions within the scene panel.
+            // Compact buttons: fit all five actions within the scene panel.
             const float gap=ImGui::GetStyle().ItemSpacing.x;
-            const float buttonWidth=std::max(64.f,(ImGui::GetContentRegionAvail().x-3.f*gap)/4.f);
+            const float buttonWidth=std::max(52.f,(ImGui::GetContentRegionAvail().x-4.f*gap)/5.f);
             const ImVec2 buttonSize(buttonWidth,32.f);
             const bool valid=state.selectedScene>=0 &&
                 static_cast<std::size_t>(state.selectedScene)<state.savedSceneIds.size();
             ImGui::BeginDisabled(!state.editMode);
+            if(ImGui::Button("NEW",buttonSize))state.sceneNew=true;
+            ImGui::SameLine();
             if(ImGui::Button("SAVE",buttonSize))state.sceneSave=true;
             ImGui::EndDisabled();
             ImGui::SameLine();
