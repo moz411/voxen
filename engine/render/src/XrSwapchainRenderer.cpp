@@ -1832,6 +1832,20 @@ void XrSwapchainRenderer::updateControllerInteraction(
             pose.position.x+0.38f*forward[0],
             pose.position.y+0.38f*forward[1],
             pose.position.z+0.38f*forward[2]};
+        // Portal geometry uses a floor-based anchor. Prefer the tracked floor
+        // directly beneath the placement; keep the existing height as fallback.
+        float bestFloorDistance=std::numeric_limits<float>::infinity();
+        for(const auto& surface:environmentSurfaces_.surfaces()) {
+            if(!surface.tracked ||
+               surface.classification!=voxen::scene::SurfaceClass::Floor)continue;
+            const float dx=placed.positionMeters[0]-surface.center[0];
+            const float dz=placed.positionMeters[2]-surface.center[2];
+            const float d2=dx*dx+dz*dz;
+            if(d2<bestFloorDistance) {
+                bestFloorDistance=d2;
+                placed.positionMeters[1]=surface.center[1];
+            }
+        }
         const bool valid=portalManager_ && portalManager_->localized() &&
             selectedSceneIndex_>=0 &&
             static_cast<std::size_t>(selectedSceneIndex_)<sceneIds_.size();
