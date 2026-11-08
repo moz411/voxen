@@ -20,6 +20,8 @@ struct SavedVoxen {
 struct SavedRuntime {
     std::vector<SavedVoxen> voxens;
     std::string panoramaFile;
+    std::string videoFile;
+    int backgroundSourceKind=0;
     float panoramaYawDegrees=0.f;
     float panoramaHorizontalDegrees=220.f;
     float panoramaVerticalDegrees=75.f;
@@ -42,6 +44,11 @@ struct SavedRuntime {
     float motionBounce = .82f;
 };
 inline bool valid(const SavedRuntime& r) {
+    if(r.backgroundSourceKind<0 || r.backgroundSourceKind>2 ||
+       r.videoFile.size()>128 || r.videoFile.find('/')!=std::string::npos ||
+       r.videoFile.find('\\')!=std::string::npos ||
+       r.videoFile.find("..")!=std::string::npos ||
+       r.videoFile.find_first_of(" \t\r\n")!=std::string::npos)return false;
     if(r.panoramaFile.size()>128 ||
        r.panoramaFile.find('/')!=std::string::npos ||
        r.panoramaFile.find('\\')!=std::string::npos ||
@@ -80,6 +87,12 @@ inline bool sanitizeForSave(SavedRuntime& r) {
     auto finiteOr=[](float value,float fallback) {
         return std::isfinite(value) ? value : fallback;
     };
+    if(r.videoFile.size()>128 || r.videoFile.find('/')!=std::string::npos ||
+       r.videoFile.find('\\')!=std::string::npos ||
+       r.videoFile.find("..")!=std::string::npos ||
+       r.videoFile.find_first_of(" \t\r\n")!=std::string::npos)
+        r.videoFile.clear();
+    r.backgroundSourceKind=std::clamp(r.backgroundSourceKind,0,2);
     // Invalid paths are not persisted; a missing panorama is preferable to data loss.
     if (r.panoramaFile.size()>128 || r.panoramaFile.find('/')!=std::string::npos ||
         r.panoramaFile.find('\\')!=std::string::npos ||
@@ -117,7 +130,7 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
     if (!valid(r)) return {};
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<float>::max_digits10);
-    out << "VOXEN_RUNTIME 6\n" << r.voxens.size() << '\n';
+    out << "VOXEN_RUNTIME 7\n" << r.voxens.size() << '\n';
     out << r.sceneKind << '\n';
     out << (r.panoramaFile.empty() ? "-" : r.panoramaFile) << ' '
         << r.panoramaYawDegrees << ' ' << r.panoramaHorizontalDegrees << ' '
@@ -129,6 +142,7 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
     out << r.liquidRoom << ' ' << r.liquidOpacity << ' ' << r.wallShaderMode << ' '
         << r.cycleWallShaders << ' ' << r.wallCycleSeconds << ' '
         << r.differentShaderPerSurface << '\n';
+    out << r.backgroundSourceKind << ' ' << (r.videoFile.empty()?"-":r.videoFile) << '\n';
     for(const auto& v:r.voxens) {
         out << v.preset << ' ' << v.material << ' ' << v.scale << ' ' << v.hue
             << ' ' << v.density << ' ' << v.speed;
@@ -142,7 +156,7 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
     if(data.size()>1048576) return std::nullopt;
     std::istringstream in(data);
     std::string magic; int version=0; std::size_t count=0;
-    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version<1 || version>6) || count>4096)
+    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version<1 || version>7) || count>4096)
         return std::nullopt;
     SavedRuntime r;
     if(version>=3 && !(in>>r.sceneKind))return std::nullopt;
@@ -158,6 +172,10 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
     if(version>=2 && !(in>>r.liquidRoom>>r.liquidOpacity>>r.wallShaderMode
                        >>r.cycleWallShaders>>r.wallCycleSeconds))return std::nullopt;
     if(version>=6 && !(in>>r.differentShaderPerSurface))return std::nullopt;
+    if(version>=7) {
+        if(!(in>>r.backgroundSourceKind>>r.videoFile))return std::nullopt;
+        if(r.videoFile=="-")r.videoFile.clear();
+    } else r.backgroundSourceKind=r.panoramaFile.empty()?0:1;
     for(std::size_t i=0;i<count;++i) {
         SavedVoxen v;
         if(!(in>>v.preset>>v.material>>v.scale>>v.hue>>v.density>>v.speed))

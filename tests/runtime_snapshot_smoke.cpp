@@ -10,10 +10,15 @@ int main() {
     r.voxens.push_back(v);
     r.musicSource=1; r.musicVolume=.6f; r.motionEnabled=true;
     r.cycleWallShaders=true;
+    r.backgroundSourceKind=2;
+    r.videoFile="ambient.mp4";
+    r.panoramaFile="sky.jpg";
     r.differentShaderPerSurface=true;
     auto bytes=encodeRuntime(r);
     auto loaded=decodeRuntime(bytes);
     assert(loaded && loaded->voxens.size()==1);
+    assert(loaded->backgroundSourceKind==2 && loaded->videoFile=="ambient.mp4");
+    assert(loaded->panoramaFile=="sky.jpg");
     assert(loaded->cycleWallShaders && loaded->differentShaderPerSurface);
     assert(loaded->voxens[0].position==v.position);
     assert(loaded->voxens[0].velocity==v.velocity);
@@ -30,6 +35,7 @@ int main() {
     const std::string v5 = "VOXEN_RUNTIME 5\n0\n0\n- 0 220 75\n0 0 0 0.45 0 0 0 0 0.82 1.5 0.8 0\n0 0.42 0 1 30\n";
     auto old=decodeRuntime(v5);
     assert(old && old->cycleWallShaders && !old->differentShaderPerSurface);
+    assert(old->backgroundSourceKind==0 && old->videoFile.empty());
     // New procedural and OpenBrush presets must survive a scene round-trip.
     SavedRuntime extended;
     extended.voxens.resize(300);
