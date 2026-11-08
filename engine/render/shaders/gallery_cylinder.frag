@@ -24,6 +24,8 @@ void main() {
         col=base*(0.55+0.45*stripes);
     }
     float edge=1.0-smoothstep(0.0,0.055,min(v,1.0-v));
-    col+=vec3(0.12,0.55,0.85)*edge*0.6;
+    float pulse=0.65+0.35*sin(t*2.4+6.2831853*u);
+    float aura=pow(1.0-abs(dot(normalize(normal),vec3(0.0,0.0,1.0))),3.0);
+    col+=vec3(0.15,0.65,1.0)*(edge*(0.65+0.55*pulse)+0.16*aura*pulse);
     outColor=vec4(col*pc.parameters.y,0.96);
 }
