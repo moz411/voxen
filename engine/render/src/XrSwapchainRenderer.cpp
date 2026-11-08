@@ -1881,15 +1881,35 @@ void XrSwapchainRenderer::updateControllerInteraction(
                 const float dz=p[2]-hand.position.z;
                 const float t=dx*forward[0]+dy*forward[1]+dz*forward[2];
                 if(t<0.08f || t>nearest)continue;
-                const float miss2=dx*dx+dy*dy+dz*dz-t*t;
-                const float radius=0.25f*std::clamp(portal.scale,0.1f,4.f);
-                if(miss2<=radius*radius*2.25f) {
+                // The cylinder spans floor..floor+1.6*scale, not a small sphere
+                // centered on its floor anchor. Test a finite vertical cylinder.
+                const float scale=std::clamp(portal.scale,0.1f,4.f);
+                const float radius=0.4f*scale;
+                const float floorY=p[1];
+                const float topY=floorY+1.6f*scale;
+                const float hitY=hand.position.y+t*forward[1];
+                const float hitX=hand.position.x+t*forward[0];
+                const float hitZ=hand.position.z+t*forward[2];
+                const float radial2=(hitX-p[0])*(hitX-p[0])+(hitZ-p[2])*(hitZ-p[2]);
+                if(hitY>=floorY-0.05f && hitY<=topY+0.05f && radial2<=radius*radius) {
                     nearest=t;
                     galleryHoveredId_=portal.id;
                 }
             }
             if(galleryTriggerEdge && galleryHoveredId_) {
                 selectedPortalId_=galleryHoveredId_;
+                // Keep the panel selection synchronized with ray selection;
+                // otherwise the next UI update silently selects the old portal.
+                for(std::size_t i=0;i<sceneIds_.size();++i) {
+                    const auto portals=portalManager_->visible();
+                    const auto it=std::find_if(portals.begin(),portals.end(),
+                        [&](const voxen::gallery::VisiblePortal& p){return p.id==*selectedPortalId_;});
+                    if(it!=portals.end() && it->sceneId==sceneIds_[i]) {
+                        selectedSceneIndex_=static_cast<int>(i);
+                        imguiCarousel_.selectedScene=static_cast<int>(i);
+                        break;
+                    }
+                }
                 galleryGrabDistance_=nearest;
                 galleryDraggedPose_.positionMeters={
                     hand.position.x+nearest*forward[0],
