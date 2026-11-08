@@ -1,44 +1,48 @@
-# Offline Open Brush compiler (experimental)
+# Open Brush offline compiler — prototype VXMSH001
 
-Branch: `feature/openbrush-offline-compiler`.
+Branch: `feature/openbrush-offline-compiler`. The existing portal and Android renderer remain unchanged.
 
-This is the first **geometry-only** compiler prototype, not yet a Quest runtime
-integration. The existing gallery portal behavior is unchanged.
+## Compile on Linux
 
-## Linux prerequisites
-
-Node.js 22+ recommended. Install in a separate working directory to avoid
-modifying Voxen's Android build dependencies:
+From the Voxen repository root, with Node.js 20+:
 
 ```sh
-mkdir -p /tmp/voxen-openbrush-tools
-cd /tmp/voxen-openbrush-tools
-npm init -y
-npm install three three-tiltloader
+npm install --no-save --package-lock=false three three-tiltloader fflate
+node tools/compile_openbrush.mjs /path/to/artwork.tilt -o /tmp/artwork.vxmesh
 ```
 
-The compiler resolves npm dependencies from its own location, so for this
-prototype install the dependencies in the repository root instead:
+The compiler reads the 16-byte .tilt header, decompresses the embedded ZIP,
+parses strokes and uses Icosa's geometry generators directly, **without
+instantiating TiltLoader or loading shaders**. It outputs JSON diagnostics
+for stroke families, mesh count and triangle count.
 
-```sh
-cd ~/voxen
-npm install --no-save --package-lock=false three three-tiltloader
-node tools/compile_openbrush.mjs artwork.tilt -o artwork.vxmesh
-```
+## VXMSH001 v1
 
-Note: `TiltLoader.parse()` also requests brush shader assets; a local brush
-asset path and asset loading strategy may be necessary before this runs
-headlessly in Node. This is the next integration task. Do not deploy the
-generated file to the headset yet: the Vulkan loader is not implemented.
+Little-endian: 8-byte magic `VXMSH001`, u32 version=1, u32 meshCount.
+Each mesh contains: 36-byte brush GUID, u32 vertexCount, u32 indexCount,
+six f32 AABB values, interleaved-by-attribute f32 positions (3 per vertex),
+normals (3), colors (4), UV0.xy (2), and u32 indices.
 
-## Binary format VXMSH001 v1
+Source positions and brush sizes are converted from decimeters to meters,
+with reflected Z axis and quaternion X/Y components.
 
-Little endian. Header: 8-byte magic `VXMSH001`, u32 version (1),
-u32 mesh count. Each mesh: 36-byte brush/material identifier, u32 vertex
-count, u32 index count, 6 x f32 AABB, then packed f32 positions (3),
-normals (3), colors (4), UV0 (2) and u32 indices. Geometry is already in
-Open Brush converted meter coordinates (Y up, Z reflected).
+`engine/render/include/voxen/render/OpenBrushCompiledScene.hpp` contains
+a bounded native reader. **The Vulkan GPU upload and gallery registration
+are not yet connected**. Do not push .vxmesh to the headset expecting
+it to appear in the gallery.
 
-Next: extract geometry generation from material loading, add brush GUID
-preservation, per-brush texture/material manifest, robust bounds and size
-validation, C++ reader, and Vulkan pipelines.
+## Known limitations
+
+- v1 intentionally discards tangents, extra packed UV components and UV1;
+  particle/emissive and advanced materials therefore cannot yet be faithful.
+- Each stroke is a separate mesh; batching by GUID is future work.
+- Textures, brush shaders, blend modes and animation are not serialized.
+- No end-to-end compilation or Quest runtime test has been performed yet.
+- The compiler relies on upstream `three-tiltloader` package exports;
+  dependency pinning and a fixture-based regression test are still needed.
+
+## Next
+
+Validate with a real .tilt fixture, add mesh batching and material manifest,
+then upload the compiled meshes to Vulkan and register the compiled scenes
+with the existing physical-entry portal system.
