@@ -3458,8 +3458,8 @@ void XrSwapchainRenderer::render(
                     imguiCarousel_.sceneHeightOffset=0.f;
                     if(sceneRepository_) {
                         auto savedScene=sceneRepository_->loadScene(sceneId);
-                        if(savedScene && savedScene->second.starts_with("GLB_SCENE_V1\\n")) {
-                            const auto filename=savedScene->second.substr(sizeof("GLB_SCENE_V1\\n")-1);
+                        if(savedScene && savedScene->second.starts_with("GLB_SCENE_V1\n")) {
+                            const auto filename=savedScene->second.substr(sizeof("GLB_SCENE_V1\n")-1);
                             const auto name=std::filesystem::path(filename);
                             if(name.filename()==name && name.extension()==".glb") {
                                 imguiCarousel_.sceneHeightAvailable=true;
@@ -3497,16 +3497,16 @@ void XrSwapchainRenderer::render(
                    static_cast<size_t>(imguiCarousel_.selectedScene)<sceneIds_.size()) {
                     const auto record=sceneRepository_->loadScene(
                         sceneIds_[imguiCarousel_.selectedScene]);
-                    if(record && record->second.starts_with("GLB_SCENE_V1\\n")) {
+                    if(record && record->second.starts_with("GLB_SCENE_V1\n")) {
                         const auto name=std::filesystem::path(
-                            record->second.substr(sizeof("GLB_SCENE_V1\\n")-1));
+                            record->second.substr(sizeof("GLB_SCENE_V1\n")-1));
                         if(name.filename()==name && name.extension()==".glb" &&
                            std::isfinite(imguiCarousel_.sceneHeightOffset)) {
                             const auto offsetFile=glbAssetRoot_/"scenes"/
                                 (name.stem().string()+".offset-y");
                             std::ofstream output(offsetFile,std::ios::trunc);
                             if(output) {
-                                output<<imguiCarousel_.sceneHeightOffset<<"\\n";
+                                output<<imguiCarousel_.sceneHeightOffset<<"\n";
                                 output.flush();
                                 saved=output.good();
                             }
