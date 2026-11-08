@@ -12,6 +12,7 @@ namespace voxen::ui {
 struct CarouselState {
     int page = 3;
     bool editMode = false; // Gallery at startup; painting only in edit mode.
+    bool sceneNew = false;
     bool sceneSave = false;
     bool sceneLoad = false;
     bool sceneLoadEdit = false;
