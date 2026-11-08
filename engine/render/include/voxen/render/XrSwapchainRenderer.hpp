@@ -449,6 +449,7 @@ private:
     bool lastGalleryTriggerPressed_ = false;
     bool galleryDragging_ = false;
     float galleryGrabDistance_ = 0.5f;
+    float galleryPlacementDistance_ = 1.5f; // right stick Y, meters
     voxen::gallery::Pose galleryDraggedPose_{};
     std::optional<voxen::gallery::InstanceId> galleryHoveredId_;
     std::chrono::steady_clock::time_point galleryDeleteArmedUntil_{};
