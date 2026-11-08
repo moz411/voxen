@@ -1820,6 +1820,14 @@ void XrSwapchainRenderer::updateControllerInteraction(
 #ifdef VOXEN_WITH_IMGUI
     const bool galleryTriggerEdge=pressed[1] && !lastGalleryTriggerPressed_;
     lastGalleryTriggerPressed_=pressed[1];
+    if(pendingGalleryFloorAction_==1 && tracked[1]) {
+        // Forward/backward on right thumbstick adjusts the preview and final
+        // portal distance; independent of controller pitch.
+        const float axis=thumbsticks[1].y;
+        if(std::fabs(axis)>0.18f)
+            galleryPlacementDistance_=std::clamp(
+                galleryPlacementDistance_+axis*0.035f,0.5f,5.0f);
+    }
     if(pendingGalleryFloorAction_==1 && galleryTriggerEdge && tracked[1] && !imguiCarousel_.visible) {
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
@@ -1829,23 +1837,17 @@ void XrSwapchainRenderer::updateControllerInteraction(
             -(1.f-2.f*(q.x*q.x+q.y*q.y))};
         voxen::gallery::Pose placed{};
         placed.positionMeters={
-            pose.position.x+0.38f*forward[0],
-            pose.position.y+0.38f*forward[1],
-            pose.position.z+0.38f*forward[2]};
-        // Portal geometry uses a floor-based anchor. Prefer the tracked floor
-        // directly beneath the placement; keep the existing height as fallback.
-        float bestFloorDistance=std::numeric_limits<float>::infinity();
-        for(const auto& surface:environmentSurfaces_.surfaces()) {
-            if(!surface.tracked ||
-               surface.classification!=voxen::scene::SurfaceClass::Floor)continue;
-            const float dx=placed.positionMeters[0]-surface.center[0];
-            const float dz=placed.positionMeters[2]-surface.center[2];
-            const float d2=dx*dx+dz*dz;
-            if(d2<bestFloorDistance) {
-                bestFloorDistance=d2;
-                placed.positionMeters[1]=surface.center[1];
-            }
-        }
+            pose.position.x+galleryPlacementDistance_*forward[0],
+            pose.position.y+galleryPlacementDistance_*forward[1],
+            pose.position.z+galleryPlacementDistance_*forward[2]};
+        // Raycast vertically down at the placement location. A floor plane's
+        // center is not necessarily its intersection at this X/Z position.
+        const std::array<float,3> down{0.f,-1.f,0.f};
+        const std::array<float,3> above{
+            placed.positionMeters[0],pose.position.y+2.0f,placed.positionMeters[2]};
+        const auto floor=voxen::gallery::intersectTrackedFloor(
+            environmentSurfaces_.surfaces(),above,down);
+        if(floor)placed.positionMeters[1]=floor->localPose.positionMeters[1];
         const bool valid=portalManager_ && portalManager_->localized() &&
             selectedSceneIndex_>=0 &&
             static_cast<std::size_t>(selectedSceneIndex_)<sceneIds_.size();
@@ -2506,8 +2508,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const float dy=-2.f*(q.y*q.z-q.w*q.x);
             const float dz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
             const Mat4 mvp=multiply(projView,modelMatrix(
-                pose.position.x+0.38f*dx,pose.position.y+0.38f*dy,
-                0.25f,pose.position.z+0.38f*dz,0.f));
+                pose.position.x+galleryPlacementDistance_*dx,
+                pose.position.y+galleryPlacementDistance_*dy,
+                0.25f,pose.position.z+galleryPlacementDistance_*dz,0.f));
             ProceduralPushConstants pc{mvp,{seconds,1.f,4.f,0.5f}};
             vkCmdPushConstants(commandBuffer_,pipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
