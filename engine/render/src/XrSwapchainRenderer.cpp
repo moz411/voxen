@@ -1848,7 +1848,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         const auto floor=voxen::gallery::intersectTrackedFloor(
             environmentSurfaces_.surfaces(),above,down);
         if(floor)placed.positionMeters[1]=floor->localPose.positionMeters[1];
-        const bool valid=portalManager_ && portalManager_->localized() &&
+        const bool valid=floor.has_value() && portalManager_ && portalManager_->localized() &&
             selectedSceneIndex_>=0 &&
             static_cast<std::size_t>(selectedSceneIndex_)<sceneIds_.size();
         const auto id=valid?portalManager_->placeAtPose(sceneIds_[selectedSceneIndex_],placed):
@@ -1857,7 +1857,9 @@ void XrSwapchainRenderer::updateControllerInteraction(
             selectedPortalId_=*id;
             pendingGalleryFloorAction_=0;
             imguiCarousel_.sceneStatus="Static Voxen placed";
-        } else imguiCarousel_.sceneStatus="Placement failed: room anchor or scene unavailable";
+        } else imguiCarousel_.sceneStatus=!floor
+            ? "No tracked Meta floor at portal location; placement cancelled"
+            : "Placement failed: room anchor or scene unavailable";
     }
 #endif
 #ifdef VOXEN_WITH_IMGUI
@@ -1876,10 +1878,19 @@ void XrSwapchainRenderer::updateControllerInteraction(
             -2.f*(q.y*q.z-q.w*q.x),
             -(1.f-2.f*(q.x*q.x+q.y*q.y))};
         if(galleryDragging_) {
-            galleryDraggedPose_.positionMeters={
-                hand.position.x+galleryGrabDistance_*forward[0],
-                hand.position.y+galleryGrabDistance_*forward[1],
-                hand.position.z+galleryGrabDistance_*forward[2]};
+            // Same right-stick distance control when moving an existing portal.
+            // Preserve the portal's floor anchor; controller pitch must not lift it.
+            const float axis=thumbsticks[1].y;
+            if(std::fabs(axis)>0.18f)
+                galleryGrabDistance_=std::clamp(galleryGrabDistance_+axis*0.035f,0.5f,5.f);
+            galleryDraggedPose_.positionMeters[0]=hand.position.x+galleryGrabDistance_*forward[0];
+            galleryDraggedPose_.positionMeters[2]=hand.position.z+galleryGrabDistance_*forward[2];
+            const std::array<float,3> above{
+                galleryDraggedPose_.positionMeters[0],hand.position.y+2.f,
+                galleryDraggedPose_.positionMeters[2]};
+            const auto floor=voxen::gallery::intersectTrackedFloor(
+                environmentSurfaces_.surfaces(),above,{0.f,-1.f,0.f});
+            if(floor)galleryDraggedPose_.positionMeters[1]=floor->localPose.positionMeters[1];
             if(!pressed[1]) {
                 const bool saved=selectedPortalId_ &&
                     portalManager_->moveToPose(*selectedPortalId_,galleryDraggedPose_);
@@ -1929,11 +1940,17 @@ void XrSwapchainRenderer::updateControllerInteraction(
                         break;
                     }
                 }
-                galleryGrabDistance_=nearest;
-                galleryDraggedPose_.positionMeters={
-                    hand.position.x+nearest*forward[0],
-                    hand.position.y+nearest*forward[1],
-                    hand.position.z+nearest*forward[2]};
+                // Reuse the ray hit distance for X/Z only; preserve existing
+                // floor height until a tracked floor is intersected.
+                galleryGrabDistance_=std::clamp(nearest,0.5f,5.f);
+                galleryDraggedPose_=portalManager_->visible().front().localPose;
+                for(const auto& portal:portalManager_->visible())
+                    if(portal.id==*selectedPortalId_) {
+                        galleryDraggedPose_=portal.localPose;
+                        break;
+                    }
+                galleryDraggedPose_.positionMeters[0]=hand.position.x+nearest*forward[0];
+                galleryDraggedPose_.positionMeters[2]=hand.position.z+nearest*forward[2];
                 galleryDragging_=true;
                 galleryDeleteArmedUntil_={};
                 imguiCarousel_.sceneStatus="Moving sphere; release trigger to save, B twice to delete";
