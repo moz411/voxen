@@ -167,6 +167,25 @@ if(VOXEN_WITH_GLB_IMPORT)
     target_include_directories(voxen_cgltf PUBLIC ${voxen_stb_SOURCE_DIR})
 endif()
 
+# Lightweight ZIP decoder for native Open Brush .tilt archives.
+include(FetchContent)
+FetchContent_Declare(voxen_miniz
+    GIT_REPOSITORY https://github.com/richgel999/miniz.git
+    GIT_TAG 3.0.2
+    GIT_SHALLOW TRUE
+)
+FetchContent_GetProperties(voxen_miniz)
+if(NOT voxen_miniz_POPULATED)
+    FetchContent_Populate(voxen_miniz)
+endif()
+add_library(voxen_miniz_impl STATIC
+    ${voxen_miniz_SOURCE_DIR}/miniz.c
+    ${voxen_miniz_SOURCE_DIR}/miniz_tdef.c
+    ${voxen_miniz_SOURCE_DIR}/miniz_tinfl.c
+    ${voxen_miniz_SOURCE_DIR}/miniz_zip.c
+)
+target_include_directories(voxen_miniz_impl PUBLIC ${voxen_miniz_SOURCE_DIR})
+
 add_library(voxen_engine STATIC
     core/src/Engine.cpp
     $<$<BOOL:${VOXEN_WITH_GLB_IMPORT}>:${CMAKE_CURRENT_SOURCE_DIR}/scene/src/GlbMeshDecoder.cpp>
@@ -201,7 +220,7 @@ elseif(WIN32)
     target_compile_definitions(voxen_engine PUBLIC XR_USE_PLATFORM_WIN32)
 endif()
 
-target_link_libraries(voxen_engine PUBLIC OpenXR::openxr_loader)
+target_link_libraries(voxen_engine PUBLIC OpenXR::openxr_loader voxen_miniz_impl)
 if(WIN32)
     target_link_libraries(voxen_engine PUBLIC Vulkan::Vulkan)
 endif()
