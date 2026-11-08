@@ -939,7 +939,9 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     rescanPanoramaAssets();
     imguiCarousel_.backgroundSourceKind=snapshot->backgroundSourceKind;
     imguiCarousel_.backgroundTargetSurface=-1;
+#ifdef __ANDROID__
     imguiCarousel_.videoFiles=scanVideoFiles();
+#endif
     const auto videoMatch=std::find(imguiCarousel_.videoFiles.begin(),
         imguiCarousel_.videoFiles.end(),snapshot->videoFile);
     imguiCarousel_.videoSelected=snapshot->videoFile.empty() ||
