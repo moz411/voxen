@@ -288,6 +288,8 @@ private:
         uint32_t indexCount=0;
     };
     std::array<MandelbulbLod,3> mandelbulbLods_{};
+    VkPipeline openbrushDotsPipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout openbrushDotsPipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline voxenAttractorPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenFractalPyramidPipeline_ = VK_NULL_HANDLE;
     VkPipeline voxenPhyllotaxisPipeline_ = VK_NULL_HANDLE;
