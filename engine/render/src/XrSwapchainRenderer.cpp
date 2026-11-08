@@ -1940,17 +1940,20 @@ void XrSwapchainRenderer::updateControllerInteraction(
                         break;
                     }
                 }
-                // Reuse the ray hit distance for X/Z only; preserve existing
-                // floor height until a tracked floor is intersected.
-                galleryGrabDistance_=std::clamp(nearest,0.5f,5.f);
-                galleryDraggedPose_=portalManager_->visible().front().localPose;
+                // Grab by the column's center (half height), not the ray
+                // intersection on its surface. The stored pose remains floor-based.
                 for(const auto& portal:portalManager_->visible())
                     if(portal.id==*selectedPortalId_) {
                         galleryDraggedPose_=portal.localPose;
+                        const auto& base=portal.localPose.positionMeters;
+                        const float halfHeight=0.8f*std::clamp(portal.scale,0.1f,4.f);
+                        const float cx=base[0]-hand.position.x;
+                        const float cy=base[1]+halfHeight-hand.position.y;
+                        const float cz=base[2]-hand.position.z;
+                        galleryGrabDistance_=std::clamp(
+                            cx*forward[0]+cy*forward[1]+cz*forward[2],0.5f,5.f);
                         break;
                     }
-                galleryDraggedPose_.positionMeters[0]=hand.position.x+nearest*forward[0];
-                galleryDraggedPose_.positionMeters[2]=hand.position.z+nearest*forward[2];
                 galleryDragging_=true;
                 galleryDeleteArmedUntil_={};
                 imguiCarousel_.sceneStatus="Moving sphere; release trigger to save, B twice to delete";
