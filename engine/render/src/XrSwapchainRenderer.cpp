@@ -89,6 +89,7 @@
 #include "galleryPortalFrag.spv.hpp"
 #include "galleryCylinderVert.spv.hpp"
 #include "galleryCylinderFrag.spv.hpp"
+#include "galleryCylinderPictureFrag.spv.hpp"
 #include <voxen/scene/PortalCylinderInteraction.hpp>
 #include <voxen/scene/PortalProximityAudio.hpp>
 #include "mechanicalCannonFrag.spv.hpp"
