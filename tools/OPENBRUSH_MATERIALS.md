@@ -63,3 +63,41 @@ a material as opaque/transparent/emissive from its geometry family alone.
 
 The optional `--materials` sidecar is a diagnostic report, **not** yet
 consumed by the runtime. Its unresolved fields are intentional.
+
+## Experimental Smoke Vulkan pass (Quest 3)
+
+The compiled scene renderer now routes GUID
+`70d79cca-b159-4f35-990c-f02193947fe8` to its own transparent
+Vulkan pipeline, leaving other brushes on the generic geometry path.
+Smoke vertex input uses `normal.xyz` as center and `UV0.z` as
+per-particle rotation; it rebuilds camera-facing billboards for each eye.
+
+Install the original Smoke texture from the Apache-2.0
+`icosa-foundation/three-icosa` repository:
+
+```bash
+bash tools/install_openbrush_smoke.sh
+cd android
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+Recompile and push the **v2** scene if you have not done so since the
+format update:
+
+```bash
+cd ..
+node tools/compile_openbrush.mjs ../Sa_Tuna.tilt -o Sa_Tuna.vxmesh
+adb push Sa_Tuna.vxmesh /sdcard/Android/data/org.voxen.xr/files/tilts/
+```
+
+Restart the app so the Smoke texture is loaded on scene entry. Logs:
+`adb logcat -s VoxenOpenBrush:I`.
+
+**Current visual limitations:** the Smoke animation is a cheaper
+trigonometric curl-like flow, not the original three-icosa simplex curl
+noise; transparent Smoke strokes are rendered after other meshes
+without per-particle back-to-front sorting. Tint and timing parameters
+are not yet brush-specific. If the PNG is absent, a synthetic texture
+is generated for diagnosis and a warning is logged. This is an
+experimental rendering milestone, **not exact Open Brush parity**.
