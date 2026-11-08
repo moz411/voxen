@@ -267,17 +267,10 @@ void XrSwapchainRenderer::configureSceneStorage(const std::filesystem::path& roo
     imguiCarousel_.videoFiles=scanVideoFiles();
 #endif
     portalManager_ = std::make_unique<voxen::gallery::PortalManager>(*sceneRepository_);
-    // Seed a real repository scene so gallery placement and walk-in work unchanged.
-    if(!sceneRepository_->loadSceneMetadata(mechanicalCannonSceneId_)) {
-        voxen::gallery::SavedRuntime cannon;
-        cannon.sceneKind=1;
-        cannon.liquidRoom=false;
-        auto record=voxen::gallery::SceneRepository::newScene("Canon mecanique");
-        record.id=mechanicalCannonSceneId_;
-        record.preview.materialPreset=4;
-        record.preview.boundingRadiusMeters=2.5f;
-        sceneRepository_->saveScene(record,voxen::gallery::encodeRuntime(cannon));
-    }
+    // Retire the old built-in demo from existing installations too.
+    // It must not reappear after a repository refresh or application restart.
+    if(sceneRepository_->loadSceneMetadata(mechanicalCannonSceneId_))
+        sceneRepository_->deleteScene(mechanicalCannonSceneId_);
     refreshSceneIndex();
     selectedSceneIndex_ = 0;
 #ifdef VOXEN_WITH_GLB_IMPORT
@@ -308,6 +301,7 @@ void XrSwapchainRenderer::refreshSceneIndex() {
             std::transform(ext.begin(),ext.end(),ext.begin(),
                 [](unsigned char c){return static_cast<char>(std::tolower(c));});
             if(ext!=".glb")continue;
+            if(std::filesystem::exists(it->path().string()+".voxen-deleted"))continue;
             const auto filename=it->path().filename().string();
             // Deterministic ID, independent of directory iteration order.
             std::uint64_t hash=14695981039346656037ull;
@@ -339,6 +333,7 @@ void XrSwapchainRenderer::refreshSceneIndex() {
             !ec && it!=end;it.increment(ec)) {
             if(!it->is_regular_file(ec) || it->is_symlink(ec) ||
                (it->path().extension()!=".tilt" && it->path().extension()!=".vxmesh"))continue;
+            if(std::filesystem::exists(it->path().string()+".voxen-deleted"))continue;
             const auto filename=it->path().filename().string();
             std::uint64_t hash=14695981039346656037ull;
             for(unsigned char c:filename){hash^=c;hash*=1099511628211ull;}
@@ -860,8 +855,43 @@ bool XrSwapchainRenderer::saveCurrentScene() {
 }
 
 bool XrSwapchainRenderer::deleteSavedScene(const voxen::gallery::SceneId& id) {
-    if(!sceneRepository_ || immersiveSceneActive_ ||
-       !sceneRepository_->deleteScene(id))return false;
+    if(!sceneRepository_ || immersiveSceneActive_)return false;
+    // Auto-imported GLB/Open Brush scenes need a persistent suppression
+    // marker, otherwise refreshSceneIndex() immediately recreates them.
+    // Keep the original user asset intact; only remove its gallery entry.
+    std::filesystem::path suppressionMarker;
+    if(const auto stored=sceneRepository_->loadScene(id)) {
+        const auto& payload=stored->second;
+        std::filesystem::path source;
+        if(payload.starts_with("GLB_SCENE_V1\\n")) {
+            const auto filename=payload.substr(sizeof("GLB_SCENE_V1\\n")-1);
+            if(std::filesystem::path(filename).filename()!=filename)return false;
+            source=glbAssetRoot_/"scenes"/filename;
+        } else if(payload.starts_with("TILT_SCENE_V1\\\\n")) {
+            const auto filename=payload.substr(sizeof("TILT_SCENE_V1\\\\n")-1);
+            if(std::filesystem::path(filename).filename()!=filename)return false;
+#ifdef __ANDROID__
+            source="/sdcard/Android/data/org.voxen.xr/files/tilts";
+#else
+            source="tilts";
+#endif
+            source/=filename;
+        }
+        if(!source.empty()) {
+            suppressionMarker=source.string()+".voxen-deleted";
+            std::ofstream marker(suppressionMarker,std::ios::trunc);
+            if(!marker)return false;
+            marker<<"Hidden from Voxen gallery\\n";
+            if(!marker)return false;
+        }
+    }
+    if(!sceneRepository_->deleteScene(id)) {
+        if(!suppressionMarker.empty()) {
+            std::error_code ec;
+            std::filesystem::remove(suppressionMarker,ec);
+        }
+        return false;
+    }
     refreshSceneIndex();
     if(portalManager_)portalManager_->reloadGallery();
     if(editingSavedSceneId_ && *editingSavedSceneId_==id)editingSavedSceneId_.reset();
@@ -3749,6 +3779,25 @@ void XrSwapchainRenderer::render(
 #ifdef VOXEN_WITH_GLB_IMPORT
         if(imguiCarousel_.voxenPaintEnabled && glbPreview_)glbPreview_=false;
 #endif
+        if(imguiCarousel_.sceneNew) {
+            imguiCarousel_.sceneNew=false;
+            if(imguiCarousel_.editMode && !immersiveSceneActive_) {
+                voxens_.clear();
+                editingSavedSceneId_.reset();
+                lastVoxenValid_=false;
+                physicsAccumulator_=0.f;
+                imguiCarousel_.panoramaSelected=-1;
+                panoramaDecodedSelection_=-2;
+                imguiCarousel_.liquidRoom=false;
+                imguiCarousel_.wallShaderMode=0;
+                imguiCarousel_.cycleWallShaders=false;
+                imguiCarousel_.differentShaderPerSurface=false;
+                imguiCarousel_.musicPlaying=false;
+                imguiCarousel_.musicFile.clear();
+                imguiCarousel_.motionEnabled=false;
+                imguiCarousel_.sceneStatus="New empty scene; SAVE creates a new entry";
+            }
+        }
         if(imguiCarousel_.sceneSave) {
             imguiCarousel_.sceneSave=false;
             imguiCarousel_.sceneStatus=saveCurrentScene()?"Scene saved - DISPOSE available":"Save failed";
