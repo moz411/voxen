@@ -12,7 +12,7 @@
 
 namespace voxen::render {
 namespace {
-struct LitVertex { float position[3]; float normal[3]; float uv[2]; };
+struct LitVertex { float position[3]; float normal[3]; float uv[2]; float color[4]; };
 void checked(VkResult result,const char* what) {
     if(result!=VK_SUCCESS)throw std::runtime_error(what);
 }
@@ -218,7 +218,8 @@ bool XrSwapchainRenderer::loadDemoGlb(const std::filesystem::path& file,
                 for(const auto& v:primitive.vertices)
                     vertices.push_back({{v.position[0],v.position[1],v.position[2]},
                                         {v.normal[0],v.normal[1],v.normal[2]},
-                                        {v.uv[0],v.uv[1]}});
+                                        {v.uv[0],v.uv[1]},
+                                        {v.color[0],v.color[1],v.color[2],v.color[3]}});
                 GlbGpuPrimitive gpu{};
                 gpu.worldMatrix=node.worldMatrix;
                 gpu.baseColor=primitive.baseColor;
