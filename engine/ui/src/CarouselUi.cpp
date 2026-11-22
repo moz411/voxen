@@ -64,15 +64,20 @@ void drawCarousel(CarouselState& state) {
                     state.particlePaintEnabled=true;
                     state.voxenPaintEnabled=true;
                 }
+                if(ImGui::Selectable("SNOW (native)",state.particlePaintEnabled && state.particlePreset==3)) {
+                    state.particlePreset=3;
+                    state.particlePaintEnabled=true;
+                    state.voxenPaintEnabled=true;
+                }
                 ImGui::TextDisabled("Hold right trigger and draw a continuous stroke");
-                ImGui::TextDisabled("Native Smoke / Stars / Fire geometry");
+                ImGui::TextDisabled("Native Smoke / Stars / Fire / Snow geometry");
                 ImGui::EndTabItem();
             }
             ImGui::EndTabBar();
             }
             ImGui::EndChild();
             if(state.voxenPaintEnabled) {
-            if(state.particlePaintEnabled)ImGui::TextDisabled("Open Brush Smoke stroke (hold trigger)");
+            if(state.particlePaintEnabled)ImGui::TextDisabled("Native particle stroke (hold trigger)");
             else ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : state.voxenPreset==4 ? "Animated deforming 3D sphere" : state.voxenPreset==5 ? "Twisting torus knot" : state.voxenPreset==6 ? "Spiky bloom" : state.voxenPreset==7 ? "Jellyfish bell" : state.voxenPreset==19 ? "Rotating Rubik cube with animated face turns" : state.voxenPreset==18 ? "Pulsating cube cloud with rotating lattice" : state.voxenPreset==17 ? "Smiling golden PBR creature with glossy eyes" : state.voxenPreset==16 ? "Animated goldfish with flowing fins and bubbles" : state.voxenPreset==15 ? "Floating one-eyed demon with charging fireball" : state.voxenPreset==14 ? "Animated stick figure with neon motion trails" : state.voxenPreset==13 ? "100-sphere evolving phyllotaxis spiral" : state.voxenPreset==12 ? "Animated fractal pyramid raymarch" : "Animated 12-segment earthworm");
             if(!state.particlePaintEnabled && (state.voxenPreset==0 || state.voxenPreset==1 ||
                state.voxenPreset>=12)) {
@@ -90,15 +95,15 @@ void drawCarousel(CarouselState& state) {
                 ImGui::Combo("Surface material",&state.voxenMaterial,materials,12);
             }
             ImGui::TextDisabled("RIGHT STICK: UP/DOWN shape | LEFT/RIGHT size");
-            ImGui::TextDisabled(state.particlePaintEnabled ? "RIGHT TRIGGER: draw Smoke" : "RIGHT TRIGGER: place one Voxen");
+            ImGui::TextDisabled(state.particlePaintEnabled ? "RIGHT TRIGGER: draw particles" : "RIGHT TRIGGER: place one Voxen");
             ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
             if(!state.voxenPaintEnabled)ImGui::TextDisabled("No Voxen selected for painting");
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.18f,0.60f,"%.2f");
             if(state.particlePaintEnabled) {
-                ImGui::ColorPicker3("Smoke RGB",state.smokeRgb,
+                ImGui::ColorPicker3("Particle RGB",state.smokeRgb,
                     ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_DisplayRGB |
                     ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_NoSidePreview);
-                ImGui::ColorButton("Current Smoke",ImVec4(state.smokeRgb[0],
+                ImGui::ColorButton("Current color",ImVec4(state.smokeRgb[0],
                     state.smokeRgb[1],state.smokeRgb[2],1.f));
                 static constexpr float palette[][3]={
                     {1.f,1.f,1.f},{0.12f,0.8f,1.f},{1.f,0.2f,0.4f},

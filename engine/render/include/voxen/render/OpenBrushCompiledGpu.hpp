@@ -104,7 +104,9 @@ public:
                 VkDescriptorSet smokeTexture=VK_NULL_HANDLE,
                 const SmokeCameraPush* smokeCamera=nullptr,
                 VkPipeline firePipeline=VK_NULL_HANDLE,
-                VkPipelineLayout fireLayout=VK_NULL_HANDLE) const {
+                VkPipelineLayout fireLayout=VK_NULL_HANDLE,
+                VkPipeline snowPipeline=VK_NULL_HANDLE,
+                VkPipelineLayout snowLayout=VK_NULL_HANDLE) const {
         if(empty()||!pipeline)return;
         const bool useSmoke=smokeBillboardCompatible_ && smokePipeline && smokeLayout && smokeTexture && smokeCamera;
         VkDeviceSize offset=0;
@@ -114,7 +116,8 @@ public:
         vkCmdPushConstants(command,layout,VK_SHADER_STAGE_VERTEX_BIT,0,64,viewProjection.data());
         constexpr const char* smokeGuid="70d79cca-b159-4f35-990c-f02193947fe8";
         for(const auto& draw:draws_)
-            if(draw.indexCount && (!useSmoke || draw.brushGuid!=smokeGuid) && !(firePipeline && fireLayout && smokeCamera && draw.brushGuid=="voxen-native-fire"))
+            if(draw.indexCount && (!useSmoke || draw.brushGuid!=smokeGuid) && !(firePipeline && fireLayout && smokeCamera && draw.brushGuid=="voxen-native-fire")
+                && !(snowPipeline && snowLayout && smokeCamera && draw.brushGuid=="voxen-native-snow"))
                 vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
         if(firePipeline && fireLayout && smokeCamera) {
             vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,firePipeline);
@@ -122,6 +125,14 @@ public:
                 sizeof(*smokeCamera),smokeCamera);
             for(const auto& draw:draws_)
                 if(draw.indexCount && draw.brushGuid=="voxen-native-fire")
+                    vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+        }
+        if(snowPipeline && snowLayout && smokeCamera) {
+            vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,snowPipeline);
+            vkCmdPushConstants(command,snowLayout,VK_SHADER_STAGE_VERTEX_BIT,0,
+                sizeof(*smokeCamera),smokeCamera);
+            for(const auto& draw:draws_)
+                if(draw.indexCount && draw.brushGuid=="voxen-native-snow")
                     vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
         }
         if(!useSmoke)return;

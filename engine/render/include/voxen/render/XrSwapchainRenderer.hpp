@@ -306,9 +306,11 @@ private:
     voxen::render::openbrush::CompiledMeshGpu smokePaintGpu_{};
     voxen::render::openbrush::CompiledMeshGpu starsPaintGpu_{};
     voxen::render::openbrush::CompiledMeshGpu firePaintGpu_{};
+    voxen::render::openbrush::CompiledMeshGpu snowPaintGpu_{};
     bool smokePaintDirty_=true;
     bool smokeTriggerActive_=false;
     void rebuildSmokePaintGpu();
+    VkPipeline openbrushSnowPipeline_ = VK_NULL_HANDLE;
     VkPipeline openbrushFirePipeline_ = VK_NULL_HANDLE;
     VkPipeline openbrushSmokePipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout openbrushSmokePipelineLayout_ = VK_NULL_HANDLE;
