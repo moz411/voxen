@@ -18,15 +18,16 @@ inline CompiledScene makeFireStrokeScene(const std::vector<SmokeStrokePoint>& po
         const auto& p=points[i];
         // Two intersecting vertical ribbons, with pointed tongues and
         // orange-to-yellow vertex colors. Stable jitter prevents repetition.
-        for(int tongue=0;tongue<3;++tongue) {
+        for(int tongue=0;tongue<6;++tongue) {
             const float phase=float(i*13+tongue*31)*2.39996323f;
-            const float radius=p.size*(0.14f+0.035f*float(tongue));
-            const float height=p.size*(0.55f+0.2f*float(tongue));
+            const float radius=p.size*(0.075f+0.018f*float(tongue));
+            const float height=p.size*(0.35f+0.11f*float(tongue));
             const float cx=p.center[0]+std::sin(phase)*p.size*0.2f;
             const float cz=p.center[2]+std::cos(phase)*p.size*0.2f;
-            for(int plane=0;plane<2;++plane) {
-                const float dx=plane?0.f:radius;
-                const float dz=plane?radius:0.f;
+            for(int plane=0;plane<3;++plane) {
+                const float planeAngle=float(plane)*1.0471975512f;
+                const float dx=std::cos(planeAngle)*radius;
+                const float dz=std::sin(planeAngle)*radius;
                 const float bend=0.f; // tip displacement is performed in vertex shader
                 const std::uint32_t base=static_cast<std::uint32_t>(mesh.positions.size()/3);
                 const std::array<std::array<float,3>,3> vertices{{
