@@ -4,9 +4,14 @@ layout(location=1) in vec3 vRibbon;
 layout(location=0) out vec4 outColor;
 void main() {
     float r=abs(vRibbon.x);
-    float core=1.0-smoothstep(0.06,0.26,r);
-    float halo=1.0-smoothstep(0.15,1.0,r);
-    float flow=0.84+0.16*sin(vRibbon.z*5.0+vRibbon.y*8.0);
-    vec3 hot=mix(vColor.rgb,vec3(1.0),core*0.66);
-    outColor=vec4(hot,clamp(vColor.a*(0.36*halo+0.64*core)*flow,0.0,0.95));
+    // Tube-like emissive core within a much wider additive gaussian halo.
+    float core=exp(-88.0*r*r);
+    float sheath=exp(-15.0*r*r);
+    float halo=exp(-3.8*r*r);
+    float wave=sin(vRibbon.y*30.0-vRibbon.z*4.2);
+    float pulse=0.78+0.22*wave*wave;
+    float alpha=vColor.a*(0.72*core+0.25*sheath+0.12*halo)*pulse;
+    vec3 edge=mix(vec3(0.21,0.12,0.75),vColor.rgb,0.72);
+    vec3 color=mix(edge,vec3(0.97,0.99,1.0),core*0.93);
+    outColor=vec4(color,clamp(alpha,0.0,0.95));
 }

@@ -1,13 +1,17 @@
 #version 450
 layout(location=0) in vec4 vColor;
-layout(location=1) in vec3 vShape;
+layout(location=1) in vec4 vShape;
 layout(location=0) out vec4 outColor;
 void main() {
-    float edge=abs(vShape.x);
-    float core=1.0-smoothstep(0.05,0.37,edge);
-    float glow=1.0-smoothstep(0.15,1.0,edge);
-    float spark=0.76+0.24*sin(vShape.y*47.0-vShape.z);
-    float alpha=vColor.a*(0.58*glow+0.42*core)*spark*(1.0-smoothstep(0.78,1.0,vShape.y));
-    vec3 color=mix(vColor.rgb,vec3(0.92,0.97,1.0),0.84*core);
+    float r=abs(vShape.x);
+    float core=exp(-38.0*r*r);
+    float halo=exp(-3.4*r*r);
+    float level=vShape.z;
+    float taper=1.0-smoothstep(0.75,1.0,vShape.y);
+    float intensity=vColor.a*vShape.w*taper*(1.0-0.23*level);
+    float alpha=intensity*(0.76*core+0.30*halo);
+    vec3 violet=vec3(0.33,0.24,1.0);
+    vec3 blue=mix(violet,max(vColor.rgb,vec3(0.18,0.48,0.95)),0.72);
+    vec3 color=mix(blue,vec3(0.95,0.98,1.0),core*0.94);
     outColor=vec4(color,clamp(alpha,0.0,0.95));
 }

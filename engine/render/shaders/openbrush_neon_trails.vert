@@ -17,9 +17,9 @@ void main() {
     vec3 lateral=cross(tangent,forward);
     float len=length(lateral);
     lateral=len>0.0001?lateral/len:camera.right.xyz;
-    float pulse=0.90+0.10*sin(camera.settings.x*3.4+inUV.z*4.0);
-    vec3 position=inCenter+lateral*inUV.x*inUV.w*pulse;
+    float breathing=0.94+0.06*sin(camera.settings.x*2.6+inUV.y*12.0);
+    vec3 position=inCenter+lateral*inUV.x*inUV.w*breathing;
     gl_Position=camera.viewProjection*vec4(position,1.0);
     vColor=inColor;
-    vRibbon=vec3(inUV.x,inUV.y,inUV.z+camera.settings.x*1.7);
+    vRibbon=vec3(inUV.x,inUV.y,inUV.z+camera.settings.x*2.8);
 }
