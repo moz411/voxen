@@ -1688,6 +1688,12 @@ void XrSwapchainRenderer::createPipeline() {
         || &out == &imguiPanelPipeline_
 #endif
         ) ? VK_FALSE : VK_TRUE;
+        // Translucent particle layers must not write depth: otherwise the first
+        // flake/bubble occludes later translucent layers in the same eye.
+        if (&out==&openbrushSmokePipeline_ || &out==&openbrushFirePipeline_ ||
+            &out==&openbrushSnowPipeline_ || &out==&openbrushEmbersPipeline_ ||
+            &out==&openbrushBubblesPipeline_ || &out==&openbrushMeshPipeline_)
+            ds.depthWriteEnable=VK_FALSE;
         if (&out == &panoramaPipeline_) ds.depthTestEnable=VK_FALSE;
         if (&out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI

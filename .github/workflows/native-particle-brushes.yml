@@ -1,0 +1,33 @@
+name: Native particle brushes
+on:
+  push:
+    branches: [feature/openbrush-native-brushes]
+  pull_request:
+    paths:
+      - 'engine/render/include/voxen/render/OpenBrush*'
+      - 'engine/render/shaders/openbrush_*'
+      - 'tests/openbrush_*'
+      - '.github/workflows/native-particle-brushes.yml'
+jobs:
+  native-brushes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shader compiler
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools
+      - name: Compile and run native brush geometry tests
+        run: |
+          set -euo pipefail
+          for brush in smoke stars fire snow embers bubbles; do
+            src="tests/openbrush_${brush}_stroke.cpp"
+            if [ -f "$src" ]; then
+              g++ -std=c++17 -Wall -Wextra -Iengine/render/include "$src" -o "/tmp/test-${brush}"
+              "/tmp/test-${brush}"
+            fi
+          done
+      - name: Validate particle shaders
+        run: |
+          set -euo pipefail
+          for shader in engine/render/shaders/openbrush_{fire,snow,embers,bubbles}.vert engine/render/shaders/openbrush_bubbles.frag; do
+            glslangValidator -V "$shader" -o /tmp/particle.spv
+          done
