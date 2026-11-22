@@ -127,6 +127,8 @@ struct CarouselState {
     bool voxenPaintEnabled = false;
     float voxenScale = 0.18f;
     float voxenHue = 0.52f;
+    float smokeRgb[3] = {0.12f,0.8f,1.f}; // Smoke RGB stored in preset-27 hue/density/speed
+
     float voxenDensity = 1.0f;
     float voxenSpeed = 1.0f;
     bool motionEnabled = false;

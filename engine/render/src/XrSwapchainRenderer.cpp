@@ -2157,25 +2157,25 @@ void XrSwapchainRenderer::updateControllerInteraction(
                     pose.position.y+0.25f*dir[1],
                     pose.position.z+0.25f*dir[2]};
         v.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
-        v.hue=imguiCarousel_.voxenHue;
-        v.density=smoke ? 1.f : imguiCarousel_.voxenDensity;
+        v.hue=smoke ? imguiCarousel_.smokeRgb[0] : imguiCarousel_.voxenHue;
+        v.density=smoke ? imguiCarousel_.smokeRgb[1] : imguiCarousel_.voxenDensity;
         v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,11) :
             std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
-        v.speed=smoke ? 1.f : imguiCarousel_.voxenSpeed;
+        v.speed=smoke ? imguiCarousel_.smokeRgb[2] : imguiCarousel_.voxenSpeed;
         v.motionEnabled=!smoke && imguiCarousel_.motionEnabled;
         v.velocity={dir[0]*imguiCarousel_.motionSpeed,
                     dir[1]*imguiCarousel_.motionSpeed,
                     dir[2]*imguiCarousel_.motionSpeed};
         bool accept=true;
         if(smoke) {
-            voxen::render::openbrush::SmokeStrokePoint next{v.position,v.scale,0.f,1.f,v.hue};
+            voxen::render::openbrush::SmokeStrokePoint next{v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}};
             // Each stroke starts with one point; thereafter distance sampling
             // is independent of controller frame rate.
             if(smokeTriggerActive_) {
                 for(auto it=voxens_.rbegin();it!=voxens_.rend();++it) {
                     if(it->preset!=voxen::render::openbrush::SmokeStrokePreset)continue;
                     accept=voxen::render::openbrush::shouldSampleSmoke(
-                        {it->position,it->scale,0.f,1.f,it->hue},next);
+                        {it->position,it->scale,0.f,1.f,{it->hue,it->density,it->speed}},next);
                     break;
                 }
             }
@@ -2200,7 +2200,7 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
     std::vector<voxen::render::openbrush::SmokeStrokePoint> points;
     for(const auto& v:voxens_)
         if(v.preset==voxen::render::openbrush::SmokeStrokePreset)
-            points.push_back({v.position,v.scale,0.f,std::clamp(v.density,0.f,1.f),v.hue});
+            points.push_back({v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
     // Synchronize before replacing buffers referenced by either eye.
     vkDeviceWaitIdle(device_);
     smokePaintGpu_.destroy(device_);

@@ -84,7 +84,25 @@ void drawCarousel(CarouselState& state) {
             ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
             if(!state.voxenPaintEnabled)ImGui::TextDisabled("No Voxen selected for painting");
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.18f,0.60f,"%.2f");
-            ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
+            if(state.particlePaintEnabled) {
+                ImGui::ColorPicker3("Smoke RGB",state.smokeRgb,
+                    ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_DisplayRGB |
+                    ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_NoSidePreview);
+                ImGui::ColorButton("Current Smoke",ImVec4(state.smokeRgb[0],
+                    state.smokeRgb[1],state.smokeRgb[2],1.f));
+                static constexpr float palette[][3]={
+                    {1.f,1.f,1.f},{0.12f,0.8f,1.f},{1.f,0.2f,0.4f},
+                    {1.f,0.65f,0.12f},{0.25f,1.f,0.45f},{0.65f,0.25f,1.f}};
+                for(int i=0;i<6;++i) {
+                    ImGui::PushID(i);
+                    if(ImGui::ColorButton("##swatch",ImVec4(palette[i][0],
+                        palette[i][1],palette[i][2],1.f),
+                        ImGuiColorEditFlags_NoTooltip,ImVec2(42,32)))
+                        std::copy(palette[i],palette[i]+3,state.smokeRgb);
+                    if(i!=5)ImGui::SameLine();
+                    ImGui::PopID();
+                }
+            } else ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
             ImGui::SliderFloat(state.voxenPreset>=4 ? "Deformation" : "Density",&state.voxenDensity,0.3f,2.f);
             ImGui::SliderFloat("Speed",&state.voxenSpeed,0.1f,3.f);
             ImGui::Separator();
