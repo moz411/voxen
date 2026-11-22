@@ -25,6 +25,10 @@ jobs:
               "/tmp/test-${brush}"
             fi
           done
+      - name: Benchmark CPU mesh generation and packing
+        run: |
+          g++ -O2 -std=c++17 -Iengine/render/include tests/openbrush_particle_benchmark.cpp -o /tmp/particle-benchmark
+          /tmp/particle-benchmark
       - name: Validate particle shaders
         run: |
           set -euo pipefail
