@@ -307,10 +307,9 @@ private:
     voxen::render::openbrush::CompiledMeshGpu starsPaintGpu_{};
     voxen::render::openbrush::CompiledMeshGpu firePaintGpu_{};
     bool smokePaintDirty_=true;
-    std::chrono::steady_clock::time_point fireLastUpdate_{};
-    bool fireAnimationActive_=false;
     bool smokeTriggerActive_=false;
     void rebuildSmokePaintGpu();
+    VkPipeline openbrushFirePipeline_ = VK_NULL_HANDLE;
     VkPipeline openbrushSmokePipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout openbrushSmokePipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline openbrushMeshPipeline_ = VK_NULL_HANDLE;

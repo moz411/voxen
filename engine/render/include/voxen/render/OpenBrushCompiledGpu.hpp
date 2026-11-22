@@ -102,7 +102,9 @@ public:
                 VkPipeline smokePipeline=VK_NULL_HANDLE,
                 VkPipelineLayout smokeLayout=VK_NULL_HANDLE,
                 VkDescriptorSet smokeTexture=VK_NULL_HANDLE,
-                const SmokeCameraPush* smokeCamera=nullptr) const {
+                const SmokeCameraPush* smokeCamera=nullptr,
+                VkPipeline firePipeline=VK_NULL_HANDLE,
+                VkPipelineLayout fireLayout=VK_NULL_HANDLE) const {
         if(empty()||!pipeline)return;
         const bool useSmoke=smokeBillboardCompatible_ && smokePipeline && smokeLayout && smokeTexture && smokeCamera;
         VkDeviceSize offset=0;
@@ -112,8 +114,16 @@ public:
         vkCmdPushConstants(command,layout,VK_SHADER_STAGE_VERTEX_BIT,0,64,viewProjection.data());
         constexpr const char* smokeGuid="70d79cca-b159-4f35-990c-f02193947fe8";
         for(const auto& draw:draws_)
-            if(draw.indexCount && (!useSmoke || draw.brushGuid!=smokeGuid))
+            if(draw.indexCount && (!useSmoke || draw.brushGuid!=smokeGuid) && !(firePipeline && fireLayout && smokeCamera && draw.brushGuid=="voxen-native-fire"))
                 vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+        if(firePipeline && fireLayout && smokeCamera) {
+            vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,firePipeline);
+            vkCmdPushConstants(command,fireLayout,VK_SHADER_STAGE_VERTEX_BIT,0,
+                sizeof(*smokeCamera),smokeCamera);
+            for(const auto& draw:draws_)
+                if(draw.indexCount && draw.brushGuid=="voxen-native-fire")
+                    vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+        }
         if(!useSmoke)return;
         vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,smokePipeline);
         vkCmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_GRAPHICS,

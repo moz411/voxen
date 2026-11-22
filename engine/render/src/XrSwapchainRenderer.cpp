@@ -69,6 +69,7 @@
 #include "mandelbulbLitFrag.spv.hpp"
 #include "openbrushMeshVert.spv.hpp"
 #include "openbrushMeshFrag.spv.hpp"
+#include "openbrushFireVert.spv.hpp"
 #include "openbrushSmokeVert.spv.hpp"
 #include "openbrushSmokeFrag.spv.hpp"
 #include "openbrushDotsVert.spv.hpp"
@@ -1720,7 +1721,7 @@ void XrSwapchainRenderer::createPipeline() {
             blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
             blend.alphaBlendOp=VK_BLEND_OP_ADD;
         }
-        if (&out==&openbrushSmokePipeline_) {
+        if (&out==&openbrushSmokePipeline_ || &out==&openbrushFirePipeline_) {
             blend.blendEnable=VK_TRUE;
             blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
             blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
@@ -1761,7 +1762,7 @@ void XrSwapchainRenderer::createPipeline() {
 #endif
         if(&out==&openbrushDotsPipeline_)pi.layout=openbrushDotsPipelineLayout_;
         if(&out==&openbrushMeshPipeline_)pi.layout=openbrushMeshPipelineLayout_;
-        if(&out==&openbrushSmokePipeline_)pi.layout=openbrushSmokePipelineLayout_;
+        if(&out==&openbrushSmokePipeline_ || &out==&openbrushFirePipeline_)pi.layout=openbrushSmokePipelineLayout_;
         if(&out==&panoramaPipeline_)pi.layout=panoramaPipelineLayout_;
         if(&out==&galleryCylinderPicturePipeline_)pi.layout=galleryPicturePipelineLayout_;
         pi.renderPass=renderPass_;
@@ -1771,6 +1772,7 @@ void XrSwapchainRenderer::createPipeline() {
     };
     buildPipeline(openbrushMeshVert,openbrushMeshVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushMeshPipeline_);
     buildPipeline(openbrushSmokeVert,openbrushSmokeVertSize,openbrushSmokeFrag,openbrushSmokeFragSize,openbrushSmokePipeline_);
+    buildPipeline(openbrushFireVert,openbrushFireVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushFirePipeline_);
     buildPipeline(openbrushDotsVert,openbrushDotsVertSize,openbrushDotsFrag,openbrushDotsFragSize,openbrushDotsPipeline_);
     buildPipeline(panoramaVert,panoramaVertSize,panoramaFrag,panoramaFragSize,panoramaPipeline_);
     buildPipeline(organicSphereVert, organicSphereVertSize, organicSphereFrag, organicSphereFragSize, organicSpherePipeline_);
@@ -2201,26 +2203,21 @@ void XrSwapchainRenderer::updateControllerInteraction(
 
 void XrSwapchainRenderer::rebuildSmokePaintGpu() {
     if(device_==VK_NULL_HANDLE)return;
-    const auto now=std::chrono::steady_clock::now();
-    const bool fireTick=fireAnimationActive_ &&
-        (fireLastUpdate_.time_since_epoch().count()==0 ||
-         now-fireLastUpdate_>=std::chrono::milliseconds(100));
-    if(!smokePaintDirty_ && !fireTick)return;
-    const bool rebuildAll=smokePaintDirty_;
-    if(fireTick)fireLastUpdate_=now;
+    if(!smokePaintDirty_)return;
     std::vector<voxen::render::openbrush::SmokeStrokePoint> points;
     for(const auto& v:voxens_)
         if(v.preset==voxen::render::openbrush::SmokeStrokePreset)
             points.push_back({v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
     // Synchronize before replacing buffers referenced by either eye.
     vkDeviceWaitIdle(device_);
-    if(rebuildAll){smokePaintGpu_.destroy(device_);starsPaintGpu_.destroy(device_);}
+    smokePaintGpu_.destroy(device_);
+    starsPaintGpu_.destroy(device_);
     firePaintGpu_.destroy(device_);
     std::vector<voxen::render::openbrush::SmokeStrokePoint> stars;
     for(const auto& v:voxens_)
         if(v.preset==voxen::render::openbrush::StarsStrokePreset)
             stars.push_back({v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
-    if(rebuildAll && !stars.empty()) {
+    if(!stars.empty()) {
         auto scene=voxen::render::openbrush::makeStarsStrokeScene(stars);
         starsPaintGpu_.upload(device_,physicalDevice_,
             voxen::render::openbrush::packMeshes(scene));
@@ -2229,14 +2226,12 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
     for(const auto& v:voxens_)
         if(v.preset==voxen::render::openbrush::FireStrokePreset)
             flames.push_back({v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
-    fireAnimationActive_=!flames.empty();
     if(!flames.empty()) {
-        const float elapsed=std::chrono::duration<float>(now.time_since_epoch()).count();
-        auto scene=voxen::render::openbrush::makeFireStrokeScene(flames,elapsed);
+        auto scene=voxen::render::openbrush::makeFireStrokeScene(flames);
         firePaintGpu_.upload(device_,physicalDevice_,
             voxen::render::openbrush::packMeshes(scene));
     }
-    if(rebuildAll && !points.empty()) {
+    if(!points.empty()) {
         auto scene=voxen::render::openbrush::makeSmokeStrokeScene(points);
         smokePaintGpu_.upload(device_,physicalDevice_,voxen::render::openbrush::packMeshes(scene));
 #ifdef VOXEN_WITH_GLB_IMPORT
@@ -3101,7 +3096,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             openbrushMeshPipelineLayout_,vp,openbrushSmokePipeline_,
             openbrushSmokePipelineLayout_,openbrushSmokeTexture_.descriptor,&smoke);
         firePaintGpu_.record(commandBuffer_,openbrushMeshPipeline_,
-            openbrushMeshPipelineLayout_,vp);
+            openbrushMeshPipelineLayout_,vp,VK_NULL_HANDLE,VK_NULL_HANDLE,
+            VK_NULL_HANDLE,&smoke,openbrushFirePipeline_,openbrushSmokePipelineLayout_);
         starsPaintGpu_.record(commandBuffer_,openbrushMeshPipeline_,
             openbrushMeshPipelineLayout_,vp);
         smokePaintGpu_.record(commandBuffer_,openbrushMeshPipeline_,
@@ -4479,6 +4475,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
     if(device_!=VK_NULL_HANDLE){openbrushDotsGpu_.destroy(device_);openbrushMeshGpu_.destroy(device_);smokePaintGpu_.destroy(device_);starsPaintGpu_.destroy(device_);firePaintGpu_.destroy(device_);}
+    if(openbrushFirePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushFirePipeline_,nullptr);openbrushFirePipeline_=VK_NULL_HANDLE;}
     if(openbrushSmokePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushSmokePipeline_,nullptr);openbrushSmokePipeline_=VK_NULL_HANDLE;}
     if(openbrushSmokePipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,openbrushSmokePipelineLayout_,nullptr);openbrushSmokePipelineLayout_=VK_NULL_HANDLE;}
     if(openbrushMeshPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushMeshPipeline_,nullptr);openbrushMeshPipeline_=VK_NULL_HANDLE;}
