@@ -2256,9 +2256,10 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
     append(makeBubblesStrokeScene(strokes[5]));
     append(makeSmokeStrokeScene(strokes[0]));
     const auto packed=packMeshes(combined);
-    // Existing single-frame command-buffer lifecycle: wait for outstanding
-    // submissions before replacing the shared allocation.
-    vkDeviceWaitIdle(device_);
+    // renderImage() waits on fence_ after every vkQueueSubmit, for each eye.
+    // Thus no submission referencing nativeParticleGpu_ is outstanding here:
+    // replacing its allocation needs no device-wide stall. Keep this invariant
+    // if renderImage is ever changed to allow multiple in-flight frames.
     nativeParticleGpu_.destroy(device_);
     nativeParticleGpu_.upload(device_,physicalDevice_,packed);
 #ifdef VOXEN_WITH_GLB_IMPORT
