@@ -11,7 +11,7 @@ layout(push_constant) uniform FireCamera {
 } camera;
 layout(location=0) out vec4 vColor;
 layout(location=1) out vec3 vFlame;
-layout(location=2) out vec2 vEmberDisk;\nlayout(location=2) out vec2 vEmberDisk;
+layout(location=2) out vec2 vEmberDisk;
 float hash11(float n) {return fract(sin(n)*43758.5453123);}
 float noise2(vec2 p) {
     vec2 i=floor(p), f=fract(p);
@@ -35,7 +35,7 @@ void main() {
                         camera.cameraUp.xyz*inUV.w*0.008;
         vColor=vec4(inColor.rgb,inColor.a*(1.0-age)*(1.0-age));
         vFlame=vec3(-1.0,age,phase);
-        vEmberDisk=inUV.zw;\n        vEmberDisk=inUV.zw;
+        vEmberDisk=inUV.zw;
     } else {
         float radius=inUV.z;
         float n=noise2(vec2(tip*5.0+phase,t*2.5));
@@ -47,7 +47,7 @@ void main() {
         float flicker=0.78+0.22*n2;
         vColor=vec4(inColor.rgb*flicker,inColor.a*flicker);
         vFlame=vec3(tip,sign(inUV.w),phase);
-        vEmberDisk=vec2(0.0);\n        vEmberDisk=vec2(0.0);
+        vEmberDisk=vec2(0.0);
     }
     gl_Position=camera.viewProjection*vec4(position,1.0);
 }
