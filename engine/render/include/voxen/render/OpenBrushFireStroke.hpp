@@ -15,13 +15,13 @@ inline CompiledScene makeFireStrokeScene(const std::vector<SmokeStrokePoint>& po
     if(points.empty())return scene;
     CompiledMesh mesh;
     mesh.brushGuid="voxen-native-fire";
-    constexpr int steps=6;
+    constexpr int steps=9;
     for(std::size_t i=0;i<points.size();++i) {
         const auto& p=points[i];
-        for(int tongue=0;tongue<5;++tongue) {
+        for(int tongue=0;tongue<6;++tongue) {
             const float phase=float(i*13+tongue*31)*2.39996323f;
             const float radius=p.size*(0.075f+0.017f*float(tongue));
-            const float height=p.size*(0.45f+0.13f*float(tongue));
+            const float height=p.size*(0.42f+0.12f*float(tongue));
             const float cx=p.center[0]+std::sin(phase)*p.size*0.16f;
             const float cz=p.center[2]+std::cos(phase)*p.size*0.16f;
             for(int plane=0;plane<3;++plane) {
@@ -43,7 +43,7 @@ inline CompiledScene makeFireStrokeScene(const std::vector<SmokeStrokePoint>& po
                             std::clamp(plane==2 ? 0.85f : 0.28f+0.70f*t,0.f,1.f),
                             std::clamp(plane==2 ? 0.36f : 0.025f+0.28f*t,0.f,1.f),
                             (plane==2 ? 0.45f : 0.65f-0.45f*t)*std::clamp(p.opacity,0.f,1.f)});
-                        mesh.uv0.insert(mesh.uv0.end(),{t,phase,radius,height});
+                        mesh.uv0.insert(mesh.uv0.end(),{t,phase,radius,height*float(side)});
                     }
                 }
                 for(std::uint32_t row=0;row<steps;++row) {
