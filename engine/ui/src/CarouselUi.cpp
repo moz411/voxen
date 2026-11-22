@@ -59,8 +59,13 @@ void drawCarousel(CarouselState& state) {
                     state.particlePaintEnabled=true;
                     state.voxenPaintEnabled=true;
                 }
+                if(ImGui::Selectable("FIRE (native)",state.particlePaintEnabled && state.particlePreset==2)) {
+                    state.particlePreset=2;
+                    state.particlePaintEnabled=true;
+                    state.voxenPaintEnabled=true;
+                }
                 ImGui::TextDisabled("Hold right trigger and draw a continuous stroke");
-                ImGui::TextDisabled("Native Smoke / Stars geometry");
+                ImGui::TextDisabled("Native Smoke / Stars / Fire geometry");
                 ImGui::EndTabItem();
             }
             ImGui::EndTabBar();
