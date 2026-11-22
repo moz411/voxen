@@ -49,30 +49,45 @@ void drawCarousel(CarouselState& state) {
             ImGui::EndTabItem();
             }
             if(ImGui::BeginTabItem("PARTICLES")) {
-                static constexpr const char* particleNames[]={"SMOKE","SNOW","STARS","EMBERS","BUBBLES","FIREFLIES","MAGIC DUST"};
-                ImGui::TextDisabled("Open Brush-inspired emitters (renderer pending)");
-                for(int i=0;i<7;++i) {
-                    ImGui::PushID(i);
-                    if(ImGui::Selectable(particleNames[i],state.particlePaintEnabled && state.particlePreset==i)) {
-                        state.particlePreset=i;
-                        state.particlePaintEnabled=true;
-                        state.voxenPaintEnabled=true;
-                    }
-                    ImGui::PopID();
+                if(ImGui::Selectable("SMOKE (Open Brush)",state.particlePaintEnabled && state.particlePreset==0)) {
+                    state.particlePreset=0;
+                    state.particlePaintEnabled=true;
+                    state.voxenPaintEnabled=true;
                 }
-                ImGui::Separator();
-                ImGui::SliderFloat("Particle density",&state.particleDensity,0.1f,2.f);
-                ImGui::SliderFloat("Particle lifetime (s)",&state.particleLifetime,0.5f,12.f);
-                ImGui::SliderFloat("Particle turbulence",&state.particleTurbulence,0.f,2.f);
-                ImGui::Checkbox("Particle FFT reaction",&state.particleAudioReactive);
-                ImGui::TextDisabled("Procedural GPU prototype: trigger places emitter");
+                if(ImGui::Selectable("STARS (Open Brush)",state.particlePaintEnabled && state.particlePreset==1)) {
+                    state.particlePreset=1;
+                    state.particlePaintEnabled=true;
+                    state.voxenPaintEnabled=true;
+                }
+                if(ImGui::Selectable("FIRE (native)",state.particlePaintEnabled && state.particlePreset==2)) {
+                    state.particlePreset=2;
+                    state.particlePaintEnabled=true;
+                    state.voxenPaintEnabled=true;
+                }
+                if(ImGui::Selectable("SNOW (native)",state.particlePaintEnabled && state.particlePreset==3)) {
+                    state.particlePreset=3;
+                    state.particlePaintEnabled=true;
+                    state.voxenPaintEnabled=true;
+                }
+                if(ImGui::Selectable("EMBERS (native)",state.particlePaintEnabled && state.particlePreset==4)) {
+                    state.particlePreset=4;
+                    state.particlePaintEnabled=true;
+                    state.voxenPaintEnabled=true;
+                }
+                if(ImGui::Selectable("BUBBLES (native)",state.particlePaintEnabled && state.particlePreset==5)) {
+                    state.particlePreset=5;
+                    state.particlePaintEnabled=true;
+                    state.voxenPaintEnabled=true;
+                }
+                ImGui::TextDisabled("Hold right trigger and draw a continuous stroke");
+                ImGui::TextDisabled("Native Smoke / Stars / Fire / Snow / Embers / Bubbles geometry");
                 ImGui::EndTabItem();
             }
             ImGui::EndTabBar();
             }
             ImGui::EndChild();
             if(state.voxenPaintEnabled) {
-            if(state.particlePaintEnabled)ImGui::TextDisabled("Particle emitter preview / placement");
+            if(state.particlePaintEnabled)ImGui::TextDisabled("Native particle stroke (hold trigger)");
             else ImGui::TextDisabled(state.voxenPreset==0 ? "Animated plasma field" : state.voxenPreset==1 ? "Packed intersecting spheres" : state.voxenPreset==2 ? "Power-8 fractal surface" : state.voxenPreset==3 ? "Animated 3D trajectory lines" : state.voxenPreset==4 ? "Animated deforming 3D sphere" : state.voxenPreset==5 ? "Twisting torus knot" : state.voxenPreset==6 ? "Spiky bloom" : state.voxenPreset==7 ? "Jellyfish bell" : state.voxenPreset==19 ? "Rotating Rubik cube with animated face turns" : state.voxenPreset==18 ? "Pulsating cube cloud with rotating lattice" : state.voxenPreset==17 ? "Smiling golden PBR creature with glossy eyes" : state.voxenPreset==16 ? "Animated goldfish with flowing fins and bubbles" : state.voxenPreset==15 ? "Floating one-eyed demon with charging fireball" : state.voxenPreset==14 ? "Animated stick figure with neon motion trails" : state.voxenPreset==13 ? "100-sphere evolving phyllotaxis spiral" : state.voxenPreset==12 ? "Animated fractal pyramid raymarch" : "Animated 12-segment earthworm");
             if(!state.particlePaintEnabled && (state.voxenPreset==0 || state.voxenPreset==1 ||
                state.voxenPreset>=12)) {
@@ -90,11 +105,29 @@ void drawCarousel(CarouselState& state) {
                 ImGui::Combo("Surface material",&state.voxenMaterial,materials,12);
             }
             ImGui::TextDisabled("RIGHT STICK: UP/DOWN shape | LEFT/RIGHT size");
-            ImGui::TextDisabled("RIGHT TRIGGER: place one Voxen");
+            ImGui::TextDisabled(state.particlePaintEnabled ? "RIGHT TRIGGER: draw particles" : "RIGHT TRIGGER: place one Voxen");
             ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
             if(!state.voxenPaintEnabled)ImGui::TextDisabled("No Voxen selected for painting");
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.18f,0.60f,"%.2f");
-            ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
+            if(state.particlePaintEnabled) {
+                ImGui::ColorPicker3("Particle RGB",state.smokeRgb,
+                    ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_DisplayRGB |
+                    ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_NoSidePreview);
+                ImGui::ColorButton("Current color",ImVec4(state.smokeRgb[0],
+                    state.smokeRgb[1],state.smokeRgb[2],1.f));
+                static constexpr float palette[][3]={
+                    {1.f,1.f,1.f},{0.12f,0.8f,1.f},{1.f,0.2f,0.4f},
+                    {1.f,0.65f,0.12f},{0.25f,1.f,0.45f},{0.65f,0.25f,1.f}};
+                for(int i=0;i<6;++i) {
+                    ImGui::PushID(i);
+                    if(ImGui::ColorButton("##swatch",ImVec4(palette[i][0],
+                        palette[i][1],palette[i][2],1.f),
+                        ImGuiColorEditFlags_NoTooltip,ImVec2(42,32)))
+                        std::copy(palette[i],palette[i]+3,state.smokeRgb);
+                    if(i!=5)ImGui::SameLine();
+                    ImGui::PopID();
+                }
+            } else ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
             ImGui::SliderFloat(state.voxenPreset>=4 ? "Deformation" : "Density",&state.voxenDensity,0.3f,2.f);
             ImGui::SliderFloat("Speed",&state.voxenSpeed,0.1f,3.f);
             ImGui::Separator();

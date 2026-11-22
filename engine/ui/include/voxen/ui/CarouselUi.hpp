@@ -118,19 +118,17 @@ struct CarouselState {
     bool mandelbulbLighting = false; // Opt-in: proven cyan shader remains default
     int voxenMaterial = 0; // independent surface material for procedural mesh shapes
     bool collideRoomMesh = true;
-    // Particle editor parameters are intentionally separate from legacy Voxen IDs.
-    // No placement is allowed until the Vulkan emitter pipeline is implemented.
+    // Open Brush Smoke is the only supported interactive particle brush.
+    // Legacy 20..26 saved presets remain readable, but are not selectable.
     bool particlePaintEnabled = false;
-    int particlePreset = 0; // 0 Smoke, 1 Snow, 2 Stars
-    float particleDensity = 1.f;
-    float particleLifetime = 4.f;
-    float particleTurbulence = 0.5f;
-    bool particleAudioReactive = true;
+    int particlePreset = 0; // 0 Smoke, 1 Stars, 2 Fire, 3 Snow, 4 Embers, 5 Bubbles
     int voxenPreset = 0;
     int flatVoxenVolume = 0; // 0 cube; 1 sphere // Plasma or Spheres Intersections
     bool voxenPaintEnabled = false;
     float voxenScale = 0.18f;
     float voxenHue = 0.52f;
+    float smokeRgb[3] = {0.12f,0.8f,1.f}; // Smoke RGB stored in preset-27 hue/density/speed
+
     float voxenDensity = 1.0f;
     float voxenSpeed = 1.0f;
     bool motionEnabled = false;

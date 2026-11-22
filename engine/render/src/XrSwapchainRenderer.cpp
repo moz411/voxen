@@ -1,4 +1,9 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
+#include <voxen/render/OpenBrushStarsStroke.hpp>
+#include <voxen/render/OpenBrushFireStroke.hpp>
+#include <voxen/render/OpenBrushSnowStroke.hpp>
+#include <voxen/render/OpenBrushEmbersStroke.hpp>
+#include <voxen/render/OpenBrushBubblesStroke.hpp>
 #include <limits>
 #include <fstream>
 #include <voxen/render/MandelbulbMesh.hpp>
@@ -67,6 +72,11 @@
 #include "mandelbulbLitFrag.spv.hpp"
 #include "openbrushMeshVert.spv.hpp"
 #include "openbrushMeshFrag.spv.hpp"
+#include "openbrushBubblesVert.spv.hpp"
+#include "openbrushBubblesFrag.spv.hpp"
+#include "openbrushEmbersVert.spv.hpp"
+#include "openbrushSnowVert.spv.hpp"
+#include "openbrushFireVert.spv.hpp"
 #include "openbrushSmokeVert.spv.hpp"
 #include "openbrushSmokeFrag.spv.hpp"
 #include "openbrushDotsVert.spv.hpp"
@@ -472,12 +482,14 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
         imguiCarousel_.editMode=true;
         imguiCarousel_.visible=true;
         voxens_.swap(editorVoxens_);
+        smokePaintDirty_=true;
         pendingGalleryFloorAction_=0;
     } else {
         editorSettings_=imguiCarousel_;
         editorSettings_.editMode=true;
         editorSettings_.visible=true;
         voxens_.swap(editorVoxens_);
+        smokePaintDirty_=true;
         imguiCarousel_.editMode=false;
         imguiCarousel_.visible=false;
         // Keep the panorama in editorSettings_ for the next edit session,
@@ -655,6 +667,7 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
 #endif
         if(!std::filesystem::is_regular_file(path) || !activateTiltScene(path))return false;
         std::vector<PlasmaVoxen>{}.swap(voxens_);
+        smokePaintDirty_=true;
 #ifdef VOXEN_WITH_IMGUI
         imguiCarousel_.editMode=false;
         imguiCarousel_.visible=false;
@@ -701,6 +714,7 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
         __android_log_print(ANDROID_LOG_INFO,"VoxenGLB","Async CPU decode started");
 #endif
         std::vector<PlasmaVoxen>{}.swap(voxens_);
+        smokePaintDirty_=true;
         glbPreview_=false;
         glbPlaced_=false; // enabled only after CPU decode and GPU upload
         glbInGallery_=false;
@@ -724,6 +738,7 @@ bool XrSwapchainRenderer::enterImmersiveScene(const voxen::gallery::SceneId& id)
     if(!immersiveSnapshot)return false;
     // Enter with only the requested scene instances resident.
     std::vector<PlasmaVoxen>{}.swap(voxens_);
+    smokePaintDirty_=true;
     if(!loadSavedScene(id)) return false;
     mechanicalCannonPreview_=immersiveSnapshot->sceneKind==1;
     mechanicalCannonStart_=std::chrono::steady_clock::now();
@@ -753,6 +768,7 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     // Release the per-scene CPU instance storage. Global pipelines, mesh
     // caches and descriptor allocations remain resident for now.
     std::vector<PlasmaVoxen>{}.swap(voxens_);
+    smokePaintDirty_=true;
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
     immersiveSceneActive_=false;
@@ -941,6 +957,7 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
         restored.push_back(item);
     }
     voxens_=std::move(restored);
+    smokePaintDirty_=true;
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
 #ifdef VOXEN_WITH_IMGUI
@@ -1671,6 +1688,12 @@ void XrSwapchainRenderer::createPipeline() {
         || &out == &imguiPanelPipeline_
 #endif
         ) ? VK_FALSE : VK_TRUE;
+        // Translucent particle layers must not write depth: otherwise the first
+        // flake/bubble occludes later translucent layers in the same eye.
+        if (&out==&openbrushSmokePipeline_ || &out==&openbrushFirePipeline_ ||
+            &out==&openbrushSnowPipeline_ || &out==&openbrushEmbersPipeline_ ||
+            &out==&openbrushBubblesPipeline_ || &out==&openbrushMeshPipeline_)
+            ds.depthWriteEnable=VK_FALSE;
         if (&out == &panoramaPipeline_) ds.depthTestEnable=VK_FALSE;
         if (&out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
@@ -1711,7 +1734,7 @@ void XrSwapchainRenderer::createPipeline() {
             blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
             blend.alphaBlendOp=VK_BLEND_OP_ADD;
         }
-        if (&out==&openbrushSmokePipeline_) {
+        if (&out==&openbrushSmokePipeline_ || &out==&openbrushFirePipeline_ || &out==&openbrushSnowPipeline_ || &out==&openbrushEmbersPipeline_ || &out==&openbrushBubblesPipeline_) {
             blend.blendEnable=VK_TRUE;
             blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
             blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
@@ -1752,7 +1775,7 @@ void XrSwapchainRenderer::createPipeline() {
 #endif
         if(&out==&openbrushDotsPipeline_)pi.layout=openbrushDotsPipelineLayout_;
         if(&out==&openbrushMeshPipeline_)pi.layout=openbrushMeshPipelineLayout_;
-        if(&out==&openbrushSmokePipeline_)pi.layout=openbrushSmokePipelineLayout_;
+        if(&out==&openbrushSmokePipeline_ || &out==&openbrushFirePipeline_ || &out==&openbrushSnowPipeline_ || &out==&openbrushEmbersPipeline_ || &out==&openbrushBubblesPipeline_)pi.layout=openbrushSmokePipelineLayout_;
         if(&out==&panoramaPipeline_)pi.layout=panoramaPipelineLayout_;
         if(&out==&galleryCylinderPicturePipeline_)pi.layout=galleryPicturePipelineLayout_;
         pi.renderPass=renderPass_;
@@ -1762,6 +1785,10 @@ void XrSwapchainRenderer::createPipeline() {
     };
     buildPipeline(openbrushMeshVert,openbrushMeshVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushMeshPipeline_);
     buildPipeline(openbrushSmokeVert,openbrushSmokeVertSize,openbrushSmokeFrag,openbrushSmokeFragSize,openbrushSmokePipeline_);
+    buildPipeline(openbrushFireVert,openbrushFireVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushFirePipeline_);
+    buildPipeline(openbrushSnowVert,openbrushSnowVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushSnowPipeline_);
+    buildPipeline(openbrushEmbersVert,openbrushEmbersVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushEmbersPipeline_);
+    buildPipeline(openbrushBubblesVert,openbrushBubblesVertSize,openbrushBubblesFrag,openbrushBubblesFragSize,openbrushBubblesPipeline_);
     buildPipeline(openbrushDotsVert,openbrushDotsVertSize,openbrushDotsFrag,openbrushDotsFragSize,openbrushDotsPipeline_);
     buildPipeline(panoramaVert,panoramaVertSize,panoramaFrag,panoramaFragSize,panoramaPipeline_);
     buildPipeline(organicSphereVert, organicSphereVertSize, organicSphereFrag, organicSphereFragSize, organicSpherePipeline_);
@@ -2126,7 +2153,8 @@ void XrSwapchainRenderer::updateControllerInteraction(
     }
     // A single trigger click places exactly one instance. Never place when
     // aiming at the carousel, or during gallery/immersive interactions.
-    if(tracked[1] && galleryTriggerEdge && pendingGalleryFloorAction_==0 &&
+    if(tracked[1] && (galleryTriggerEdge ||
+       (pressed[1] && imguiCarousel_.particlePaintEnabled)) && pendingGalleryFloorAction_==0 &&
        editingMode() && !immersiveSceneActive_ &&
        imguiCarousel_.voxenPaintEnabled && !panelAimed_
 #ifdef VOXEN_WITH_GLB_IMPORT
@@ -2140,25 +2168,52 @@ void XrSwapchainRenderer::updateControllerInteraction(
             -2.f*(q.y*q.z-q.w*q.x),
             -(1.f-2.f*(q.x*q.x+q.y*q.y))};
         PlasmaVoxen v;
-        v.preset=imguiCarousel_.particlePaintEnabled
-            ? 20+imguiCarousel_.particlePreset : imguiCarousel_.voxenPreset;
+        const bool smoke=imguiCarousel_.particlePaintEnabled;
+        const bool stars=smoke && imguiCarousel_.particlePreset==1;
+        const bool fire=smoke && imguiCarousel_.particlePreset==2;
+        const bool snow=smoke && imguiCarousel_.particlePreset==3;
+        const bool embers=smoke && imguiCarousel_.particlePreset==4;
+        const bool bubbles=smoke && imguiCarousel_.particlePreset==5;
+        // Normal Voxens remain one-per-trigger. Smoke samples a continuous
+        // controller trajectory and uses the same saved-runtime point fields.
+        v.preset=!smoke ? imguiCarousel_.voxenPreset :
+            bubbles ? voxen::render::openbrush::BubblesStrokePreset :
+            embers ? voxen::render::openbrush::EmbersStrokePreset :
+            snow ? voxen::render::openbrush::SnowStrokePreset :
+            fire ? voxen::render::openbrush::FireStrokePreset :
+            stars ? voxen::render::openbrush::StarsStrokePreset :
+                    voxen::render::openbrush::SmokeStrokePreset;
         v.flatVolume=imguiCarousel_.flatVoxenVolume;
         v.position={pose.position.x+0.25f*dir[0],
                     pose.position.y+0.25f*dir[1],
                     pose.position.z+0.25f*dir[2]};
         v.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
-        v.hue=imguiCarousel_.voxenHue;
-        v.density=imguiCarousel_.particlePaintEnabled
-            ? imguiCarousel_.particleDensity : imguiCarousel_.voxenDensity;
+        v.hue=smoke ? imguiCarousel_.smokeRgb[0] : imguiCarousel_.voxenHue;
+        v.density=smoke ? imguiCarousel_.smokeRgb[1] : imguiCarousel_.voxenDensity;
         v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,11) :
             std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
-        v.speed=imguiCarousel_.voxenSpeed;
-        v.motionEnabled=imguiCarousel_.motionEnabled;
+        v.speed=smoke ? imguiCarousel_.smokeRgb[2] : imguiCarousel_.voxenSpeed;
+        v.motionEnabled=!smoke && imguiCarousel_.motionEnabled;
         v.velocity={dir[0]*imguiCarousel_.motionSpeed,
                     dir[1]*imguiCarousel_.motionSpeed,
                     dir[2]*imguiCarousel_.motionSpeed};
-        if(voxens_.size()<256) {
+        bool accept=true;
+        if(smoke) {
+            voxen::render::openbrush::SmokeStrokePoint next{v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}};
+            // Each stroke starts with one point; thereafter distance sampling
+            // is independent of controller frame rate.
+            if(smokeTriggerActive_) {
+                for(auto it=voxens_.rbegin();it!=voxens_.rend();++it) {
+                    if(it->preset!=v.preset)continue;
+                    accept=voxen::render::openbrush::shouldSampleSmoke(
+                        {it->position,it->scale,0.f,1.f,{it->hue,it->density,it->speed}},next);
+                    break;
+                }
+            }
+        }
+        if(accept && voxens_.size()<4096) {
             voxens_.push_back(v);
+            if(smoke)smokePaintDirty_=true;
 #ifdef __ANDROID__
             __android_log_print(ANDROID_LOG_INFO,"Voxen",
                 "Editor placed preset=%d scale=%.2f total=%zu",
@@ -2166,10 +2221,63 @@ void XrSwapchainRenderer::updateControllerInteraction(
 #endif
         }
     }
+    smokeTriggerActive_=tracked[1] && pressed[1] && imguiCarousel_.particlePaintEnabled &&
+        editingMode() && !immersiveSceneActive_ && !panelAimed_;
 #endif
 }
 
+void XrSwapchainRenderer::rebuildSmokePaintGpu() {
+    if(device_==VK_NULL_HANDLE || !smokePaintDirty_)return;
+    using namespace voxen::render::openbrush;
+    std::array<std::vector<SmokeStrokePoint>,6> strokes;
+    for(const auto& v:voxens_) {
+        int kind=-1;
+        switch(v.preset) {
+        case SmokeStrokePreset: kind=0; break;
+        case StarsStrokePreset: kind=1; break;
+        case FireStrokePreset: kind=2; break;
+        case SnowStrokePreset: kind=3; break;
+        case EmbersStrokePreset: kind=4; break;
+        case BubblesStrokePreset: kind=5; break;
+        default: break;
+        }
+        if(kind>=0)strokes[static_cast<std::size_t>(kind)].push_back(
+            {v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
+    }
+    CompiledScene combined;
+    combined.formatVersion=2;
+    auto append=[&](CompiledScene&& scene) {
+        for(auto& mesh:scene.meshes)combined.meshes.push_back(std::move(mesh));
+    };
+    append(makeStarsStrokeScene(strokes[1]));
+    append(makeFireStrokeScene(strokes[2]));
+    append(makeSnowStrokeScene(strokes[3]));
+    append(makeEmbersStrokeScene(strokes[4]));
+    append(makeBubblesStrokeScene(strokes[5]));
+    append(makeSmokeStrokeScene(strokes[0]));
+    const auto packed=packMeshes(combined);
+    // renderImage() waits on fence_ after every vkQueueSubmit, for each eye.
+    // Thus no submission referencing nativeParticleGpu_ is outstanding here:
+    // replacing its allocation needs no device-wide stall. Keep this invariant
+    // if renderImage is ever changed to allow multiple in-flight frames.
+    nativeParticleGpu_.destroy(device_);
+    nativeParticleGpu_.upload(device_,physicalDevice_,packed);
+#ifdef VOXEN_WITH_GLB_IMPORT
+    if(!strokes[0].empty()) {
+#ifdef __ANDROID__
+        const std::filesystem::path root="/sdcard/Android/data/org.voxen.xr/files";
+#else
+        const std::filesystem::path root=".";
+#endif
+        loadOpenBrushSmokeTexture(root/"tilts"/
+            "Smoke-70d79cca-b159-4f35-990c-f02193947fe8-MainTex.png");
+    }
+#endif
+    smokePaintDirty_=false;
+}
+
 void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, const XrView& xrView) {
+    rebuildSmokePaintGpu();
     checkVk(vkResetFences(device_, 1, &fence_), "vkResetFences");
     checkVk(vkResetCommandBuffer(commandBuffer_, 0), "vkResetCommandBuffer");
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -2776,47 +2884,11 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 vkCmdDraw(commandBuffer_,vertices,1,0,0);
             }
         };
-        // Prototype emitters: deterministic animated procedural particles.
-        // Uses existing Vulkan pipelines (cloud/sphere/spike) to avoid new
-        // shader dependencies. Presets 20..26 remain stable in scene storage.
-        auto drawEmitter=[&](const PlasmaVoxen& emitter){
-            const int count=std::clamp(int(18.f*emitter.density),8,36);
-            const float t=seconds*std::max(0.1f,emitter.speed);
-            auto hash=[](float n){return std::sin(n*127.1f)*43758.5453f
-                -std::floor(std::sin(n*127.1f)*43758.5453f);};
-            for(int i=0;i<count;++i){
-                const float id=float(i+1);
-                const float a=hash(id*1.7f)*6.2831853f;
-                const float radius=std::sqrt(hash(id*2.3f))*emitter.scale*1.8f;
-                const float phase=hash(id*3.1f);
-                const float age=std::fmod(t*(emitter.preset==21?0.16f:0.11f)+phase,1.f);
-                const int kind=emitter.preset-20; // Smoke Snow Stars Embers Bubbles Fireflies Dust
-                PlasmaVoxen p=emitter;
-                p.preset=kind==0?9:(kind==1||kind==4?4:6);
-                p.position[0]+=std::cos(a)*radius+std::sin(t*0.6f+id)*0.07f;
-                p.position[2]+=std::sin(a)*radius+std::cos(t*0.5f+id)*0.07f;
-                const float drift=std::sin(t*1.4f+id*2.7f);
-                const float height=(kind==1 ? (1.f-age) :
-                    kind==5 ? 0.45f+0.35f*drift :
-                    kind==6 ? 0.5f+0.3f*std::sin(t*0.7f+id) : age);
-                p.position[1]+=height*emitter.scale*3.f;
-                if(kind==4 || kind==5 || kind==6){
-                    p.position[0]+=drift*emitter.scale*0.55f;
-                    p.position[2]+=std::cos(t+id)*emitter.scale*0.35f;
-                }
-                p.scale=emitter.scale*(kind==0?0.24f:kind==4?0.16f:0.09f)
-                    *(kind==0?0.6f+age:kind==5?0.7f+0.5f*std::sin(t*3.f+id):1.f);
-                p.hue=kind==0?0.58f:kind==1?0.56f:kind==2?0.14f:
-                    kind==3?0.06f:kind==4?0.53f:kind==5?0.20f:
-                    emitter.hue+0.2f*std::sin(t+id);
-                p.density=std::max(0.3f,emitter.density);
-                p.material=0;
-                paintPlasma(p);
-            }
-        };
         for(const auto& v:voxens_) {
-            if(v.preset>=20 && v.preset<=26)drawEmitter(v);
-            else paintPlasma(v);
+            // Legacy emitter IDs are preserved in save files, but their
+            // synthetic animation is retired. Smoke points use Vulkan below.
+            if(v.preset>=20)continue;
+            paintPlasma(v);
         }
         // Reuse the existing procedural GPU Spike Bloom pipeline (preset 6).
         // Loaded miniature spike ball follows each tracked index tip.
@@ -2857,7 +2929,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 #ifdef VOXEN_WITH_IMGUI
         // Only one right-hand tool preview can be active at once.
         // Live selected Voxen preview, not part of the saved scene.
-        if(editingMode() && imguiCarousel_.voxenPaintEnabled &&
+        if(editingMode() && imguiCarousel_.voxenPaintEnabled && !imguiCarousel_.particlePaintEnabled &&
 #ifdef VOXEN_WITH_GLB_IMPORT
            !glbPreview_ &&
 #endif
@@ -2868,23 +2940,20 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const float dy=-2.f*(q.y*q.z-q.w*q.x);
             const float dz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
             PlasmaVoxen preview;
-            preview.preset=imguiCarousel_.particlePaintEnabled
-                ? 20+imguiCarousel_.particlePreset : imguiCarousel_.voxenPreset;
+            preview.preset=imguiCarousel_.voxenPreset;
             preview.flatVolume=imguiCarousel_.flatVoxenVolume;
             preview.position={pose.position.x+0.25f*dx,
                               pose.position.y+0.25f*dy,
                               pose.position.z+0.25f*dz};
             preview.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
             preview.hue=imguiCarousel_.voxenHue;
-            preview.density=imguiCarousel_.particlePaintEnabled
-                ? imguiCarousel_.particleDensity : imguiCarousel_.voxenDensity;
+            preview.density=imguiCarousel_.voxenDensity;
             preview.speed=imguiCarousel_.voxenSpeed;
             preview.material=preview.preset>=4 ?
                 std::clamp(imguiCarousel_.voxenMaterial,0,11) :
                 std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
             preview.lodLevel=1; // Stable medium LOD for Mandelbulb preview.
-            if(preview.preset>=20 && preview.preset<=26)drawEmitter(preview);
-            else paintPlasma(preview);
+            paintPlasma(preview);
         }
 
 #endif
@@ -2955,6 +3024,66 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(constants),&constants);
         vkCmdDraw(commandBuffer_,36,1,0,0);
     }
+    // Smoke brush cursor: camera-facing circular reticle at the exact sample
+    // position, sized to the active brush. No GPU allocations or saved objects.
+    if(editingMode() && imguiCarousel_.voxenPaintEnabled &&
+       imguiCarousel_.particlePaintEnabled && controllerTracked_[1] &&
+       !panelAimed_ && laserPipeline_!=VK_NULL_HANDLE) {
+        const auto& hand=controllerPoses_[1];
+        const auto& q=hand.orientation;
+        const std::array<float,3> forward{
+            -2.f*(q.x*q.z+q.w*q.y),-2.f*(q.y*q.z-q.w*q.x),
+            -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        const std::array<float,3> center{
+            hand.position.x+0.25f*forward[0],
+            hand.position.y+0.25f*forward[1],
+            hand.position.z+0.25f*forward[2]};
+        const auto& eyeQ=xrView.pose.orientation;
+        const float x=eyeQ.x,y=eyeQ.y,z=eyeQ.z,w=eyeQ.w;
+        const std::array<float,3> right{
+            1.f-2.f*(y*y+z*z),2.f*(x*y+w*z),2.f*(x*z-w*y)};
+        const std::array<float,3> up{
+            2.f*(x*y-w*z),1.f-2.f*(x*x+z*z),2.f*(y*z+w*x)};
+        const float radius=0.5f*std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
+        constexpr int segments=20;
+        constexpr float tau=6.2831853071795864769f;
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,laserPipeline_);
+        for(int i=0;i<segments;++i) {
+            const float a=tau*float(i)/float(segments);
+            const float b=tau*float(i+1)/float(segments);
+            std::array<float,3> p0{},p1{};
+            for(int j=0;j<3;++j) {
+                p0[j]=center[j]+radius*(std::cos(a)*right[j]+std::sin(a)*up[j]);
+                p1[j]=center[j]+radius*(std::cos(b)*right[j]+std::sin(b)*up[j]);
+            }
+            const float dx=p1[0]-p0[0],dy=p1[1]-p0[1],dz=p1[2]-p0[2];
+            const float len=std::sqrt(dx*dx+dy*dy+dz*dz);
+            if(len<1e-5f)continue;
+            const float vx=dx/len,vy=dy/len,vz=dz/len;
+            // A thin rectangular segment with the same vertex convention
+            // as the existing laser cube (local Z is the segment direction).
+            const float thickness=smokeTriggerActive_?0.007f:0.0035f;
+            Mat4 model{};
+            model.m[0]=right[0]*thickness;
+            model.m[1]=right[1]*thickness;
+            model.m[2]=right[2]*thickness;
+            model.m[4]=up[0]*thickness;
+            model.m[5]=up[1]*thickness;
+            model.m[6]=up[2]*thickness;
+            model.m[8]=dx;model.m[9]=dy;model.m[10]=dz;
+            model.m[12]=(p0[0]+p1[0])*0.5f;
+            model.m[13]=(p0[1]+p1[1])*0.5f;
+            model.m[14]=(p0[2]+p1[2])*0.5f;
+            model.m[15]=1.f;
+            const Mat4 mvp=multiply(projView,model);
+            ProceduralPushConstants pc{mvp,{seconds,1.f,1.f,
+                smokeTriggerActive_?1.f:0.f}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,36,1,0,0);
+        }
+    }
 #endif
     // Stereo-consistent white wipe. Use attachment clears within the existing
     // render pass (no extra shader/pipeline or GPU allocation). White coverage
@@ -2978,7 +3107,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         rectangle.layerCount=1;
         vkCmdClearAttachments(commandBuffer_,1,&attachment,1,&rectangle);
     }
-    if (immersiveSceneActive_ && !openbrushMeshGpu_.empty() && openbrushMeshPipeline_) {
+    if ((immersiveSceneActive_ && !openbrushMeshGpu_.empty() ||
+         !nativeParticleGpu_.empty()) && openbrushMeshPipeline_) {
         std::array<float,16> vp{};
         std::copy(std::begin(projView.m),std::end(projView.m),vp.begin());
 #ifdef VOXEN_WITH_GLB_IMPORT
@@ -2991,11 +3121,19 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         static const auto smokeStart=std::chrono::steady_clock::now();
         smoke.settings[0]=std::chrono::duration<float>(
             std::chrono::steady_clock::now()-smokeStart).count();
-        openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,
+        if(immersiveSceneActive_)openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,
             openbrushMeshPipelineLayout_,vp,openbrushSmokePipeline_,
             openbrushSmokePipelineLayout_,openbrushSmokeTexture_.descriptor,&smoke);
+        nativeParticleGpu_.record(commandBuffer_,openbrushMeshPipeline_,
+            openbrushMeshPipelineLayout_,vp,
+            openbrushSmokePipeline_,openbrushSmokePipelineLayout_,
+            openbrushSmokeTexture_.descriptor,&smoke,
+            openbrushFirePipeline_,openbrushSmokePipelineLayout_,
+            openbrushSnowPipeline_,openbrushSmokePipelineLayout_,
+            openbrushEmbersPipeline_,openbrushSmokePipelineLayout_,
+            openbrushBubblesPipeline_,openbrushSmokePipelineLayout_);
 #else
-        openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,openbrushMeshPipelineLayout_,vp);
+        if(immersiveSceneActive_)openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,openbrushMeshPipelineLayout_,vp);
 #endif
     }
     // Experimental Dots overlay, one instanced draw per eye.
@@ -3262,6 +3400,7 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
         }
     }
     for(auto& v:voxens_){
+        if(v.preset>=20)continue; // Retired emitters and Smoke strokes are static scene content.
         if(!v.motionEnabled)continue;
         if(gravity) v.velocity[1]-=9.81f*dt;
         for(int k=0;k<3;++k){
@@ -3850,6 +3989,7 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.sceneNew=false;
             if(imguiCarousel_.editMode && !immersiveSceneActive_) {
                 voxens_.clear();
+                smokePaintDirty_=true;
                 editingSavedSceneId_.reset();
                 lastVoxenValid_=false;
                 physicsAccumulator_=0.f;
@@ -3949,6 +4089,7 @@ void XrSwapchainRenderer::render(
         if(imguiCarousel_.voxenClear){
             editingSavedSceneId_.reset();
             voxens_.clear();
+            smokePaintDirty_=true;
             lastVoxenValid_=false;
             imguiCarousel_.voxenClear=false;
         }
@@ -4362,7 +4503,12 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
-    if(device_!=VK_NULL_HANDLE){openbrushDotsGpu_.destroy(device_);openbrushMeshGpu_.destroy(device_);}
+    if(device_!=VK_NULL_HANDLE){openbrushDotsGpu_.destroy(device_);openbrushMeshGpu_.destroy(device_);nativeParticleGpu_.destroy(device_);
+    }
+    if(openbrushBubblesPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushBubblesPipeline_,nullptr);openbrushBubblesPipeline_=VK_NULL_HANDLE;}
+    if(openbrushEmbersPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushEmbersPipeline_,nullptr);openbrushEmbersPipeline_=VK_NULL_HANDLE;}
+    if(openbrushSnowPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushSnowPipeline_,nullptr);openbrushSnowPipeline_=VK_NULL_HANDLE;}
+    if(openbrushFirePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushFirePipeline_,nullptr);openbrushFirePipeline_=VK_NULL_HANDLE;}
     if(openbrushSmokePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushSmokePipeline_,nullptr);openbrushSmokePipeline_=VK_NULL_HANDLE;}
     if(openbrushSmokePipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,openbrushSmokePipelineLayout_,nullptr);openbrushSmokePipelineLayout_=VK_NULL_HANDLE;}
     if(openbrushMeshPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushMeshPipeline_,nullptr);openbrushMeshPipeline_=VK_NULL_HANDLE;}
@@ -4396,6 +4542,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenCubeCloudPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenCubeCloudPipeline_,nullptr);voxenCubeCloudPipeline_=VK_NULL_HANDLE;}
     if(voxenRubikCubePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenRubikCubePipeline_,nullptr);voxenRubikCubePipeline_=VK_NULL_HANDLE;}
     voxens_.clear();
+            smokePaintDirty_=true;
     if (laserPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_, laserPipeline_, nullptr); laserPipeline_ = VK_NULL_HANDLE; }
     if (liquidRoomPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,liquidRoomPipeline_,nullptr); liquidRoomPipeline_=VK_NULL_HANDLE; }
     if (solidWallPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,solidWallPipeline_,nullptr); solidWallPipeline_=VK_NULL_HANDLE; }
