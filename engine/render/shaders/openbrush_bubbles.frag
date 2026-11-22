@@ -5,6 +5,18 @@ layout(location=2) in float vPhase;
 layout(location=0) out vec4 outColor;
 void main() {
     float r=length(vDisk);
+    if(vPhase<0.0) {
+        float angle=atan(vDisk.y,vDisk.x);
+        float cross=pow(abs(cos(angle*2.0)),24.0);
+        float diagonal=pow(abs(cos(angle*2.0+0.785398)),30.0);
+        float spike=max(cross,0.35*diagonal);
+        float core=exp(-30.0*r*r);
+        float rays=spike*exp(-5.0*r);
+        float halo=exp(-7.0*r*r);
+        float alpha=clamp((core+0.62*rays+0.16*halo)*vColor.a,0.0,0.95);
+        outColor=vec4(mix(vColor.rgb,vec3(1.0),core*0.75),alpha);
+        return;
+    }
     if(r>1.0)discard;
     float rim=1.0-smoothstep(0.93,1.0,r);
     float ring=smoothstep(0.58,0.88,r)*(1.0-smoothstep(0.95,1.0,r));

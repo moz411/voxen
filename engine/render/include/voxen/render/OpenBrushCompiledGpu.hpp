@@ -123,7 +123,7 @@ public:
             if(draw.indexCount && (!useSmoke || draw.brushGuid!=smokeGuid) && !(firePipeline && fireLayout && smokeCamera && draw.brushGuid=="voxen-native-fire")
                 && !(snowPipeline && snowLayout && smokeCamera && draw.brushGuid=="voxen-native-snow")
                 && !(embersPipeline && embersLayout && smokeCamera && draw.brushGuid=="voxen-native-embers")
-                && !(bubblesPipeline && bubblesLayout && smokeCamera && draw.brushGuid=="voxen-native-bubbles"))
+                && !(bubblesPipeline && bubblesLayout && smokeCamera && (draw.brushGuid=="voxen-native-bubbles" || draw.brushGuid=="voxen-native-stars")))
                 vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
         if(firePipeline && fireLayout && smokeCamera) {
             vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,firePipeline);
@@ -154,7 +154,7 @@ public:
             vkCmdPushConstants(command,bubblesLayout,VK_SHADER_STAGE_VERTEX_BIT,0,
                 sizeof(*smokeCamera),smokeCamera);
             for(const auto& draw:draws_)
-                if(draw.indexCount && draw.brushGuid=="voxen-native-bubbles")
+                if(draw.indexCount && (draw.brushGuid=="voxen-native-bubbles" || draw.brushGuid=="voxen-native-stars"))
                     vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
         }
         if(!useSmoke)return;

@@ -15,16 +15,18 @@ layout(location=2) out float vPhase;
 void main() {
     float t=camera.settings.x;
     float phase=inUV.z;
+    bool star=phase<0.0;
     float radius=inUV.w;
-    vec3 offset=vec3(
+    vec3 offset=star ? vec3(0.0) : vec3(
         sin(t*0.8+phase)*0.045,
         sin(t*0.35+phase)*0.07+mod(t*0.012+phase*0.01,0.7),
         cos(t*0.65+phase)*0.035);
     vec3 right=camera.cameraRight.xyz;
     vec3 up=camera.cameraUp.xyz;
-    vec3 pos=inCenter+offset+radius*(right*inUV.x+up*inUV.y);
+    float twinkle=star ? (0.8+0.25*sin(t*4.5+abs(phase)*3.1)) : 1.0;
+    vec3 pos=inCenter+offset+radius*twinkle*(right*inUV.x+up*inUV.y);
     gl_Position=camera.viewProjection*vec4(pos,1.0);
     vColor=inColor;
     vDisk=inUV.xy;
-    vPhase=phase+t*0.7;
+    vPhase=star ? phase : phase+t*0.7;
 }

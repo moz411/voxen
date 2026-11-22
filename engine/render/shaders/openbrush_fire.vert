@@ -17,8 +17,9 @@ void main() {
     float radius=inUV.z;
     vec3 position=inPosition;
     float sway=tip*tip*radius;
-    position.x+=sway*(0.85*sin(t*4.7+phase)+0.35*sin(t*9.2+phase*1.8));
-    position.z+=sway*0.7*cos(t*3.9+phase);
+    float turbulence=sin(t*7.3+phase*2.7+tip*13.0)*sin(t*3.1+phase+tip*8.0);
+    position.x+=sway*(0.85*sin(t*4.7+phase)+0.35*sin(t*9.2+phase*1.8)+0.24*turbulence);
+    position.z+=sway*(0.7*cos(t*3.9+phase)+0.2*turbulence);
     position.y+=tip*radius*0.22*sin(t*6.3+phase);
     float flicker=0.85+0.15*sin(t*9.0+phase);
     vColor=vec4(inColor.rgb*flicker,inColor.a*flicker);
