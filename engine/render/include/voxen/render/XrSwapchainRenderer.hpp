@@ -304,6 +304,7 @@ private:
     voxen::render::openbrush::DotsGpuBuffer openbrushDotsGpu_{};
     voxen::render::openbrush::CompiledMeshGpu openbrushMeshGpu_{};
     voxen::render::openbrush::CompiledMeshGpu smokePaintGpu_{};
+    voxen::render::openbrush::CompiledMeshGpu starsPaintGpu_{};
     bool smokePaintDirty_=true;
     bool smokeTriggerActive_=false;
     void rebuildSmokePaintGpu();

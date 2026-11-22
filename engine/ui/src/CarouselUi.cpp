@@ -49,13 +49,18 @@ void drawCarousel(CarouselState& state) {
             ImGui::EndTabItem();
             }
             if(ImGui::BeginTabItem("PARTICLES")) {
-                if(ImGui::Selectable("SMOKE (Open Brush)",state.particlePaintEnabled)) {
+                if(ImGui::Selectable("SMOKE (Open Brush)",state.particlePaintEnabled && state.particlePreset==0)) {
                     state.particlePreset=0;
                     state.particlePaintEnabled=true;
                     state.voxenPaintEnabled=true;
                 }
+                if(ImGui::Selectable("STARS (Open Brush)",state.particlePaintEnabled && state.particlePreset==1)) {
+                    state.particlePreset=1;
+                    state.particlePaintEnabled=true;
+                    state.voxenPaintEnabled=true;
+                }
                 ImGui::TextDisabled("Hold right trigger and draw a continuous stroke");
-                ImGui::TextDisabled("Original Smoke MainTex and Vulkan material");
+                ImGui::TextDisabled("Native Smoke / Stars geometry");
                 ImGui::EndTabItem();
             }
             ImGui::EndTabBar();
