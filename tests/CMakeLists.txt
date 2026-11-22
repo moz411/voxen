@@ -30,3 +30,7 @@ add_test(NAME openbrush_dots_binary_smoke COMMAND openbrush_dots_binary_smoke)
 add_executable(openbrush_vxmesh_versions ${CMAKE_CURRENT_SOURCE_DIR}/openbrush_vxmesh_versions.cpp)
 target_include_directories(openbrush_vxmesh_versions PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../engine/render/include)
 add_test(NAME openbrush_vxmesh_versions COMMAND openbrush_vxmesh_versions)
+
+add_executable(openbrush_smoke_stroke ${CMAKE_CURRENT_SOURCE_DIR}/openbrush_smoke_stroke.cpp)
+target_include_directories(openbrush_smoke_stroke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../engine/render/include)
+add_test(NAME openbrush_smoke_stroke COMMAND openbrush_smoke_stroke)

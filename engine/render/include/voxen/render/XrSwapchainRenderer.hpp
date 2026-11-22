@@ -3,6 +3,7 @@
 #include <array>
 #include <voxen/render/OpenBrushDotsGpu.hpp>
 #include <voxen/render/OpenBrushCompiledGpu.hpp>
+#include <voxen/render/OpenBrushSmokeStroke.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -302,6 +303,10 @@ private:
     std::array<MandelbulbLod,3> mandelbulbLods_{};
     voxen::render::openbrush::DotsGpuBuffer openbrushDotsGpu_{};
     voxen::render::openbrush::CompiledMeshGpu openbrushMeshGpu_{};
+    voxen::render::openbrush::CompiledMeshGpu smokePaintGpu_{};
+    bool smokePaintDirty_=true;
+    bool smokeTriggerActive_=false;
+    void rebuildSmokePaintGpu();
     VkPipeline openbrushSmokePipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout openbrushSmokePipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline openbrushMeshPipeline_ = VK_NULL_HANDLE;
