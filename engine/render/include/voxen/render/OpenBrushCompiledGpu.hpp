@@ -108,7 +108,9 @@ public:
                 VkPipeline snowPipeline=VK_NULL_HANDLE,
                 VkPipelineLayout snowLayout=VK_NULL_HANDLE,
                 VkPipeline embersPipeline=VK_NULL_HANDLE,
-                VkPipelineLayout embersLayout=VK_NULL_HANDLE) const {
+                VkPipelineLayout embersLayout=VK_NULL_HANDLE,
+                VkPipeline bubblesPipeline=VK_NULL_HANDLE,
+                VkPipelineLayout bubblesLayout=VK_NULL_HANDLE) const {
         if(empty()||!pipeline)return;
         const bool useSmoke=smokeBillboardCompatible_ && smokePipeline && smokeLayout && smokeTexture && smokeCamera;
         VkDeviceSize offset=0;
@@ -120,7 +122,8 @@ public:
         for(const auto& draw:draws_)
             if(draw.indexCount && (!useSmoke || draw.brushGuid!=smokeGuid) && !(firePipeline && fireLayout && smokeCamera && draw.brushGuid=="voxen-native-fire")
                 && !(snowPipeline && snowLayout && smokeCamera && draw.brushGuid=="voxen-native-snow")
-                && !(embersPipeline && embersLayout && smokeCamera && draw.brushGuid=="voxen-native-embers"))
+                && !(embersPipeline && embersLayout && smokeCamera && draw.brushGuid=="voxen-native-embers")
+                && !(bubblesPipeline && bubblesLayout && smokeCamera && draw.brushGuid=="voxen-native-bubbles"))
                 vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
         if(firePipeline && fireLayout && smokeCamera) {
             vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,firePipeline);
@@ -144,6 +147,14 @@ public:
                 sizeof(*smokeCamera),smokeCamera);
             for(const auto& draw:draws_)
                 if(draw.indexCount && draw.brushGuid=="voxen-native-embers")
+                    vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+        }
+        if(bubblesPipeline && bubblesLayout && smokeCamera) {
+            vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,bubblesPipeline);
+            vkCmdPushConstants(command,bubblesLayout,VK_SHADER_STAGE_VERTEX_BIT,0,
+                sizeof(*smokeCamera),smokeCamera);
+            for(const auto& draw:draws_)
+                if(draw.indexCount && draw.brushGuid=="voxen-native-bubbles")
                     vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
         }
         if(!useSmoke)return;

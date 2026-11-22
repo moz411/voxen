@@ -121,7 +121,7 @@ struct CarouselState {
     // Open Brush Smoke is the only supported interactive particle brush.
     // Legacy 20..26 saved presets remain readable, but are not selectable.
     bool particlePaintEnabled = false;
-    int particlePreset = 0; // 0 Smoke, 1 Stars, 2 Fire, 3 Snow, 4 Embers
+    int particlePreset = 0; // 0 Smoke, 1 Stars, 2 Fire, 3 Snow, 4 Embers, 5 Bubbles
     int voxenPreset = 0;
     int flatVoxenVolume = 0; // 0 cube; 1 sphere // Plasma or Spheres Intersections
     bool voxenPaintEnabled = false;
