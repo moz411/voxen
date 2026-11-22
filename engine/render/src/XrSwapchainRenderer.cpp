@@ -2964,6 +2964,37 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
 #endif
     }
 #ifdef VOXEN_WITH_IMGUI
+    // Render world-space OpenBrush meshes and native particles before the UI.
+    // The carousel has depth testing disabled and must be composed last.
+    if ((immersiveSceneActive_ && !openbrushMeshGpu_.empty() ||
+         !nativeParticleGpu_.empty()) && openbrushMeshPipeline_) {
+        std::array<float,16> vp{};
+        std::copy(std::begin(projView.m),std::end(projView.m),vp.begin());
+#ifdef VOXEN_WITH_GLB_IMPORT
+        voxen::render::openbrush::SmokeCameraPush smoke{};
+        smoke.viewProjection=vp;
+        const auto& rotation=xrView.pose.orientation;
+        const float sx=rotation.x,sy=rotation.y,sz=rotation.z,sw=rotation.w;
+        smoke.right={1.f-2.f*(sy*sy+sz*sz),2.f*(sx*sy+sw*sz),2.f*(sx*sz-sw*sy),0.f};
+        smoke.up={2.f*(sx*sy-sw*sz),1.f-2.f*(sx*sx+sz*sz),2.f*(sy*sz+sw*sx),0.f};
+        static const auto smokeStart=std::chrono::steady_clock::now();
+        smoke.settings[0]=std::chrono::duration<float>(
+            std::chrono::steady_clock::now()-smokeStart).count();
+        if(immersiveSceneActive_)openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,
+            openbrushMeshPipelineLayout_,vp,openbrushSmokePipeline_,
+            openbrushSmokePipelineLayout_,openbrushSmokeTexture_.descriptor,&smoke);
+        nativeParticleGpu_.record(commandBuffer_,openbrushMeshPipeline_,
+            openbrushMeshPipelineLayout_,vp,
+            openbrushSmokePipeline_,openbrushSmokePipelineLayout_,
+            openbrushSmokeTexture_.descriptor,&smoke,
+            openbrushFirePipeline_,openbrushSmokePipelineLayout_,
+            openbrushSnowPipeline_,openbrushSmokePipelineLayout_,
+            openbrushEmbersPipeline_,openbrushSmokePipelineLayout_,
+            openbrushBubblesPipeline_,openbrushSmokePipelineLayout_);
+#else
+        if(immersiveSceneActive_)openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,openbrushMeshPipelineLayout_,vp);
+#endif
+    }
     // Minimal native eight-page carousel scaffold, left-hand anchored.
     if (imguiCarousel_.visible && controllerTracked_[0] && imguiSurface_.ready() && imguiPanelPipeline_ != VK_NULL_HANDLE) {
         const auto& cp=controllerPoses_[0].position;
@@ -3111,35 +3142,6 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         rectangle.baseArrayLayer=0;
         rectangle.layerCount=1;
         vkCmdClearAttachments(commandBuffer_,1,&attachment,1,&rectangle);
-    }
-    if ((immersiveSceneActive_ && !openbrushMeshGpu_.empty() ||
-         !nativeParticleGpu_.empty()) && openbrushMeshPipeline_) {
-        std::array<float,16> vp{};
-        std::copy(std::begin(projView.m),std::end(projView.m),vp.begin());
-#ifdef VOXEN_WITH_GLB_IMPORT
-        voxen::render::openbrush::SmokeCameraPush smoke{};
-        smoke.viewProjection=vp;
-        const auto& rotation=xrView.pose.orientation;
-        const float sx=rotation.x,sy=rotation.y,sz=rotation.z,sw=rotation.w;
-        smoke.right={1.f-2.f*(sy*sy+sz*sz),2.f*(sx*sy+sw*sz),2.f*(sx*sz-sw*sy),0.f};
-        smoke.up={2.f*(sx*sy-sw*sz),1.f-2.f*(sx*sx+sz*sz),2.f*(sy*sz+sw*sx),0.f};
-        static const auto smokeStart=std::chrono::steady_clock::now();
-        smoke.settings[0]=std::chrono::duration<float>(
-            std::chrono::steady_clock::now()-smokeStart).count();
-        if(immersiveSceneActive_)openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,
-            openbrushMeshPipelineLayout_,vp,openbrushSmokePipeline_,
-            openbrushSmokePipelineLayout_,openbrushSmokeTexture_.descriptor,&smoke);
-        nativeParticleGpu_.record(commandBuffer_,openbrushMeshPipeline_,
-            openbrushMeshPipelineLayout_,vp,
-            openbrushSmokePipeline_,openbrushSmokePipelineLayout_,
-            openbrushSmokeTexture_.descriptor,&smoke,
-            openbrushFirePipeline_,openbrushSmokePipelineLayout_,
-            openbrushSnowPipeline_,openbrushSmokePipelineLayout_,
-            openbrushEmbersPipeline_,openbrushSmokePipelineLayout_,
-            openbrushBubblesPipeline_,openbrushSmokePipelineLayout_);
-#else
-        if(immersiveSceneActive_)openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,openbrushMeshPipelineLayout_,vp);
-#endif
     }
     // Experimental Dots overlay, one instanced draw per eye.
     if (immersiveSceneActive_ && openbrushDotsGpu_.count() && openbrushDotsPipeline_!=VK_NULL_HANDLE) {
