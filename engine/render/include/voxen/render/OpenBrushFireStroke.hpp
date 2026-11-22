@@ -8,7 +8,7 @@
 #include <vector>
 namespace voxen::render::openbrush {
 inline constexpr int FireStrokePreset=29;
-inline CompiledScene makeFireStrokeScene(const std::vector<SmokeStrokePoint>& points) {
+inline CompiledScene makeFireStrokeScene(const std::vector<SmokeStrokePoint>& points, float timeSeconds=0.f) {
     CompiledScene scene;
     scene.formatVersion=2;
     if(points.empty())return scene;
@@ -20,14 +20,14 @@ inline CompiledScene makeFireStrokeScene(const std::vector<SmokeStrokePoint>& po
         // orange-to-yellow vertex colors. Stable jitter prevents repetition.
         for(int tongue=0;tongue<3;++tongue) {
             const float phase=float(i*13+tongue*31)*2.39996323f;
-            const float radius=p.size*(0.14f+0.035f*float(tongue));
-            const float height=p.size*(0.55f+0.2f*float(tongue));
+            const float radius=p.size*(0.14f+0.035f*float(tongue))*(0.8f+0.2f*std::sin(timeSeconds*9.f+phase));
+            const float height=p.size*(0.55f+0.2f*float(tongue))*(0.8f+0.2f*std::sin(timeSeconds*6.3f+phase));
             const float cx=p.center[0]+std::sin(phase)*p.size*0.2f;
             const float cz=p.center[2]+std::cos(phase)*p.size*0.2f;
             for(int plane=0;plane<2;++plane) {
                 const float dx=plane?0.f:radius;
                 const float dz=plane?radius:0.f;
-                const float bend=std::sin(phase*1.3f)*radius*0.6f;
+                const float bend=std::sin(timeSeconds*4.7f+phase*1.3f)*radius*0.9f;
                 const std::uint32_t base=static_cast<std::uint32_t>(mesh.positions.size()/3);
                 const std::array<std::array<float,3>,3> vertices{{
                     {cx-dx,p.center[1],cz-dz},
@@ -38,10 +38,11 @@ inline CompiledScene makeFireStrokeScene(const std::vector<SmokeStrokePoint>& po
                     mesh.positions.insert(mesh.positions.end(),vertices[j].begin(),vertices[j].end());
                     mesh.normals.insert(mesh.normals.end(),{0.f,0.f,1.f});
                     const float t=j==2?1.f:0.f;
+                    const float glow=0.8f+0.2f*std::sin(timeSeconds*11.f+phase);
                     mesh.colors.insert(mesh.colors.end(),{
-                        std::clamp(p.rgb[0]*(1.f-t)+t,0.f,1.f),
-                        std::clamp(p.rgb[1]*(1.f-t)+t*0.85f,0.f,1.f),
-                        std::clamp(p.rgb[2]*(1.f-t)+t*0.22f,0.f,1.f),1.f});
+                        std::clamp((p.rgb[0]*(1.f-t)+t)*glow,0.f,1.f),
+                        std::clamp((p.rgb[1]*(1.f-t)+t*0.85f)*glow,0.f,1.f),
+                        std::clamp((p.rgb[2]*(1.f-t)+t*0.22f)*glow,0.f,1.f),(j==2?0.45f:0.85f)*glow});
                     mesh.uv0.insert(mesh.uv0.end(),{0.f,0.f,0.f,0.f});
                 }
                 mesh.indices.insert(mesh.indices.end(),{base,base+1,base+2});

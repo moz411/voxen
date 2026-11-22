@@ -2200,21 +2200,27 @@ void XrSwapchainRenderer::updateControllerInteraction(
 }
 
 void XrSwapchainRenderer::rebuildSmokePaintGpu() {
-    if(!smokePaintDirty_ || device_==VK_NULL_HANDLE)return;
+    if(device_==VK_NULL_HANDLE)return;
+    const auto now=std::chrono::steady_clock::now();
+    const bool fireTick=fireAnimationActive_ &&
+        (fireLastUpdate_.time_since_epoch().count()==0 ||
+         now-fireLastUpdate_>=std::chrono::milliseconds(100));
+    if(!smokePaintDirty_ && !fireTick)return;
+    const bool rebuildAll=smokePaintDirty_;
+    if(fireTick)fireLastUpdate_=now;
     std::vector<voxen::render::openbrush::SmokeStrokePoint> points;
     for(const auto& v:voxens_)
         if(v.preset==voxen::render::openbrush::SmokeStrokePreset)
             points.push_back({v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
     // Synchronize before replacing buffers referenced by either eye.
     vkDeviceWaitIdle(device_);
-    smokePaintGpu_.destroy(device_);
-    starsPaintGpu_.destroy(device_);
+    if(rebuildAll){smokePaintGpu_.destroy(device_);starsPaintGpu_.destroy(device_);}
     firePaintGpu_.destroy(device_);
     std::vector<voxen::render::openbrush::SmokeStrokePoint> stars;
     for(const auto& v:voxens_)
         if(v.preset==voxen::render::openbrush::StarsStrokePreset)
             stars.push_back({v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
-    if(!stars.empty()) {
+    if(rebuildAll && !stars.empty()) {
         auto scene=voxen::render::openbrush::makeStarsStrokeScene(stars);
         starsPaintGpu_.upload(device_,physicalDevice_,
             voxen::render::openbrush::packMeshes(scene));
@@ -2223,12 +2229,14 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
     for(const auto& v:voxens_)
         if(v.preset==voxen::render::openbrush::FireStrokePreset)
             flames.push_back({v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
+    fireAnimationActive_=!flames.empty();
     if(!flames.empty()) {
-        auto scene=voxen::render::openbrush::makeFireStrokeScene(flames);
+        const float elapsed=std::chrono::duration<float>(now.time_since_epoch()).count();
+        auto scene=voxen::render::openbrush::makeFireStrokeScene(flames,elapsed);
         firePaintGpu_.upload(device_,physicalDevice_,
             voxen::render::openbrush::packMeshes(scene));
     }
-    if(!points.empty()) {
+    if(rebuildAll && !points.empty()) {
         auto scene=voxen::render::openbrush::makeSmokeStrokeScene(points);
         smokePaintGpu_.upload(device_,physicalDevice_,voxen::render::openbrush::packMeshes(scene));
 #ifdef VOXEN_WITH_GLB_IMPORT
