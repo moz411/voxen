@@ -1662,7 +1662,12 @@ void XrSwapchainRenderer::createPipeline() {
         auto dotsAttributes = voxen::render::openbrush::dotsInstanceAttributes();
         auto meshBinding = voxen::render::openbrush::meshBinding();
         auto meshAttributes = voxen::render::openbrush::meshAttributes();
-        if (&out == &openbrushMeshPipeline_ || &out == &openbrushSmokePipeline_) {
+        // All native brush vertex shaders consume the packed MeshVertex stream.
+        // Without these bindings Vulkan supplies zero/default attributes,
+        // making the animated brushes invisible despite valid draw calls.
+        if (&out == &openbrushMeshPipeline_ || &out == &openbrushSmokePipeline_ ||
+            &out == &openbrushFirePipeline_ || &out == &openbrushSnowPipeline_ ||
+            &out == &openbrushEmbersPipeline_ || &out == &openbrushBubblesPipeline_) {
             vi.vertexBindingDescriptionCount=1;
             vi.pVertexBindingDescriptions=&meshBinding;
             vi.vertexAttributeDescriptionCount=static_cast<uint32_t>(meshAttributes.size());
