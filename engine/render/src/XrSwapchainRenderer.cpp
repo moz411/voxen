@@ -2227,66 +2227,42 @@ void XrSwapchainRenderer::updateControllerInteraction(
 }
 
 void XrSwapchainRenderer::rebuildSmokePaintGpu() {
-    if(device_==VK_NULL_HANDLE)return;
-    if(!smokePaintDirty_)return;
-    std::vector<voxen::render::openbrush::SmokeStrokePoint> points;
-    for(const auto& v:voxens_)
-        if(v.preset==voxen::render::openbrush::SmokeStrokePreset)
-            points.push_back({v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
-    // Synchronize before replacing buffers referenced by either eye.
+    if(device_==VK_NULL_HANDLE || !smokePaintDirty_)return;
+    using namespace voxen::render::openbrush;
+    std::array<std::vector<SmokeStrokePoint>,6> strokes;
+    for(const auto& v:voxens_) {
+        int kind=-1;
+        switch(v.preset) {
+        case SmokeStrokePreset: kind=0; break;
+        case StarsStrokePreset: kind=1; break;
+        case FireStrokePreset: kind=2; break;
+        case SnowStrokePreset: kind=3; break;
+        case EmbersStrokePreset: kind=4; break;
+        case BubblesStrokePreset: kind=5; break;
+        default: break;
+        }
+        if(kind>=0)strokes[static_cast<std::size_t>(kind)].push_back(
+            {v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
+    }
+    CompiledScene combined;
+    combined.formatVersion=2;
+    auto append=[&](CompiledScene&& scene) {
+        for(auto& mesh:scene.meshes)combined.meshes.push_back(std::move(mesh));
+    };
+    append(makeStarsStrokeScene(strokes[1]));
+    append(makeFireStrokeScene(strokes[2]));
+    append(makeSnowStrokeScene(strokes[3]));
+    append(makeEmbersStrokeScene(strokes[4]));
+    append(makeBubblesStrokeScene(strokes[5]));
+    append(makeSmokeStrokeScene(strokes[0]));
+    const auto packed=packMeshes(combined);
+    // Existing single-frame command-buffer lifecycle: wait for outstanding
+    // submissions before replacing the shared allocation.
     vkDeviceWaitIdle(device_);
-    smokePaintGpu_.destroy(device_);
-    starsPaintGpu_.destroy(device_);
-    firePaintGpu_.destroy(device_);
-    snowPaintGpu_.destroy(device_);
-    embersPaintGpu_.destroy(device_);
-    bubblesPaintGpu_.destroy(device_);
-    std::vector<voxen::render::openbrush::SmokeStrokePoint> stars;
-    for(const auto& v:voxens_)
-        if(v.preset==voxen::render::openbrush::StarsStrokePreset)
-            stars.push_back({v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
-    if(!stars.empty()) {
-        auto scene=voxen::render::openbrush::makeStarsStrokeScene(stars);
-        starsPaintGpu_.upload(device_,physicalDevice_,
-            voxen::render::openbrush::packMeshes(scene));
-    }
-    std::vector<voxen::render::openbrush::SmokeStrokePoint> flames;
-    for(const auto& v:voxens_)
-        if(v.preset==voxen::render::openbrush::FireStrokePreset)
-            flames.push_back({v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
-    if(!flames.empty()) {
-        auto scene=voxen::render::openbrush::makeFireStrokeScene(flames);
-        firePaintGpu_.upload(device_,physicalDevice_,
-            voxen::render::openbrush::packMeshes(scene));
-    }
-    std::vector<voxen::render::openbrush::SmokeStrokePoint> snowPoints;
-    for(const auto& v:voxens_)
-        if(v.preset==voxen::render::openbrush::SnowStrokePreset)
-            snowPoints.push_back({v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
-    if(!snowPoints.empty()) {
-        const auto scene=voxen::render::openbrush::makeSnowStrokeScene(snowPoints);
-        snowPaintGpu_.upload(device_,physicalDevice_,voxen::render::openbrush::packMeshes(scene));
-    }
-    std::vector<voxen::render::openbrush::SmokeStrokePoint> emberPoints;
-    for(const auto& v:voxens_)
-        if(v.preset==voxen::render::openbrush::EmbersStrokePreset)
-            emberPoints.push_back({v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
-    if(!emberPoints.empty()) {
-        const auto scene=voxen::render::openbrush::makeEmbersStrokeScene(emberPoints);
-        embersPaintGpu_.upload(device_,physicalDevice_,voxen::render::openbrush::packMeshes(scene));
-    }
-    std::vector<voxen::render::openbrush::SmokeStrokePoint> bubblePoints;
-    for(const auto& v:voxens_)
-        if(v.preset==voxen::render::openbrush::BubblesStrokePreset)
-            bubblePoints.push_back({v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
-    if(!bubblePoints.empty()) {
-        const auto scene=voxen::render::openbrush::makeBubblesStrokeScene(bubblePoints);
-        bubblesPaintGpu_.upload(device_,physicalDevice_,voxen::render::openbrush::packMeshes(scene));
-    }
-    if(!points.empty()) {
-        auto scene=voxen::render::openbrush::makeSmokeStrokeScene(points);
-        smokePaintGpu_.upload(device_,physicalDevice_,voxen::render::openbrush::packMeshes(scene));
+    nativeParticleGpu_.destroy(device_);
+    nativeParticleGpu_.upload(device_,physicalDevice_,packed);
 #ifdef VOXEN_WITH_GLB_IMPORT
+    if(!strokes[0].empty()) {
 #ifdef __ANDROID__
         const std::filesystem::path root="/sdcard/Android/data/org.voxen.xr/files";
 #else
@@ -2294,8 +2270,8 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
 #endif
         loadOpenBrushSmokeTexture(root/"tilts"/
             "Smoke-70d79cca-b159-4f35-990c-f02193947fe8-MainTex.png");
-#endif
     }
+#endif
     smokePaintDirty_=false;
 }
 
@@ -3131,7 +3107,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdClearAttachments(commandBuffer_,1,&attachment,1,&rectangle);
     }
     if ((immersiveSceneActive_ && !openbrushMeshGpu_.empty() ||
-         !smokePaintGpu_.empty() || !starsPaintGpu_.empty() || !firePaintGpu_.empty() || !snowPaintGpu_.empty() || !embersPaintGpu_.empty() || !bubblesPaintGpu_.empty()) && openbrushMeshPipeline_) {
+         !nativeParticleGpu_.empty()) && openbrushMeshPipeline_) {
         std::array<float,16> vp{};
         std::copy(std::begin(projView.m),std::end(projView.m),vp.begin());
 #ifdef VOXEN_WITH_GLB_IMPORT
@@ -3147,28 +3123,14 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         if(immersiveSceneActive_)openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,
             openbrushMeshPipelineLayout_,vp,openbrushSmokePipeline_,
             openbrushSmokePipelineLayout_,openbrushSmokeTexture_.descriptor,&smoke);
-        bubblesPaintGpu_.record(commandBuffer_,openbrushMeshPipeline_,
-            openbrushMeshPipelineLayout_,vp,VK_NULL_HANDLE,VK_NULL_HANDLE,
-            VK_NULL_HANDLE,&smoke,VK_NULL_HANDLE,VK_NULL_HANDLE,
-            VK_NULL_HANDLE,VK_NULL_HANDLE,VK_NULL_HANDLE,VK_NULL_HANDLE,
+        nativeParticleGpu_.record(commandBuffer_,openbrushMeshPipeline_,
+            openbrushMeshPipelineLayout_,vp,
+            openbrushSmokePipeline_,openbrushSmokePipelineLayout_,
+            openbrushSmokeTexture_.descriptor,&smoke,
+            openbrushFirePipeline_,openbrushSmokePipelineLayout_,
+            openbrushSnowPipeline_,openbrushSmokePipelineLayout_,
+            openbrushEmbersPipeline_,openbrushSmokePipelineLayout_,
             openbrushBubblesPipeline_,openbrushSmokePipelineLayout_);
-        embersPaintGpu_.record(commandBuffer_,openbrushMeshPipeline_,
-            openbrushMeshPipelineLayout_,vp,VK_NULL_HANDLE,VK_NULL_HANDLE,
-            VK_NULL_HANDLE,&smoke,VK_NULL_HANDLE,VK_NULL_HANDLE,
-            VK_NULL_HANDLE,VK_NULL_HANDLE,
-            openbrushEmbersPipeline_,openbrushSmokePipelineLayout_);
-        snowPaintGpu_.record(commandBuffer_,openbrushMeshPipeline_,
-            openbrushMeshPipelineLayout_,vp,VK_NULL_HANDLE,VK_NULL_HANDLE,
-            VK_NULL_HANDLE,&smoke,VK_NULL_HANDLE,VK_NULL_HANDLE,
-            openbrushSnowPipeline_,openbrushSmokePipelineLayout_);
-        firePaintGpu_.record(commandBuffer_,openbrushMeshPipeline_,
-            openbrushMeshPipelineLayout_,vp,VK_NULL_HANDLE,VK_NULL_HANDLE,
-            VK_NULL_HANDLE,&smoke,openbrushFirePipeline_,openbrushSmokePipelineLayout_);
-        starsPaintGpu_.record(commandBuffer_,openbrushMeshPipeline_,
-            openbrushMeshPipelineLayout_,vp);
-        smokePaintGpu_.record(commandBuffer_,openbrushMeshPipeline_,
-            openbrushMeshPipelineLayout_,vp,openbrushSmokePipeline_,
-            openbrushSmokePipelineLayout_,openbrushSmokeTexture_.descriptor,&smoke);
 #else
         if(immersiveSceneActive_)openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,openbrushMeshPipelineLayout_,vp);
 #endif
@@ -4540,7 +4502,8 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenPlasmaPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenPlasmaPipeline_,nullptr);voxenPlasmaPipeline_=VK_NULL_HANDLE;}
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
-    if(device_!=VK_NULL_HANDLE){openbrushDotsGpu_.destroy(device_);openbrushMeshGpu_.destroy(device_);smokePaintGpu_.destroy(device_);starsPaintGpu_.destroy(device_);firePaintGpu_.destroy(device_);snowPaintGpu_.destroy(device_);embersPaintGpu_.destroy(device_);bubblesPaintGpu_.destroy(device_);}
+    if(device_!=VK_NULL_HANDLE){openbrushDotsGpu_.destroy(device_);openbrushMeshGpu_.destroy(device_);nativeParticleGpu_.destroy(device_);
+    }
     if(openbrushBubblesPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushBubblesPipeline_,nullptr);openbrushBubblesPipeline_=VK_NULL_HANDLE;}
     if(openbrushEmbersPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushEmbersPipeline_,nullptr);openbrushEmbersPipeline_=VK_NULL_HANDLE;}
     if(openbrushSnowPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushSnowPipeline_,nullptr);openbrushSnowPipeline_=VK_NULL_HANDLE;}

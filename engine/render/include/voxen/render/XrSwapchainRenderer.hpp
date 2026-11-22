@@ -303,12 +303,8 @@ private:
     std::array<MandelbulbLod,3> mandelbulbLods_{};
     voxen::render::openbrush::DotsGpuBuffer openbrushDotsGpu_{};
     voxen::render::openbrush::CompiledMeshGpu openbrushMeshGpu_{};
-    voxen::render::openbrush::CompiledMeshGpu smokePaintGpu_{};
-    voxen::render::openbrush::CompiledMeshGpu starsPaintGpu_{};
-    voxen::render::openbrush::CompiledMeshGpu firePaintGpu_{};
-    voxen::render::openbrush::CompiledMeshGpu snowPaintGpu_{};
-    voxen::render::openbrush::CompiledMeshGpu embersPaintGpu_{};
-    voxen::render::openbrush::CompiledMeshGpu bubblesPaintGpu_{};
+    // One vertex/index allocation for all six native particle materials.
+    voxen::render::openbrush::CompiledMeshGpu nativeParticleGpu_{};
     bool smokePaintDirty_=true;
     bool smokeTriggerActive_=false;
     void rebuildSmokePaintGpu();
