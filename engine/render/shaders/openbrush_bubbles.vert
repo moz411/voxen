@@ -18,7 +18,7 @@ void main() {
     float radius=inUV.w;
     vec3 offset=vec3(
         sin(t*0.8+phase)*0.045,
-        sin(t*0.35+phase)*0.07+t*0.012,
+        sin(t*0.35+phase)*0.07+mod(t*0.012+phase*0.01,0.7),
         cos(t*0.65+phase)*0.035);
     vec3 right=camera.cameraRight.xyz;
     vec3 up=camera.cameraUp.xyz;

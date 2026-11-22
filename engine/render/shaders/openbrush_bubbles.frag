@@ -5,7 +5,8 @@ layout(location=2) in float vPhase;
 layout(location=0) out vec4 outColor;
 void main() {
     float r=length(vDisk);
-    float rim=1.0-smoothstep(0.80,1.0,r);
+    if(r>1.0)discard;
+    float rim=1.0-smoothstep(0.93,1.0,r);
     float ring=smoothstep(0.58,0.88,r)*(1.0-smoothstep(0.95,1.0,r));
     float highlight=exp(-38.0*dot(vDisk-vec2(-0.32,0.35),vDisk-vec2(-0.32,0.35)));
     vec3 rainbow=0.5+0.5*cos(vPhase+vec3(0.0,2.1,4.2)+r*9.0);
