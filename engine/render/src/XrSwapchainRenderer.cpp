@@ -1748,6 +1748,16 @@ void XrSwapchainRenderer::createPipeline() {
             blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
             blend.alphaBlendOp=VK_BLEND_OP_ADD;
         }
+        // Emissive fire: additive light accumulation, without depth writes.
+        if (&out==&openbrushFirePipeline_) {
+            blend.blendEnable=VK_TRUE;
+            blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
+            blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE;
+            blend.colorBlendOp=VK_BLEND_OP_ADD;
+            blend.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;
+            blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.alphaBlendOp=VK_BLEND_OP_ADD;
+        }
         if (&out==&openbrushDotsPipeline_) {
             blend.blendEnable=VK_TRUE;
             blend.srcColorBlendFactor=VK_BLEND_FACTOR_ONE;
