@@ -42,6 +42,7 @@ static void writeFixture(const std::filesystem::path& path,bool v2) {
 }
 static void verify(const std::filesystem::path& file,bool v2) {
     auto scene=readCompiledScene(file.string());
+    if(scene.formatVersion!=(v2?2u:1u))throw std::runtime_error("format version mismatch");
     if(scene.meshes.size()!=1)throw std::runtime_error("mesh count mismatch");
     const auto& uv=scene.meshes[0].uv0;
     if(uv.size()!=12)throw std::runtime_error("UV length mismatch");
@@ -52,6 +53,12 @@ static void verify(const std::filesystem::path& file,bool v2) {
                 throw std::runtime_error("UV round-trip mismatch");
     }
 }
+static void rejectCorruption(const std::filesystem::path& file) {
+    bool rejected=false;
+    try { (void)readCompiledScene(file.string()); }
+    catch(const std::runtime_error&) { rejected=true; }
+    if(!rejected)throw std::runtime_error("corrupt VXMSH accepted");
+}
 int main() {
     const auto base=std::filesystem::temp_directory_path()/"voxen_vxmesh_version_fixture";
     const auto v1=base.string()+".v1";
@@ -59,6 +66,16 @@ int main() {
     try{
         writeFixture(v1,false);writeFixture(v2,true);
         verify(v1,false);verify(v2,true);
+        // A v2 payload must never be silently decoded with the v1 stride.
+        {
+            std::fstream io(v2,std::ios::binary|std::ios::in|std::ios::out);
+            io.seekp(8);const char legacyVersion[4]={1,0,0,0};
+            io.write(legacyVersion,4);
+        }
+        rejectCorruption(v2);
+        // A truncated file must not cause an out-of-bounds read.
+        std::filesystem::resize_file(v1, std::filesystem::file_size(v1)-4);
+        rejectCorruption(v1);
         std::filesystem::remove(v1);std::filesystem::remove(v2);
         std::cout<<"VXMSH001/VXMSH002 UV compatibility OK\n";
         return 0;

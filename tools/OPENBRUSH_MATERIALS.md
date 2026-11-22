@@ -8,7 +8,9 @@ It does **not** implement Open Brush materials, even when the geometry family is
 
 ```bash
 node tools/audit_openbrush.mjs ../Sa_Tuna.tilt -o brush-audit.json
-node tools/compile_openbrush.mjs ../Sa_Tuna.tilt -o Sa_Tuna.vxmesh --materials Sa_Tuna.materials.json\n# Optional compatibility output for older builds:\nnode tools/compile_openbrush.mjs ../Sa_Tuna.tilt -o Sa_Tuna-v1.vxmesh --format v1
+node tools/compile_openbrush.mjs ../Sa_Tuna.tilt -o Sa_Tuna.vxmesh --materials Sa_Tuna.materials.json
+# Optional compatibility output for older builds:
+node tools/compile_openbrush.mjs ../Sa_Tuna.tilt -o Sa_Tuna-v1.vxmesh --format v1
 ```
 
 To test the v2 and v1 files with the dependency-free host reader:

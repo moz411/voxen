@@ -20,6 +20,7 @@ struct CompiledMesh {
     std::vector<std::uint32_t> indices;
 };
 struct CompiledScene {
+    std::uint32_t formatVersion=1;
     std::vector<CompiledMesh> meshes;
 };
 inline CompiledScene readCompiledScene(const std::string& path) {
@@ -60,6 +61,7 @@ inline CompiledScene readCompiledScene(const std::string& path) {
         return out;
     };
     CompiledScene result;
+    result.formatVersion=v2?2u:1u;
     result.meshes.reserve(meshCount);
     for(std::uint32_t m=0;m<meshCount;m++){
         CompiledMesh mesh;

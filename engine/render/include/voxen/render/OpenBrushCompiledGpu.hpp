@@ -30,12 +30,16 @@ struct MeshDraw {
     std::uint32_t firstIndex=0, indexCount=0;
 };
 struct PackedMeshes {
+    bool smokeBillboardCompatible=false;
     std::vector<MeshVertex> vertices;
     std::vector<std::uint32_t> indices;
     std::vector<MeshDraw> draws;
 };
 inline PackedMeshes packMeshes(const CompiledScene& scene) {
     PackedMeshes out;
+    // VXMSH001 discarded UV0.z (particle rotation). Rendering that stream
+    // with the Smoke billboard shader produces incorrect brush semantics.
+    out.smokeBillboardCompatible=scene.formatVersion>=2;
     for(const auto& mesh:scene.meshes) {
         const std::size_t n=mesh.positions.size()/3;
         if(mesh.positions.size()!=n*3 || mesh.normals.size()!=n*3 ||
@@ -88,6 +92,7 @@ public:
             makeBuffer(device,physical,data.indices.data(),data.indices.size()*sizeof(std::uint32_t),
                        VK_BUFFER_USAGE_INDEX_BUFFER_BIT,index_,indexMemory_);
             draws_=data.draws;
+            smokeBillboardCompatible_=data.smokeBillboardCompatible;
         } catch(...) {destroy(device);throw;}
     }
     // Draw all opaque fallback geometry first; Smoke draws last with alpha blend.
@@ -99,7 +104,7 @@ public:
                 VkDescriptorSet smokeTexture=VK_NULL_HANDLE,
                 const SmokeCameraPush* smokeCamera=nullptr) const {
         if(empty()||!pipeline)return;
-        const bool useSmoke=smokePipeline && smokeLayout && smokeTexture && smokeCamera;
+        const bool useSmoke=smokeBillboardCompatible_ && smokePipeline && smokeLayout && smokeTexture && smokeCamera;
         VkDeviceSize offset=0;
         vkCmdBindVertexBuffers(command,0,1,&vertex_,&offset);
         vkCmdBindIndexBuffer(command,index_,0,VK_INDEX_TYPE_UINT32);
@@ -127,6 +132,7 @@ public:
         vertex_=index_=VK_NULL_HANDLE;
         vertexMemory_=indexMemory_=VK_NULL_HANDLE;
         draws_.clear();
+        smokeBillboardCompatible_=false;
     }
 private:
     static void makeBuffer(VkDevice device,VkPhysicalDevice physical,const void* src,
@@ -161,5 +167,6 @@ private:
     VkBuffer vertex_{VK_NULL_HANDLE},index_{VK_NULL_HANDLE};
     VkDeviceMemory vertexMemory_{VK_NULL_HANDLE},indexMemory_{VK_NULL_HANDLE};
     std::vector<MeshDraw> draws_;
+    bool smokeBillboardCompatible_=false;
 };
 } // namespace voxen::render::openbrush

@@ -25,3 +25,8 @@ add_test(NAME openbrush_dots_smoke COMMAND openbrush_dots_smoke)
 add_executable(openbrush_dots_binary_smoke ${CMAKE_CURRENT_SOURCE_DIR}/openbrush_dots_binary_smoke.cpp)
 target_include_directories(openbrush_dots_binary_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../engine/render/include)
 add_test(NAME openbrush_dots_binary_smoke COMMAND openbrush_dots_binary_smoke)
+
+# Keep binary-format compatibility in the normal host test suite.
+add_executable(openbrush_vxmesh_versions ${CMAKE_CURRENT_SOURCE_DIR}/openbrush_vxmesh_versions.cpp)
+target_include_directories(openbrush_vxmesh_versions PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../engine/render/include)
+add_test(NAME openbrush_vxmesh_versions COMMAND openbrush_vxmesh_versions)
