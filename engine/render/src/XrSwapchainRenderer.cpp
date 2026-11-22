@@ -2968,6 +2968,66 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(constants),&constants);
         vkCmdDraw(commandBuffer_,36,1,0,0);
     }
+    // Smoke brush cursor: camera-facing circular reticle at the exact sample
+    // position, sized to the active brush. No GPU allocations or saved objects.
+    if(editingMode() && imguiCarousel_.voxenPaintEnabled &&
+       imguiCarousel_.particlePaintEnabled && controllerTracked_[1] &&
+       !panelAimed_ && laserPipeline_!=VK_NULL_HANDLE) {
+        const auto& hand=controllerPoses_[1];
+        const auto& q=hand.orientation;
+        const std::array<float,3> forward{
+            -2.f*(q.x*q.z+q.w*q.y),-2.f*(q.y*q.z-q.w*q.x),
+            -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        const std::array<float,3> center{
+            hand.position.x+0.25f*forward[0],
+            hand.position.y+0.25f*forward[1],
+            hand.position.z+0.25f*forward[2]};
+        const auto& eyeQ=xrView.pose.orientation;
+        const float x=eyeQ.x,y=eyeQ.y,z=eyeQ.z,w=eyeQ.w;
+        const std::array<float,3> right{
+            1.f-2.f*(y*y+z*z),2.f*(x*y+w*z),2.f*(x*z-w*y)};
+        const std::array<float,3> up{
+            2.f*(x*y-w*z),1.f-2.f*(x*x+z*z),2.f*(y*z+w*x)};
+        const float radius=0.5f*std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
+        constexpr int segments=20;
+        constexpr float tau=6.2831853071795864769f;
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,laserPipeline_);
+        for(int i=0;i<segments;++i) {
+            const float a=tau*float(i)/float(segments);
+            const float b=tau*float(i+1)/float(segments);
+            std::array<float,3> p0{},p1{};
+            for(int j=0;j<3;++j) {
+                p0[j]=center[j]+radius*(std::cos(a)*right[j]+std::sin(a)*up[j]);
+                p1[j]=center[j]+radius*(std::cos(b)*right[j]+std::sin(b)*up[j]);
+            }
+            const float dx=p1[0]-p0[0],dy=p1[1]-p0[1],dz=p1[2]-p0[2];
+            const float len=std::sqrt(dx*dx+dy*dy+dz*dz);
+            if(len<1e-5f)continue;
+            const float vx=dx/len,vy=dy/len,vz=dz/len;
+            // A thin rectangular segment with the same vertex convention
+            // as the existing laser cube (local Z is the segment direction).
+            const float thickness=smokeTriggerActive_?0.007f:0.0035f;
+            Mat4 model{};
+            model.m[0]=right[0]*thickness;
+            model.m[1]=right[1]*thickness;
+            model.m[2]=right[2]*thickness;
+            model.m[4]=up[0]*thickness;
+            model.m[5]=up[1]*thickness;
+            model.m[6]=up[2]*thickness;
+            model.m[8]=dx;model.m[9]=dy;model.m[10]=dz;
+            model.m[12]=(p0[0]+p1[0])*0.5f;
+            model.m[13]=(p0[1]+p1[1])*0.5f;
+            model.m[14]=(p0[2]+p1[2])*0.5f;
+            model.m[15]=1.f;
+            const Mat4 mvp=multiply(projView,model);
+            ProceduralPushConstants pc{mvp,{seconds,1.f,1.f,
+                smokeTriggerActive_?1.f:0.f}};
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,36,1,0,0);
+        }
+    }
 #endif
     // Stereo-consistent white wipe. Use attachment clears within the existing
     // render pass (no extra shader/pipeline or GPU allocation). White coverage
