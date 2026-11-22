@@ -75,8 +75,11 @@
 #include "openbrushBubblesVert.spv.hpp"
 #include "openbrushBubblesFrag.spv.hpp"
 #include "openbrushEmbersVert.spv.hpp"
+#include "openbrushEmbersFrag.spv.hpp"
 #include "openbrushSnowVert.spv.hpp"
+#include "openbrushSnowFrag.spv.hpp"
 #include "openbrushFireVert.spv.hpp"
+#include "openbrushFireFrag.spv.hpp"
 #include "openbrushSmokeVert.spv.hpp"
 #include "openbrushSmokeFrag.spv.hpp"
 #include "openbrushDotsVert.spv.hpp"
@@ -1800,9 +1803,9 @@ void XrSwapchainRenderer::createPipeline() {
     };
     buildPipeline(openbrushMeshVert,openbrushMeshVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushMeshPipeline_);
     buildPipeline(openbrushSmokeVert,openbrushSmokeVertSize,openbrushSmokeFrag,openbrushSmokeFragSize,openbrushSmokePipeline_);
-    buildPipeline(openbrushFireVert,openbrushFireVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushFirePipeline_);
-    buildPipeline(openbrushSnowVert,openbrushSnowVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushSnowPipeline_);
-    buildPipeline(openbrushEmbersVert,openbrushEmbersVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushEmbersPipeline_);
+    buildPipeline(openbrushFireVert,openbrushFireVertSize,openbrushFireFrag,openbrushFireFragSize,openbrushFirePipeline_);
+    buildPipeline(openbrushSnowVert,openbrushSnowVertSize,openbrushSnowFrag,openbrushSnowFragSize,openbrushSnowPipeline_);
+    buildPipeline(openbrushEmbersVert,openbrushEmbersVertSize,openbrushEmbersFrag,openbrushEmbersFragSize,openbrushEmbersPipeline_);
     buildPipeline(openbrushBubblesVert,openbrushBubblesVertSize,openbrushBubblesFrag,openbrushBubblesFragSize,openbrushBubblesPipeline_);
     buildPipeline(openbrushDotsVert,openbrushDotsVertSize,openbrushDotsFrag,openbrushDotsFragSize,openbrushDotsPipeline_);
     buildPipeline(panoramaVert,panoramaVertSize,panoramaFrag,panoramaFragSize,panoramaPipeline_);

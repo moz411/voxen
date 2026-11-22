@@ -10,6 +10,7 @@ layout(push_constant) uniform SnowCamera {
     vec4 settings;
 } camera;
 layout(location=0) out vec4 vColor;
+layout(location=1) out vec2 vDisk;
 void main() {
     float phase=inUV.x;
     float t=camera.settings.x;
@@ -19,10 +20,13 @@ void main() {
         sin(t*0.9+phase)*0.045,
         -fall*0.18,
         cos(t*0.7+phase)*0.04);
-    vec3 local=inPosition-inCenter;
+    vec2 local=inUV.yz;
     float spin=t*0.65+phase;
     mat2 rotation=mat2(cos(spin),sin(spin),-sin(spin),cos(spin));
-    local.xy=rotation*local.xy;
-    gl_Position=camera.viewProjection*vec4(inCenter+offset+local,1.0);
+    vec2 rotated=rotation*local;
+    float radius=inUV.w;
+    vec3 billboard=(camera.cameraRight.xyz*rotated.x+camera.cameraUp.xyz*rotated.y)*radius;
+    gl_Position=camera.viewProjection*vec4(inCenter+offset+billboard,1.0);
     vColor=inColor;
+    vDisk=local;
 }

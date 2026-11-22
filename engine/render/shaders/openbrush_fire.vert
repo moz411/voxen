@@ -10,6 +10,7 @@ layout(push_constant) uniform FireCamera {
     vec4 settings;
 } camera;
 layout(location=0) out vec4 vColor;
+layout(location=1) out vec2 vFlame;
 float hash11(float n) {return fract(sin(n)*43758.5453123);}
 float noise2(vec2 p) {
     vec2 i=floor(p), f=fract(p);
@@ -32,6 +33,7 @@ void main() {
         position=center+camera.cameraRight.xyz*inUV.z*0.008+
                         camera.cameraUp.xyz*inUV.w*0.008;
         vColor=vec4(inColor.rgb,inColor.a*(1.0-age)*(1.0-age));
+        vFlame=vec2(-1.0,age);
     } else {
         float radius=inUV.z;
         float n=noise2(vec2(tip*5.0+phase,t*2.5));
@@ -42,6 +44,7 @@ void main() {
         position.y+=tip*radius*0.20*sin(t*6.3+phase);
         float flicker=0.78+0.22*n2;
         vColor=vec4(inColor.rgb*flicker,inColor.a*flicker);
+        vFlame=vec2(tip,phase);
     }
     gl_Position=camera.viewProjection*vec4(position,1.0);
 }

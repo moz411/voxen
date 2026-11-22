@@ -10,6 +10,7 @@ layout(push_constant) uniform EmberCamera {
     vec4 settings;
 } camera;
 layout(location=0) out vec4 vColor;
+layout(location=1) out vec2 vDisk;
 void main() {
     float t=camera.settings.x;
     float phase=inUV.x;
@@ -20,8 +21,10 @@ void main() {
         rise*0.24,
         cos(t*1.3+phase)*0.035);
     float flicker=0.52+0.48*pow(max(0.0,sin(t*13.0+phase*2.3)),2.0);
-    vec3 local=inPosition-inCenter;
-    local*=0.7+0.3*flicker;
+    float radius=inUV.w*(0.7+0.3*flicker);
+    vec3 local=camera.cameraRight.xyz*inUV.y*radius +
+               camera.cameraUp.xyz*inUV.z*radius*1.6;
     gl_Position=camera.viewProjection*vec4(inCenter+offset+local,1.0);
     vColor=vec4(inColor.rgb*flicker,inColor.a*flicker*(1.0-rise/cycle));
+    vDisk=inUV.yz;
 }

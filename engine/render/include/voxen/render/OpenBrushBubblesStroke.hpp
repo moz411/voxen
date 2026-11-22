@@ -14,8 +14,8 @@ inline CompiledScene makeBubblesStrokeScene(const std::vector<SmokeStrokePoint>&
     if(points.empty())return scene;
     CompiledMesh mesh;
     mesh.brushGuid="voxen-native-bubbles";
-    constexpr float tau=6.283185307179586f;
-    constexpr int segments=32;
+    // Four camera-facing corners; the fragment shader draws the circular rim.
+    // This is 2 triangles instead of a 32-triangle fan per bubble.
     for(std::size_t i=0;i<points.size();++i) {
         const auto& p=points[i];
         for(int n=0;n<3;++n) {
@@ -27,10 +27,9 @@ inline CompiledScene makeBubblesStrokeScene(const std::vector<SmokeStrokePoint>&
                 p.center[2]+std::sin(phase*0.6f)*spread};
             const float radius=p.size*(0.19f+0.045f*float(n));
             const std::uint32_t base=static_cast<std::uint32_t>(mesh.positions.size()/3);
-            for(int j=0;j<=segments;++j) {
-                const float a=float(j==0?0:j-1)*tau/float(segments);
-                const float x=j==0?0.f:std::cos(a);
-                const float y=j==0?0.f:std::sin(a);
+            constexpr float corners[4][2]={{-1.f,-1.f},{1.f,-1.f},{1.f,1.f},{-1.f,1.f}};
+            for(const auto& corner:corners) {
+                const float x=corner[0],y=corner[1];
                 mesh.positions.insert(mesh.positions.end(),{
                     center[0]+x*radius,center[1]+y*radius,center[2]});
                 mesh.normals.insert(mesh.normals.end(),center.begin(),center.end());
@@ -39,8 +38,7 @@ inline CompiledScene makeBubblesStrokeScene(const std::vector<SmokeStrokePoint>&
                     std::clamp(p.rgb[2],0.f,1.f),0.95f});
                 mesh.uv0.insert(mesh.uv0.end(),{x,y,phase,radius});
             }
-            for(std::uint32_t j=1;j<=segments;++j)
-                mesh.indices.insert(mesh.indices.end(),{base,base+j,base+1+(j%segments)});
+            mesh.indices.insert(mesh.indices.end(),{base,base+1,base+2,base,base+2,base+3});
         }
     }
     scene.meshes.push_back(std::move(mesh));

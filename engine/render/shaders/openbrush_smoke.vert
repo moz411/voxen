@@ -14,6 +14,7 @@ layout(push_constant) uniform SmokeCamera {
 } camera;
 layout(location=0) out vec2 vUV;
 layout(location=1) out vec4 vColor;
+layout(location=2) out float vSeed;
 void main() {
     // Particle mesh corners carry UV (0,0)-(1,1). Rotate each camera-facing
     // quad around its center; do not use gl_VertexIndex, which is globally based.
@@ -27,15 +28,19 @@ void main() {
     vec3 offset = (camera.cameraRight.xyz * rotated.x +
                    camera.cameraUp.xyz * rotated.y) * halfSize;
 
-    float t = camera.settings.x * .32;
+    float seed=fract(sin(dot(inCenter,vec3(17.71,61.37,29.83)))*43758.5453);
+    float t = camera.settings.x * .30 + seed*6.2831853;
     vec3 p = inCenter * 2.4;
-    // Divergence-free trigonometric flow: curl of a periodic vector potential.
+    // Curl-like advection preserves the brush's volume while gently folding it.
     vec3 flow = vec3(
         -sin(p.z+t) - cos(p.y+t),
         -sin(p.x+t) - cos(p.z+t),
         -sin(p.y+t) - cos(p.x+t));
+    float pulse=0.82+0.18*sin(t*0.65+seed*9.0);
     vec3 displaced = inCenter + flow * 0.035;
+    offset*=pulse;
     gl_Position = camera.viewProjection * vec4(displaced + offset, 1.0);
     vUV = inUV.xy;
     vColor = inColor;
+    vSeed=seed;
 }
