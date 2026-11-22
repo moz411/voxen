@@ -79,8 +79,17 @@ void drawCarousel(CarouselState& state) {
                     state.particlePaintEnabled=true;
                     state.voxenPaintEnabled=true;
                 }
+                if(ImGui::Selectable("LIGHTNING (native)",state.particlePaintEnabled && state.particlePreset==6)) {
+                    state.particlePreset=6;state.particlePaintEnabled=true;state.voxenPaintEnabled=true;
+                }
+                if(ImGui::Selectable("NEON TRAILS (native)",state.particlePaintEnabled && state.particlePreset==7)) {
+                    state.particlePreset=7;state.particlePaintEnabled=true;state.voxenPaintEnabled=true;
+                }
+                if(ImGui::Selectable("MAGIC DUST (native)",state.particlePaintEnabled && state.particlePreset==8)) {
+                    state.particlePreset=8;state.particlePaintEnabled=true;state.voxenPaintEnabled=true;
+                }
                 ImGui::TextDisabled("Hold right trigger and draw a continuous stroke");
-                ImGui::TextDisabled("Native Smoke / Stars / Fire / Snow / Embers / Bubbles geometry");
+                ImGui::TextDisabled("Native GPU particles / light ribbons");
                 ImGui::EndTabItem();
             }
             ImGui::EndTabBar();

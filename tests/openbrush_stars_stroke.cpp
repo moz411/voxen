@@ -9,9 +9,9 @@ int main() {
     auto scene=makeStarsStrokeScene({p});
     if(scene.meshes.size()!=1)throw std::runtime_error("stars mesh");
     const auto& m=scene.meshes.front();
-    if(m.positions.size()!=3*2*8*3 || m.indices.size()!=3*2*6*3)
+    if(m.positions.size()!=6*13*3 || m.indices.size()!=6*12*3)
         throw std::runtime_error("stars geometry");
-    if(std::abs(m.colors[0]-0.25f)>1e-5f)throw std::runtime_error("RGB");
+    if(std::abs(m.colors[0]-0.55f)>1e-5f)throw std::runtime_error("RGB tint");
     for(auto i:m.indices)if(i>=m.positions.size()/3)throw std::runtime_error("index");
     std::cout<<"Stars geometry OK\n";
 }

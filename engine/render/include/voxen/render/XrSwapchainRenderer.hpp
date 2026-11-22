@@ -303,7 +303,7 @@ private:
     std::array<MandelbulbLod,3> mandelbulbLods_{};
     voxen::render::openbrush::DotsGpuBuffer openbrushDotsGpu_{};
     voxen::render::openbrush::CompiledMeshGpu openbrushMeshGpu_{};
-    // One vertex/index allocation for all six native particle materials.
+    // One vertex/index allocation for all native particle materials.
     voxen::render::openbrush::CompiledMeshGpu nativeParticleGpu_{};
     bool smokePaintDirty_=true;
     bool smokeTriggerActive_=false;
@@ -312,6 +312,9 @@ private:
     VkPipeline openbrushEmbersPipeline_ = VK_NULL_HANDLE;
     VkPipeline openbrushSnowPipeline_ = VK_NULL_HANDLE;
     VkPipeline openbrushFirePipeline_ = VK_NULL_HANDLE;
+    VkPipeline openbrushLightningPipeline_ = VK_NULL_HANDLE;
+    VkPipeline openbrushNeonTrailsPipeline_ = VK_NULL_HANDLE;
+    VkPipeline openbrushMagicDustPipeline_ = VK_NULL_HANDLE;
     VkPipeline openbrushSmokePipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout openbrushSmokePipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline openbrushMeshPipeline_ = VK_NULL_HANDLE;

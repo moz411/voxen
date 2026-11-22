@@ -5,6 +5,9 @@
 #include <voxen/render/OpenBrushSnowStroke.hpp>
 #include <voxen/render/OpenBrushEmbersStroke.hpp>
 #include <voxen/render/OpenBrushBubblesStroke.hpp>
+#include <voxen/render/OpenBrushLightningStroke.hpp>
+#include <voxen/render/OpenBrushNeonTrailsStroke.hpp>
+#include <voxen/render/OpenBrushMagicDustStroke.hpp>
 #include <chrono>
 #include <iostream>
 #include <vector>
@@ -27,9 +30,12 @@ int main() {
         auto snow=makeSnowStrokeScene(points);
         auto embers=makeEmbersStrokeScene(points);
         auto bubbles=makeBubblesStrokeScene(points);
+        auto lightning=makeLightningStrokeScene(points);
+        auto neon=makeNeonTrailsStrokeScene(points);
+        auto dust=makeMagicDustStrokeScene(points);
         auto end=clock::now();
         std::size_t vertices=0,triangles=0;
-        for(const auto* scene : {&snow,&embers,&bubbles}) {
+        for(const auto* scene : {&snow,&embers,&bubbles,&lightning,&neon,&dust}) {
             for(const auto& mesh:scene->meshes) {
                 vertices+=mesh.positions.size()/3;
                 triangles+=mesh.indices.size()/3;
@@ -39,7 +45,7 @@ int main() {
             }
         }
         std::cout<<"points_per_brush="<<count
-                 <<" brushes=3 vertices="<<vertices
+                 <<" brushes=6 vertices="<<vertices
                  <<" triangles="<<triangles
                  <<" cpu_geometry_ms="
                  <<std::chrono::duration<double,std::milli>(end-start).count()

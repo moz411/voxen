@@ -118,10 +118,9 @@ struct CarouselState {
     bool mandelbulbLighting = false; // Opt-in: proven cyan shader remains default
     int voxenMaterial = 0; // independent surface material for procedural mesh shapes
     bool collideRoomMesh = true;
-    // Open Brush Smoke is the only supported interactive particle brush.
-    // Legacy 20..26 saved presets remain readable, but are not selectable.
+    // Legacy 20..26 presets remain readable but are not selectable.
     bool particlePaintEnabled = false;
-    int particlePreset = 0; // 0 Smoke, 1 Stars, 2 Fire, 3 Snow, 4 Embers, 5 Bubbles
+    int particlePreset = 0; // 0..5 existing, 6 Lightning, 7 Neon Trails, 8 Magic Dust
     int voxenPreset = 0;
     int flatVoxenVolume = 0; // 0 cube; 1 sphere // Plasma or Spheres Intersections
     bool voxenPaintEnabled = false;
