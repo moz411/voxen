@@ -237,6 +237,10 @@ private:
     VkDescriptorPool glbTextureDescriptorPool_ = VK_NULL_HANDLE;
     struct GlbTexture { VkImage image=VK_NULL_HANDLE; VkDeviceMemory memory=VK_NULL_HANDLE; VkImageView view=VK_NULL_HANDLE; VkSampler sampler=VK_NULL_HANDLE; VkDescriptorSet descriptor=VK_NULL_HANDLE; };
     std::vector<GlbTexture> glbTextures_;
+    GlbTexture openbrushSmokeTexture_{};
+    VkDescriptorPool openbrushSmokeDescriptorPool_=VK_NULL_HANDLE;
+    bool loadOpenBrushSmokeTexture(const std::filesystem::path& path);
+    void releaseOpenBrushSmokeTexture() noexcept;
     GlbTexture panoramaTexture_{};
     GlbTexture panoramaPreviousTexture_{};
     VkDescriptorPool panoramaPreviousDescriptorPool_=VK_NULL_HANDLE;
@@ -298,6 +302,8 @@ private:
     std::array<MandelbulbLod,3> mandelbulbLods_{};
     voxen::render::openbrush::DotsGpuBuffer openbrushDotsGpu_{};
     voxen::render::openbrush::CompiledMeshGpu openbrushMeshGpu_{};
+    VkPipeline openbrushSmokePipeline_ = VK_NULL_HANDLE;
+    VkPipelineLayout openbrushSmokePipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline openbrushMeshPipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout openbrushMeshPipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline openbrushDotsPipeline_ = VK_NULL_HANDLE;

@@ -14,24 +14,36 @@
 
 namespace voxen::render::openbrush {
 struct MeshVertex {
-    float position[3], normal[3], color[4], uv[2];
+    float position[3], normal[3], color[4], uv[4];
 };
-static_assert(sizeof(MeshVertex)==48);
+static_assert(sizeof(MeshVertex)==56);
+// Per-eye billboard frame for Smoke; matches the GLSL push-constant layout.
+struct alignas(16) SmokeCameraPush {
+    std::array<float,16> viewProjection{};
+    std::array<float,4> right{};
+    std::array<float,4> up{};
+    std::array<float,4> settings{}; // x: elapsed seconds
+};
+static_assert(sizeof(SmokeCameraPush)==112);
 struct MeshDraw {
     std::string brushGuid;
     std::uint32_t firstIndex=0, indexCount=0;
 };
 struct PackedMeshes {
+    bool smokeBillboardCompatible=false;
     std::vector<MeshVertex> vertices;
     std::vector<std::uint32_t> indices;
     std::vector<MeshDraw> draws;
 };
 inline PackedMeshes packMeshes(const CompiledScene& scene) {
     PackedMeshes out;
+    // VXMSH001 discarded UV0.z (particle rotation). Rendering that stream
+    // with the Smoke billboard shader produces incorrect brush semantics.
+    out.smokeBillboardCompatible=scene.formatVersion>=2;
     for(const auto& mesh:scene.meshes) {
         const std::size_t n=mesh.positions.size()/3;
         if(mesh.positions.size()!=n*3 || mesh.normals.size()!=n*3 ||
-           mesh.colors.size()!=n*4 || mesh.uv0.size()!=n*2 ||
+           mesh.colors.size()!=n*4 || mesh.uv0.size()!=n*4 ||
            out.vertices.size()+n>std::numeric_limits<std::uint32_t>::max() ||
            out.indices.size()+mesh.indices.size()>std::numeric_limits<std::uint32_t>::max())
             throw std::runtime_error("VXMSH: invalid mesh attributes or size");
@@ -41,7 +53,7 @@ inline PackedMeshes packMeshes(const CompiledScene& scene) {
             std::memcpy(v.position,mesh.positions.data()+i*3,3*sizeof(float));
             std::memcpy(v.normal,mesh.normals.data()+i*3,3*sizeof(float));
             std::memcpy(v.color,mesh.colors.data()+i*4,4*sizeof(float));
-            std::memcpy(v.uv,mesh.uv0.data()+i*2,2*sizeof(float));
+            std::memcpy(v.uv,mesh.uv0.data()+i*4,4*sizeof(float));
             out.vertices.push_back(v);
         }
         MeshDraw draw{mesh.brushGuid,static_cast<std::uint32_t>(out.indices.size()),
@@ -61,7 +73,7 @@ inline std::array<VkVertexInputAttributeDescription,4> meshAttributes() {
     return {{{0,0,VK_FORMAT_R32G32B32_SFLOAT,0},
              {1,0,VK_FORMAT_R32G32B32_SFLOAT,12},
              {2,0,VK_FORMAT_R32G32B32A32_SFLOAT,24},
-             {3,0,VK_FORMAT_R32G32_SFLOAT,40}}};
+             {3,0,VK_FORMAT_R32G32B32A32_SFLOAT,40}}};
 }
 class CompiledMeshGpu {
 public:
@@ -80,18 +92,37 @@ public:
             makeBuffer(device,physical,data.indices.data(),data.indices.size()*sizeof(std::uint32_t),
                        VK_BUFFER_USAGE_INDEX_BUFFER_BIT,index_,indexMemory_);
             draws_=data.draws;
+            smokeBillboardCompatible_=data.smokeBillboardCompatible;
         } catch(...) {destroy(device);throw;}
     }
+    // Draw all opaque fallback geometry first; Smoke draws last with alpha blend.
+    // Alpha sorting remains a future fidelity improvement.
     void record(VkCommandBuffer command,VkPipeline pipeline,VkPipelineLayout layout,
-                const std::array<float,16>& viewProjection) const {
+                const std::array<float,16>& viewProjection,
+                VkPipeline smokePipeline=VK_NULL_HANDLE,
+                VkPipelineLayout smokeLayout=VK_NULL_HANDLE,
+                VkDescriptorSet smokeTexture=VK_NULL_HANDLE,
+                const SmokeCameraPush* smokeCamera=nullptr) const {
         if(empty()||!pipeline)return;
-        vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);
+        const bool useSmoke=smokeBillboardCompatible_ && smokePipeline && smokeLayout && smokeTexture && smokeCamera;
         VkDeviceSize offset=0;
         vkCmdBindVertexBuffers(command,0,1,&vertex_,&offset);
         vkCmdBindIndexBuffer(command,index_,0,VK_INDEX_TYPE_UINT32);
+        vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline);
         vkCmdPushConstants(command,layout,VK_SHADER_STAGE_VERTEX_BIT,0,64,viewProjection.data());
+        constexpr const char* smokeGuid="70d79cca-b159-4f35-990c-f02193947fe8";
         for(const auto& draw:draws_)
-            if(draw.indexCount)vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+            if(draw.indexCount && (!useSmoke || draw.brushGuid!=smokeGuid))
+                vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+        if(!useSmoke)return;
+        vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,smokePipeline);
+        vkCmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                smokeLayout,0,1,&smokeTexture,0,nullptr);
+        vkCmdPushConstants(command,smokeLayout,VK_SHADER_STAGE_VERTEX_BIT,
+                           0,sizeof(*smokeCamera),smokeCamera);
+        for(const auto& draw:draws_)
+            if(draw.indexCount && draw.brushGuid==smokeGuid)
+                vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
     }
     void destroy(VkDevice device) {
         if(vertex_)vkDestroyBuffer(device,vertex_,nullptr);
@@ -101,6 +132,7 @@ public:
         vertex_=index_=VK_NULL_HANDLE;
         vertexMemory_=indexMemory_=VK_NULL_HANDLE;
         draws_.clear();
+        smokeBillboardCompatible_=false;
     }
 private:
     static void makeBuffer(VkDevice device,VkPhysicalDevice physical,const void* src,
@@ -135,5 +167,6 @@ private:
     VkBuffer vertex_{VK_NULL_HANDLE},index_{VK_NULL_HANDLE};
     VkDeviceMemory vertexMemory_{VK_NULL_HANDLE},indexMemory_{VK_NULL_HANDLE};
     std::vector<MeshDraw> draws_;
+    bool smokeBillboardCompatible_=false;
 };
 } // namespace voxen::render::openbrush

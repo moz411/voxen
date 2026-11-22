@@ -67,6 +67,8 @@
 #include "mandelbulbLitFrag.spv.hpp"
 #include "openbrushMeshVert.spv.hpp"
 #include "openbrushMeshFrag.spv.hpp"
+#include "openbrushSmokeVert.spv.hpp"
+#include "openbrushSmokeFrag.spv.hpp"
 #include "openbrushDotsVert.spv.hpp"
 #include "openbrushDotsFrag.spv.hpp"
 #include "glbOriginalVert.spv.hpp"
@@ -1578,6 +1580,16 @@ void XrSwapchainRenderer::createPipeline() {
         checkVk(vkCreatePipelineLayout(device_,&ci,nullptr,&openbrushMeshPipelineLayout_),
                 "openbrush mesh pipeline layout");
     }
+    {
+        // Smoke uses UV0.xyzw, per-eye billboard axes and a sampled MainTex.
+        VkPushConstantRange range{VK_SHADER_STAGE_VERTEX_BIT,0,
+            static_cast<std::uint32_t>(sizeof(voxen::render::openbrush::SmokeCameraPush))};
+        VkPipelineLayoutCreateInfo ci{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        ci.setLayoutCount=1;ci.pSetLayouts=&panoramaSetLayout_;
+        ci.pushConstantRangeCount=1;ci.pPushConstantRanges=&range;
+        checkVk(vkCreatePipelineLayout(device_,&ci,nullptr,&openbrushSmokePipelineLayout_),
+                "openbrush Smoke pipeline layout");
+    }
     // Shared render pass and push constants.
     auto buildPipeline = [&](const std::uint8_t* vb, std::size_t vsz,
                              const std::uint8_t* fb, std::size_t fsz,
@@ -1633,7 +1645,7 @@ void XrSwapchainRenderer::createPipeline() {
         auto dotsAttributes = voxen::render::openbrush::dotsInstanceAttributes();
         auto meshBinding = voxen::render::openbrush::meshBinding();
         auto meshAttributes = voxen::render::openbrush::meshAttributes();
-        if (&out == &openbrushMeshPipeline_) {
+        if (&out == &openbrushMeshPipeline_ || &out == &openbrushSmokePipeline_) {
             vi.vertexBindingDescriptionCount=1;
             vi.pVertexBindingDescriptions=&meshBinding;
             vi.vertexAttributeDescriptionCount=static_cast<uint32_t>(meshAttributes.size());
@@ -1683,7 +1695,7 @@ void XrSwapchainRenderer::createPipeline() {
 #endif
             ;
         if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
-        if(&out==&panoramaPipeline_ || &out==&openbrushDotsPipeline_)ds.depthWriteEnable=VK_FALSE;
+        if(&out==&panoramaPipeline_ || &out==&openbrushDotsPipeline_ || &out==&openbrushSmokePipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
         if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &galleryCylinderPipeline_ || &out == &galleryCylinderMatrixPipeline_ || &out == &galleryCylinderOceanPipeline_ || &out == &galleryCylinderLiquidPipeline_ || &out == &panoramaPipeline_
@@ -1691,6 +1703,15 @@ void XrSwapchainRenderer::createPipeline() {
             || &out == &imguiPanelPipeline_
 #endif
         ) {
+            blend.blendEnable=VK_TRUE;
+            blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
+            blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.colorBlendOp=VK_BLEND_OP_ADD;
+            blend.srcAlphaBlendFactor=VK_BLEND_FACTOR_ONE;
+            blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.alphaBlendOp=VK_BLEND_OP_ADD;
+        }
+        if (&out==&openbrushSmokePipeline_) {
             blend.blendEnable=VK_TRUE;
             blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
             blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
@@ -1731,6 +1752,7 @@ void XrSwapchainRenderer::createPipeline() {
 #endif
         if(&out==&openbrushDotsPipeline_)pi.layout=openbrushDotsPipelineLayout_;
         if(&out==&openbrushMeshPipeline_)pi.layout=openbrushMeshPipelineLayout_;
+        if(&out==&openbrushSmokePipeline_)pi.layout=openbrushSmokePipelineLayout_;
         if(&out==&panoramaPipeline_)pi.layout=panoramaPipelineLayout_;
         if(&out==&galleryCylinderPicturePipeline_)pi.layout=galleryPicturePipelineLayout_;
         pi.renderPass=renderPass_;
@@ -1739,6 +1761,7 @@ void XrSwapchainRenderer::createPipeline() {
         vkDestroyShaderModule(device_, vs, nullptr);
     };
     buildPipeline(openbrushMeshVert,openbrushMeshVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushMeshPipeline_);
+    buildPipeline(openbrushSmokeVert,openbrushSmokeVertSize,openbrushSmokeFrag,openbrushSmokeFragSize,openbrushSmokePipeline_);
     buildPipeline(openbrushDotsVert,openbrushDotsVertSize,openbrushDotsFrag,openbrushDotsFragSize,openbrushDotsPipeline_);
     buildPipeline(panoramaVert,panoramaVertSize,panoramaFrag,panoramaFragSize,panoramaPipeline_);
     buildPipeline(organicSphereVert, organicSphereVertSize, organicSphereFrag, organicSphereFragSize, organicSpherePipeline_);
@@ -2958,7 +2981,22 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     if (immersiveSceneActive_ && !openbrushMeshGpu_.empty() && openbrushMeshPipeline_) {
         std::array<float,16> vp{};
         std::copy(std::begin(projView.m),std::end(projView.m),vp.begin());
+#ifdef VOXEN_WITH_GLB_IMPORT
+        voxen::render::openbrush::SmokeCameraPush smoke{};
+        smoke.viewProjection=vp;
+        const auto& rotation=xrView.pose.orientation;
+        const float sx=rotation.x,sy=rotation.y,sz=rotation.z,sw=rotation.w;
+        smoke.right={1.f-2.f*(sy*sy+sz*sz),2.f*(sx*sy+sw*sz),2.f*(sx*sz-sw*sy),0.f};
+        smoke.up={2.f*(sx*sy-sw*sz),1.f-2.f*(sx*sx+sz*sz),2.f*(sy*sz+sw*sx),0.f};
+        static const auto smokeStart=std::chrono::steady_clock::now();
+        smoke.settings[0]=std::chrono::duration<float>(
+            std::chrono::steady_clock::now()-smokeStart).count();
+        openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,
+            openbrushMeshPipelineLayout_,vp,openbrushSmokePipeline_,
+            openbrushSmokePipelineLayout_,openbrushSmokeTexture_.descriptor,&smoke);
+#else
         openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,openbrushMeshPipelineLayout_,vp);
+#endif
     }
     // Experimental Dots overlay, one instanced draw per eye.
     if (immersiveSceneActive_ && openbrushDotsGpu_.count() && openbrushDotsPipeline_!=VK_NULL_HANDLE) {
@@ -4208,6 +4246,17 @@ bool XrSwapchainRenderer::activateTiltScene(const std::filesystem::path& source)
             if(device_==VK_NULL_HANDLE)return false;
             auto scene=voxen::render::openbrush::readCompiledScene(source.string());
             auto packed=voxen::render::openbrush::packMeshes(scene);
+#ifdef VOXEN_WITH_GLB_IMPORT
+            const bool containsSmoke=std::any_of(scene.meshes.begin(),scene.meshes.end(),
+                [](const auto& mesh) {
+                    return mesh.brushGuid=="70d79cca-b159-4f35-990c-f02193947fe8";
+                });
+            if(containsSmoke) {
+                const auto tex=root/"tilts"/
+                    "Smoke-70d79cca-b159-4f35-990c-f02193947fe8-MainTex.png";
+                loadOpenBrushSmokeTexture(tex);
+            }
+#endif
             vkDeviceWaitIdle(device_);
             openbrushDotsGpu_.destroy(device_);
             openbrushMeshGpu_.destroy(device_);
@@ -4314,12 +4363,15 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(voxenSpheresPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenSpheresPipeline_,nullptr);voxenSpheresPipeline_=VK_NULL_HANDLE;}
     if(voxenMandelbulbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbPipeline_,nullptr);voxenMandelbulbPipeline_=VK_NULL_HANDLE;}
     if(device_!=VK_NULL_HANDLE){openbrushDotsGpu_.destroy(device_);openbrushMeshGpu_.destroy(device_);}
+    if(openbrushSmokePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushSmokePipeline_,nullptr);openbrushSmokePipeline_=VK_NULL_HANDLE;}
+    if(openbrushSmokePipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,openbrushSmokePipelineLayout_,nullptr);openbrushSmokePipelineLayout_=VK_NULL_HANDLE;}
     if(openbrushMeshPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushMeshPipeline_,nullptr);openbrushMeshPipeline_=VK_NULL_HANDLE;}
     if(openbrushMeshPipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,openbrushMeshPipelineLayout_,nullptr);openbrushMeshPipelineLayout_=VK_NULL_HANDLE;}
     if(openbrushDotsPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushDotsPipeline_,nullptr);openbrushDotsPipeline_=VK_NULL_HANDLE;}
     if(openbrushDotsPipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,openbrushDotsPipelineLayout_,nullptr);openbrushDotsPipelineLayout_=VK_NULL_HANDLE;}
     if(voxenMandelbulbLitPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,voxenMandelbulbLitPipeline_,nullptr);voxenMandelbulbLitPipeline_=VK_NULL_HANDLE;}
 #ifdef VOXEN_WITH_GLB_IMPORT
+    releaseOpenBrushSmokeTexture();
     releaseGlbGpu();
     if(glbPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,glbPipeline_,nullptr);glbPipeline_=VK_NULL_HANDLE;}
     if(glbOriginalPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,glbOriginalPipeline_,nullptr);glbOriginalPipeline_=VK_NULL_HANDLE;}
