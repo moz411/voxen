@@ -3036,9 +3036,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             preview.position={pose.position.x+editorPlacementDistance_*dx,
                               pose.position.y+editorPlacementDistance_*dy,
                               pose.position.z+editorPlacementDistance_*dz};
-            preview.scale=imguiCarousel_.particlePaintEnabled ? 0.045f :
-                std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
-            preview.hue=imguiCarousel_.voxenHue;
+            preview.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,
+                imguiCarousel_.particlePaintEnabled ? 6.f : 0.60f);
+            preview.hue=imguiCarousel_.particlePaintEnabled ?
+                imguiCarousel_.smokeRgb[0] : imguiCarousel_.voxenHue;
             preview.density=imguiCarousel_.voxenDensity;
             preview.speed=imguiCarousel_.voxenSpeed;
             preview.material=preview.preset>=4 ?

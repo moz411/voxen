@@ -2,6 +2,7 @@
 #include <imgui.h>
 #include <algorithm>
 #include <cstdio>
+#include <cmath>
 
 namespace voxen::ui {
 void drawCarousel(CarouselState& state) {
@@ -123,8 +124,17 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextDisabled("X: undo one stroke/placement per press (history)");
             ImGui::Text("Placement distance: %.2f m",state.placementDistance);
             ImGui::TextDisabled(state.particlePaintEnabled ? "RIGHT TRIGGER: draw particles" : "RIGHT TRIGGER: place one Voxen");
-            ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
-            if(!state.voxenPaintEnabled)ImGui::TextDisabled("No Voxen selected for painting");
+            if(ImGui::Button(state.particlePaintEnabled ?
+                (state.particleColorCycle<=0.f ? "Animate colors: OFF" :
+                 state.particleColorCycle<0.75f ? "Animate colors: SLOW" :
+                 state.particleColorCycle<1.5f ? "Animate colors: MEDIUM" :
+                 "Animate colors: FAST") : "Evolve colors")) {
+                if(state.particlePaintEnabled)
+                    state.particleColorCycle=state.particleColorCycle<=0.f ? 0.5f :
+                        state.particleColorCycle<0.75f ? 1.f :
+                        state.particleColorCycle<1.5f ? 2.f : 0.f;
+                else state.voxenHue=std::fmod(state.voxenHue+0.125f,1.f);
+            }
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.18f,
                 state.particlePaintEnabled?6.f:0.60f,"%.2f",ImGuiSliderFlags_Logarithmic);
             ImGui::SeparatorText("MOTION / ANIMATION");
