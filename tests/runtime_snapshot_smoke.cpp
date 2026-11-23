@@ -20,6 +20,13 @@ int main() {
     r.surfaceMedia={{"00112233-4455-6677-8899-aabbccddeeff",1,"sky.jpg",0},
                     {"11112233-4455-6677-8899-aabbccddeeff",3,"Shader",12},
                     {"22112233-4455-6677-8899-aabbccddeeff",2,"ambient.mp4",0}};
+    SavedFreeMedia free;
+    free.kind=1; free.filename="sky.jpg";
+    free.center={1.f,1.4f,-2.f};
+    free.orientation={0.f,.7071068f,0.f,.7071068f};
+    free.halfExtents={.4f,.25f};
+    free.motionMode=2; free.motionSpeed=1.5f;
+    r.freeMedia.push_back(free);
     auto bytes=encodeRuntime(r);
     auto loaded=decodeRuntime(bytes);
     assert(loaded && loaded->voxens.size()==1);
@@ -27,6 +34,11 @@ int main() {
     assert(loaded->panoramaFile=="sky.jpg");
     assert(loaded->cycleWallShaders && loaded->differentShaderPerSurface);
     assert(loaded->surfaceMedia.size()==3);
+    assert(loaded->freeMedia.size()==1);
+    assert(loaded->freeMedia[0].center==free.center);
+    assert(loaded->freeMedia[0].orientation==free.orientation);
+    assert(loaded->freeMedia[0].halfExtents==free.halfExtents);
+    assert(loaded->freeMedia[0].motionMode==2);
     assert(loaded->surfaceMedia[0].filename=="sky.jpg");
     assert(loaded->surfaceMedia[1].shaderMode==12);
     assert(loaded->surfaceMedia[2].kind==2);
@@ -64,7 +76,7 @@ int main() {
     second.brushColorMode=2;second.brushColorCycle=1.f;
     strokes.voxens={first,second};
     auto strokeBytes=encodeRuntime(strokes);
-    assert(strokeBytes.find("VOXEN_RUNTIME 10")!=std::string::npos);
+    assert(strokeBytes.find("VOXEN_RUNTIME 11")!=std::string::npos);
     auto strokeRoundtrip=decodeRuntime(strokeBytes);
     assert(strokeRoundtrip && strokeRoundtrip->voxens.size()==2);
     assert(strokeRoundtrip->voxens[0].strokeId==41);
