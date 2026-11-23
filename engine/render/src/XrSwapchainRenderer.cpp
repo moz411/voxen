@@ -136,6 +136,8 @@
 #include "galleryCylinderVert.spv.hpp"
 #include "galleryCylinderFrag.spv.hpp"
 #include "galleryCylinderPictureFrag.spv.hpp"
+#include "surfacePictureFrag.spv.hpp"
+#include "surfacePreviewFrag.spv.hpp"
 #include <voxen/scene/PortalCylinderInteraction.hpp>
 #include <voxen/scene/PortalProximityAudio.hpp>
 #include "mechanicalCannonFrag.spv.hpp"
@@ -237,11 +239,16 @@ XrSwapchainRenderer::selectedSurfaceVideo() const {
     for(const auto& surface : environmentSurfaces_.surfaces()) {
         if(!surface.tracked || surface.halfExtents[0]<=0.05f ||
             surface.halfExtents[1]<=0.05f) continue;
-        auto it=imguiCarousel_.surfaceMedia.find(surface.id);
-        if(it==imguiCarousel_.surfaceMedia.end() || it->second.kind!=2 ||
-           it->second.filename.empty()) continue;
+        const auto byId=imguiCarousel_.surfaceMedia.find(surface.id);
+        const voxen::ui::CarouselState::AppliedMedia* media=
+            byId==imguiCarousel_.surfaceMedia.end()?nullptr:&byId->second;
+        if(!surface.persistentUuid.empty()) {
+            const auto byUuid=imguiCarousel_.surfaceMediaByUuid.find(surface.persistentUuid);
+            if(byUuid!=imguiCarousel_.surfaceMediaByUuid.end())media=&byUuid->second;
+        }
+        if(!media || media->kind!=2 || media->filename.empty())continue;
         const auto path=std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/Videos") /
-            std::filesystem::path(it->second.filename).filename();
+            std::filesystem::path(media->filename).filename();
         return SurfaceVideoSelection{path,surface};
     }
 #endif
@@ -525,6 +532,7 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
         imguiCarousel_.wallSourceKind=0;
         imguiCarousel_.wallVideoSelected=-1;
         imguiCarousel_.surfaceMedia.clear();
+        imguiCarousel_.surfaceMediaByUuid.clear();
         panoramaFadeActive_=false;
         ambientMusic_.configure(0,false,0.f);
         mp3Library_.update(-1,false,0.f);
@@ -823,6 +831,7 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     imguiCarousel_.wallSourceKind=0;
     imguiCarousel_.wallVideoSelected=-1;
     imguiCarousel_.surfaceMedia.clear();
+    imguiCarousel_.surfaceMediaByUuid.clear();
     panoramaFadeActive_=false;
 #endif
     immersivePortalId_.reset();
@@ -878,6 +887,15 @@ bool XrSwapchainRenderer::saveCurrentScene() {
     runtime.particleMotionMode=imguiCarousel_.particleMotionMode;
     runtime.particleMotionSpeed=imguiCarousel_.particleMotionSpeed;
     runtime.particleColorCycle=imguiCarousel_.particleColorCycle;
+    // Save stable Meta UUIDs; transient numeric XrSpace IDs cannot survive reload.
+    auto persisted=imguiCarousel_.surfaceMediaByUuid;
+    for(const auto& surface:environmentSurfaces_.surfaces()) {
+        if(surface.persistentUuid.empty())continue;
+        const auto it=imguiCarousel_.surfaceMedia.find(surface.id);
+        if(it!=imguiCarousel_.surfaceMedia.end())persisted[surface.persistentUuid]=it->second;
+    }
+    for(const auto& [uuid,media]:persisted)
+        runtime.surfaceMedia.push_back({uuid,media.kind,media.filename,media.shaderMode});
 #endif
     // Invalid or newer editor settings should never make the entire scene unsavable.
     if(!voxen::gallery::sanitizeForSave(runtime)) return false;
@@ -1040,6 +1058,10 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     imguiCarousel_.particleMotionMode=snapshot->particleMotionMode;
     imguiCarousel_.particleMotionSpeed=snapshot->particleMotionSpeed;
     imguiCarousel_.particleColorCycle=snapshot->particleColorCycle;
+    imguiCarousel_.surfaceMedia.clear();
+    imguiCarousel_.surfaceMediaByUuid.clear();
+    for(const auto& media:snapshot->surfaceMedia)
+        imguiCarousel_.surfaceMediaByUuid[media.uuid]={media.kind,media.filename,media.shaderMode};
 #endif
     return true;
 }
@@ -1774,10 +1796,12 @@ void XrSwapchainRenderer::createPipeline() {
 #endif
             ;
         if(solidVoxen) ds.depthWriteEnable=VK_TRUE;
+        if(&out==&surfacePicturePipeline_)ds.depthWriteEnable=VK_TRUE;
+        if(&out==&surfacePreviewPipeline_)ds.depthWriteEnable=VK_FALSE;
         if(&out==&panoramaPipeline_ || &out==&openbrushDotsPipeline_ || &out==&openbrushSmokePipeline_)ds.depthWriteEnable=VK_FALSE;
         ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
         VkPipelineColorBlendAttachmentState blend{}; blend.colorWriteMask=0xF;
-        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &galleryCylinderPipeline_ || &out == &galleryCylinderMatrixPipeline_ || &out == &galleryCylinderOceanPipeline_ || &out == &galleryCylinderLiquidPipeline_ || &out == &panoramaPipeline_
+        if (&out == &liquidRoomPipeline_ || &out == &solidWallPipeline_ || &out == &matrixRainPipeline_ || &out == &heppGlowPipeline_ || &out == &phiFieldPipeline_ || &out == &soundDemoPipeline_ || &out == &midnightRidePipeline_ || &out == &rainbowSpiralPipeline_ || &out == &mobiusSpiralPipeline_ || &out == &thereminWavePipeline_ || &out == &geometricKaleidoscopePipeline_ || &out == &mandelbrotZoomPipeline_ || &out == &voxenPlasmaPipeline_ || &out == &voxenSpheresPipeline_ || &out == &voxenAttractorPipeline_ || &out == &meshWirePipeline_ || &out == &handOutlinePipeline_ || &out == &carouselPipeline_ || &out == &galleryPortalPipeline_ || &out == &galleryCylinderPipeline_ || &out == &galleryCylinderMatrixPipeline_ || &out == &galleryCylinderOceanPipeline_ || &out == &galleryCylinderLiquidPipeline_ || &out == &panoramaPipeline_ || &out == &surfacePreviewPipeline_
 #ifdef VOXEN_WITH_IMGUI
             || &out == &imguiPanelPipeline_
 #endif
@@ -1849,7 +1873,8 @@ void XrSwapchainRenderer::createPipeline() {
            &out==&openbrushLightningPipeline_ || &out==&openbrushNeonTrailsPipeline_ || &out==&openbrushMagicDustPipeline_ ||
            &out==&openbrushChromaticWavePipeline_ || &out==&openbrushElectricityPipeline_)pi.layout=openbrushSmokePipelineLayout_;
         if(&out==&panoramaPipeline_)pi.layout=panoramaPipelineLayout_;
-        if(&out==&galleryCylinderPicturePipeline_)pi.layout=galleryPicturePipelineLayout_;
+        if(&out==&galleryCylinderPicturePipeline_ || &out==&surfacePicturePipeline_)
+            pi.layout=galleryPicturePipelineLayout_;
         pi.renderPass=renderPass_;
         checkVk(vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pi, nullptr, &out), "vkCreateGraphicsPipelines");
         vkDestroyShaderModule(device_, fs, nullptr);
@@ -1924,6 +1949,8 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(fractalVert, fractalVertSize, galleryPortalFrag, galleryPortalFragSize, galleryPortalPipeline_);
     buildPipeline(galleryCylinderVert, galleryCylinderVertSize, galleryCylinderFrag, galleryCylinderFragSize, galleryCylinderPipeline_);
     buildPipeline(galleryCylinderVert, galleryCylinderVertSize, galleryCylinderPictureFrag, galleryCylinderPictureFragSize, galleryCylinderPicturePipeline_);
+    buildPipeline(fractalVert,fractalVertSize,surfacePictureFrag,surfacePictureFragSize,surfacePicturePipeline_);
+    buildPipeline(fractalVert,fractalVertSize,surfacePreviewFrag,surfacePreviewFragSize,surfacePreviewPipeline_);
     buildPipeline(galleryCylinderVert, galleryCylinderVertSize, matrixRainFrag, matrixRainFragSize, galleryCylinderMatrixPipeline_);
     buildPipeline(galleryCylinderVert, galleryCylinderVertSize, oceanWavesFrag, oceanWavesFragSize, galleryCylinderOceanPipeline_);
     buildPipeline(galleryCylinderVert, galleryCylinderVertSize, liquidRoomFrag, liquidRoomFragSize, galleryCylinderLiquidPipeline_);
@@ -2271,14 +2298,30 @@ void XrSwapchainRenderer::updateControllerInteraction(
                 preview[2]-surface.center[2]};
             const auto dot=[&](const std::array<float,3>& a){
                 return delta[0]*a[0]+delta[1]*a[1]+delta[2]*a[2];};
-            if(std::fabs(dot(axisX))>surface.halfExtents[0]+.08f ||
-               std::fabs(dot(axisY))>surface.halfExtents[1]+.08f)continue;
-            const float d=std::fabs(dot(axisZ));
+            const float depth=dot(axisZ);
+            const std::array<float,3> controllerDelta{
+                pose.position.x-surface.center[0],
+                pose.position.y-surface.center[1],
+                pose.position.z-surface.center[2]};
+            const float controllerDepth=controllerDelta[0]*axisZ[0]+
+                controllerDelta[1]*axisZ[1]+controllerDelta[2]*axisZ[2];
+            const bool crossed=depth*controllerDepth<=0.f &&
+                std::fabs(depth-controllerDepth)>0.001f;
+            const float t=crossed?std::clamp(controllerDepth/(controllerDepth-depth),0.f,1.f):1.f;
+            const std::array<float,3> hitDelta{
+                controllerDelta[0]+t*(delta[0]-controllerDelta[0]),
+                controllerDelta[1]+t*(delta[1]-controllerDelta[1]),
+                controllerDelta[2]+t*(delta[2]-controllerDelta[2])};
+            const auto hitDot=[&](const std::array<float,3>& axis){
+                return hitDelta[0]*axis[0]+hitDelta[1]*axis[1]+hitDelta[2]*axis[2];};
+            if(std::fabs(hitDot(axisX))>surface.halfExtents[0]+.08f ||
+               std::fabs(hitDot(axisY))>surface.halfExtents[1]+.08f)continue;
+            const float d=crossed?0.f:std::fabs(depth);
             if(d<bestDistance){bestDistance=d;nearest=static_cast<std::int64_t>(surface.id);}
         }
         imguiCarousel_.mediaPreviewSurface=nearest;
         if(galleryTriggerEdge && !panelAimed_ && nearest>=0) {
-            CarouselState::AppliedMedia media{};
+            voxen::ui::CarouselState::AppliedMedia media{};
             media.kind=imguiCarousel_.backgroundSourceKind;
             media.shaderMode=imguiCarousel_.wallShaderMode;
             if(media.kind==1 && imguiCarousel_.panoramaSelected>=0 &&
@@ -2290,6 +2333,10 @@ void XrSwapchainRenderer::updateControllerInteraction(
             else if(media.kind==3)media.filename="Shader";
             if(media.kind==3 || !media.filename.empty()) {
                 imguiCarousel_.surfaceMedia[static_cast<std::uint64_t>(nearest)]=std::move(media);
+                for(const auto& surface:environmentSurfaces_.surfaces())
+                    if(surface.id==static_cast<std::uint64_t>(nearest) && !surface.persistentUuid.empty())
+                        imguiCarousel_.surfaceMediaByUuid[surface.persistentUuid]=
+                            imguiCarousel_.surfaceMedia[surface.id];
                 imguiCarousel_.backgroundTargetSurface=nearest;
                 imguiCarousel_.applyMediaRequest=true;
                 imguiCarousel_.applyMediaStatus="Assigned media to snapped surface";
@@ -2690,6 +2737,14 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(depthConstants),&depthConstants);
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
+    // Scene queries can replace transient surface IDs at any time. Resolve
+    // persisted UUID media to the live surfaces before drawing either eye.
+    for(const auto& surface:environmentSurfaces_.surfaces()) {
+        if(surface.persistentUuid.empty())continue;
+        const auto stored=imguiCarousel_.surfaceMediaByUuid.find(surface.persistentUuid);
+        if(stored!=imguiCarousel_.surfaceMediaByUuid.end())
+            imguiCarousel_.surfaceMedia[surface.id]=stored->second;
+    }
     const bool hasExplicitWallShader=std::any_of(
         imguiCarousel_.surfaceMedia.begin(),imguiCarousel_.surfaceMedia.end(),
         [](const auto& entry){return entry.second.kind==3;});
@@ -2844,6 +2899,59 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 0,sizeof(liquid),&liquid);
             vkCmdDraw(commandBuffer_,6,1,0,0);
         }
+    }
+    // Static pictures use the same asynchronous GPU texture cache as gallery
+    // portals. Each plane gets a separate descriptor and complete quad; no
+    // panoramic spherical mapping or global one-picture restriction.
+    if(surfacePicturePipeline_!=VK_NULL_HANDLE) {
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,surfacePicturePipeline_);
+        for(const auto& surface:environmentSurfaces_.surfaces()) {
+            if(!surface.tracked || surface.halfExtents[0]<=.05f || surface.halfExtents[1]<=.05f)
+                continue;
+            const auto assignment=imguiCarousel_.surfaceMedia.find(surface.id);
+            if(assignment==imguiCarousel_.surfaceMedia.end() || assignment->second.kind!=1)
+                continue;
+            const auto picture=galleryPictureCache_.find(assignment->second.filename);
+            if(picture==galleryPictureCache_.end() || !picture->second.texture.descriptor)
+                continue;
+            const auto descriptor=picture->second.texture.descriptor;
+            vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                galleryPicturePipelineLayout_,0,1,&descriptor,0,nullptr);
+            ProceduralPushConstants pc{multiply(projView,surfaceModel(surface)),{0.f,0.f,0.f,0.f}};
+            vkCmdPushConstants(commandBuffer_,galleryPicturePipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,6,1,0,0);
+        }
+    }
+    // Media-placement reticle remains a visible world-space marker. Once the
+    // preview is near a tracked surface, its outline expands to the full plane.
+    if(editingMode() && imguiCarousel_.mediaPlacementEnabled && controllerTracked_[1] &&
+       surfacePreviewPipeline_!=VK_NULL_HANDLE) {
+        Mat4 preview{};
+        bool snapped=false;
+        for(const auto& surface:environmentSurfaces_.surfaces())
+            if(surface.tracked && imguiCarousel_.mediaPreviewSurface>=0 &&
+               surface.id==static_cast<std::uint64_t>(imguiCarousel_.mediaPreviewSurface)) {
+                preview=surfaceModel(surface);
+                snapped=true;
+                break;
+            }
+        if(!snapped) {
+            const auto& pose=controllerPoses_[1];
+            const auto& q=pose.orientation;
+            const std::array<float,3> dir{
+                -2.f*(q.x*q.z+q.w*q.y),-2.f*(q.y*q.z-q.w*q.x),
+                -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+            preview=modelMatrix(pose.position.x+editorPlacementDistance_*dir[0],
+                pose.position.y+editorPlacementDistance_*dir[1],
+                0.14f*imguiCarousel_.mediaPreviewScale,
+                pose.position.z+editorPlacementDistance_*dir[2]);
+        }
+        vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,surfacePreviewPipeline_);
+        ProceduralPushConstants pc{multiply(projView,preview),{snapped?1.f:0.f,seconds,0.f,0.f}};
+        vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+            VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+        vkCmdDraw(commandBuffer_,6,1,0,0);
     }
 #ifdef __ANDROID__
     static bool wireframeStateLogged=false;
@@ -3913,7 +4021,7 @@ void XrSwapchainRenderer::render(
             }
             galleryPictureRequestedFilename_.clear();
         }
-        if(!immersiveSceneActive_ && portalManager_ &&
+        if(portalManager_ &&
            !galleryPictureDecodeFuture_.valid()) {
             const auto portals=portalManager_->visible();
             // Release textures no longer referenced by any visible portal.
@@ -3924,7 +4032,8 @@ void XrSwapchainRenderer::render(
                     [&](const voxen::gallery::VisiblePortal& p) {
                         return p.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
                                p.surface.pictureFilename==entry.first;
-                    });
+                    }) || std::any_of(imguiCarousel_.surfaceMedia.begin(),imguiCarousel_.surfaceMedia.end(),
+                    [&](const auto& item){return item.second.kind==1 && item.second.filename==entry.first;});
                 if(!used){stale=true;break;}
             }
             if(stale) {
@@ -3934,7 +4043,8 @@ void XrSwapchainRenderer::render(
                         [&](const voxen::gallery::VisiblePortal& p) {
                             return p.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
                                    p.surface.pictureFilename==it->first;
-                        });
+                        }) || std::any_of(imguiCarousel_.surfaceMedia.begin(),imguiCarousel_.surfaceMedia.end(),
+                        [&](const auto& item){return item.second.kind==1 && item.second.filename==it->first;});
                     if(used){++it;continue;}
                     auto& tex=it->second.texture;
                     if(tex.sampler)vkDestroySampler(device_,tex.sampler,nullptr);
@@ -3963,6 +4073,23 @@ void XrSwapchainRenderer::render(
                     return decodePanoramaImage(file,limit,8ull*1024ull*1024ull);
                 });
                 break;
+            }
+            if(!galleryPictureDecodeFuture_.valid()) {
+                for(const auto& [id,media]:imguiCarousel_.surfaceMedia) {
+                    if(media.kind!=1 || media.filename.empty() ||
+                       galleryPictureCache_.count(media.filename))continue;
+                    if(std::find(panoramaNames_.begin(),panoramaNames_.end(),media.filename)==panoramaNames_.end())
+                        continue;
+                    galleryPictureRequestedFilename_=media.filename;
+                    const auto file=panoramaRoot_/media.filename;
+                    VkPhysicalDeviceProperties props{};
+                    vkGetPhysicalDeviceProperties(physicalDevice_,&props);
+                    const int limit=static_cast<int>(std::min(props.limits.maxImageDimension2D,1024u));
+                    galleryPictureDecodeFuture_=std::async(std::launch::async,[file,limit] {
+                        return decodePanoramaImage(file,limit,8ull*1024ull*1024ull);
+                    });
+                    break;
+                }
             }
         }
 #endif
@@ -4042,6 +4169,16 @@ void XrSwapchainRenderer::render(
         // Expose only tracked, physically sized Meta scene planes to the UI.
         if(imguiCarousel_.applyMediaRequest) {
             imguiCarousel_.applyMediaRequest=false;
+            if(imguiCarousel_.backgroundTargetSurface>=0)
+                for(const auto& surface:environmentSurfaces_.surfaces()) {
+                    if(surface.id!=static_cast<std::uint64_t>(imguiCarousel_.backgroundTargetSurface) ||
+                       surface.persistentUuid.empty())continue;
+                    const auto selected=imguiCarousel_.surfaceMedia.find(surface.id);
+                    if(selected==imguiCarousel_.surfaceMedia.end())
+                        imguiCarousel_.surfaceMediaByUuid.erase(surface.persistentUuid);
+                    else imguiCarousel_.surfaceMediaByUuid[surface.persistentUuid]=selected->second;
+                    break;
+                }
             imguiCarousel_.applyMediaStatus=
                 "Surface mapping updated (single MP4 OpenXR plane supported).";
         }
@@ -4769,6 +4906,8 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if (carouselPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,carouselPipeline_,nullptr); carouselPipeline_=VK_NULL_HANDLE; }
     if (galleryPortalPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryPortalPipeline_,nullptr); galleryPortalPipeline_=VK_NULL_HANDLE; }
     if (galleryCylinderPicturePipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderPicturePipeline_,nullptr); galleryCylinderPicturePipeline_=VK_NULL_HANDLE; }
+    if (surfacePicturePipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,surfacePicturePipeline_,nullptr); surfacePicturePipeline_=VK_NULL_HANDLE; }
+    if (surfacePreviewPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,surfacePreviewPipeline_,nullptr); surfacePreviewPipeline_=VK_NULL_HANDLE; }
     if (galleryPicturePipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(device_,galleryPicturePipelineLayout_,nullptr); galleryPicturePipelineLayout_=VK_NULL_HANDLE; }
     if (galleryCylinderPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderPipeline_,nullptr); galleryCylinderPipeline_=VK_NULL_HANDLE; }
     if (galleryCylinderMatrixPipeline_ != VK_NULL_HANDLE) { vkDestroyPipeline(device_,galleryCylinderMatrixPipeline_,nullptr); galleryCylinderMatrixPipeline_=VK_NULL_HANDLE; }

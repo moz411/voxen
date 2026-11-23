@@ -17,12 +17,19 @@ int main() {
     r.particleMotionMode=2;
     r.particleMotionSpeed=1.75f;
     r.particleColorCycle=0.4f;
+    r.surfaceMedia={{"00112233-4455-6677-8899-aabbccddeeff",1,"sky.jpg",0},
+                    {"11112233-4455-6677-8899-aabbccddeeff",3,"Shader",12},
+                    {"22112233-4455-6677-8899-aabbccddeeff",2,"ambient.mp4",0}};
     auto bytes=encodeRuntime(r);
     auto loaded=decodeRuntime(bytes);
     assert(loaded && loaded->voxens.size()==1);
     assert(loaded->backgroundSourceKind==2 && loaded->videoFile=="ambient.mp4");
     assert(loaded->panoramaFile=="sky.jpg");
     assert(loaded->cycleWallShaders && loaded->differentShaderPerSurface);
+    assert(loaded->surfaceMedia.size()==3);
+    assert(loaded->surfaceMedia[0].filename=="sky.jpg");
+    assert(loaded->surfaceMedia[1].shaderMode==12);
+    assert(loaded->surfaceMedia[2].kind==2);
     assert(loaded->particleMotionMode==2 && loaded->particleMotionSpeed==1.75f &&
            loaded->particleColorCycle==0.4f);
     assert(loaded->voxens[0].position==v.position);
@@ -57,7 +64,7 @@ int main() {
     second.brushColorMode=2;second.brushColorCycle=1.f;
     strokes.voxens={first,second};
     auto strokeBytes=encodeRuntime(strokes);
-    assert(strokeBytes.find("VOXEN_RUNTIME 9")!=std::string::npos);
+    assert(strokeBytes.find("VOXEN_RUNTIME 10")!=std::string::npos);
     auto strokeRoundtrip=decodeRuntime(strokeBytes);
     assert(strokeRoundtrip && strokeRoundtrip->voxens.size()==2);
     assert(strokeRoundtrip->voxens[0].strokeId==41);
@@ -69,10 +76,10 @@ int main() {
     assert(strokeRoundtrip->voxens[1].brushMotion==1);
     assert(strokeRoundtrip->voxens[1].brushColorCycle==1.f);
     // Existing v8 scenes must decode without per-stroke fields.
-    const std::string legacyV8="VOXEN_RUNTIME 8\\n1\\n0\\n- 0 220 75\\n"
-        "0 0 0 0.45 0 0 0 0 0.82 1.5 0.8 0\\n"
-        "0 0.42 0 0 30 0\\n0 -\\n2 1.5 0.5\\n"
-        "27 0 0.18 0.1 0.2 0.3 0 0 0 0 0 0\\n";
+    const std::string legacyV8="VOXEN_RUNTIME 8\n1\n0\n- 0 220 75\n"
+        "0 0 0 0.45 0 0 0 0 0.82 1.5 0.8 0\n"
+        "0 0.42 0 0 30 0\n0 -\n2 1.5 0.5\n"
+        "27 0 0.18 0.1 0.2 0.3 0 0 0 0 0 0\n";
     auto legacy=decodeRuntime(legacyV8);
     assert(legacy && legacy->voxens.size()==1);
     assert(legacy->voxens[0].brushMotion==2);

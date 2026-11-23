@@ -68,6 +68,7 @@ struct CarouselState {
     std::vector<std::string> detectedSurfaceLabels;
     struct AppliedMedia { int kind=0; std::string filename; int shaderMode=0; };
     std::unordered_map<std::uint64_t, AppliedMedia> surfaceMedia;
+    std::unordered_map<std::string, AppliedMedia> surfaceMediaByUuid;
     bool applyMediaRequest=false;
     std::string applyMediaStatus;
     bool videoRescanRequest = false;

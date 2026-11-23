@@ -377,6 +377,8 @@ private:
     VkPipeline galleryPortalPipeline_ = VK_NULL_HANDLE;
     VkPipeline galleryCylinderPipeline_ = VK_NULL_HANDLE;
     VkPipeline galleryCylinderPicturePipeline_ = VK_NULL_HANDLE;
+    VkPipeline surfacePicturePipeline_ = VK_NULL_HANDLE;
+    VkPipeline surfacePreviewPipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout galleryPicturePipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline galleryCylinderMatrixPipeline_ = VK_NULL_HANDLE;
     VkPipeline galleryCylinderOceanPipeline_ = VK_NULL_HANDLE;

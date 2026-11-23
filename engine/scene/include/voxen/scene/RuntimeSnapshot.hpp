@@ -21,8 +21,15 @@ struct SavedVoxen {
     float brushMotionSpeed=1.f, brushColorCycle=0.f;
     std::array<float,3> brushEndRgb{1.f,.2f,.55f};
 };
+struct SavedSurfaceMedia {
+    std::string uuid; // Meta spatial-entity UUID, stable across scene reloads
+    int kind=0; // 1 picture, 2 video, 3 procedural shader
+    std::string filename;
+    int shaderMode=0;
+};
 struct SavedRuntime {
     std::vector<SavedVoxen> voxens;
+    std::vector<SavedSurfaceMedia> surfaceMedia;
     std::string panoramaFile;
     std::string videoFile;
     int backgroundSourceKind=0;
@@ -51,6 +58,17 @@ struct SavedRuntime {
     float particleColorCycle=0.f;
 };
 inline bool valid(const SavedRuntime& r) {
+    if(r.surfaceMedia.size()>256)return false;
+    for(const auto& media:r.surfaceMedia) {
+        if(media.uuid.empty() || media.uuid.size()>80 ||
+           media.uuid.find_first_not_of("0123456789abcdefABCDEF-")!=std::string::npos ||
+           media.kind<1 || media.kind>3 || media.shaderMode<0 || media.shaderMode>255 ||
+           media.filename.size()>128 || media.filename.find('/')!=std::string::npos ||
+           media.filename.find('\\')!=std::string::npos ||
+           media.filename.find("..")!=std::string::npos ||
+           media.filename.find_first_of(" \t\r\n")!=std::string::npos ||
+           (media.kind!=3 && media.filename.empty()))return false;
+    }
     if(r.backgroundSourceKind<0 || r.backgroundSourceKind>2 ||
        r.videoFile.size()>128 || r.videoFile.find('/')!=std::string::npos ||
        r.videoFile.find('\\')!=std::string::npos ||
@@ -99,6 +117,7 @@ inline bool valid(const SavedRuntime& r) {
 // than the snapshot format; a malformed setting must not invalidate an entire scene.
 inline bool sanitizeForSave(SavedRuntime& r) {
     if (r.voxens.size()>4096) return false;
+    if(r.surfaceMedia.size()>256)return false;
     auto finiteOr=[](float value,float fallback) {
         return std::isfinite(value) ? value : fallback;
     };
@@ -153,7 +172,7 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
     if (!valid(r)) return {};
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<float>::max_digits10);
-    out << "VOXEN_RUNTIME 9\n" << r.voxens.size() << '\n';
+    out << "VOXEN_RUNTIME 10\n" << r.voxens.size() << '\n';
     out << r.sceneKind << '\n';
     out << (r.panoramaFile.empty() ? "-" : r.panoramaFile) << ' '
         << r.panoramaYawDegrees << ' ' << r.panoramaHorizontalDegrees << ' '
@@ -177,13 +196,18 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
         for(float x:v.brushEndRgb)out << ' ' << x;
         out << '\n';
     }
+    out << r.surfaceMedia.size() << '\n';
+    for(const auto& media:r.surfaceMedia)
+        out << media.uuid << ' ' << media.kind << ' '
+            << (media.filename.empty()?"-":media.filename) << ' '
+            << media.shaderMode << '\n';
     return out.str();
 }
 inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
     if(data.size()>1048576) return std::nullopt;
     std::istringstream in(data);
     std::string magic; int version=0; std::size_t count=0;
-    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version<1 || version>9) || count>4096)
+    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version<1 || version>10) || count>4096)
         return std::nullopt;
     SavedRuntime r;
     if(version>=3 && !(in>>r.sceneKind))return std::nullopt;
@@ -224,6 +248,16 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
             v.brushColorMode=r.particleColorCycle>0.f?2:0;
         }
         r.voxens.push_back(v);
+    }
+    if(version>=10) {
+        std::size_t mediaCount=0;
+        if(!(in>>mediaCount) || mediaCount>256)return std::nullopt;
+        for(std::size_t i=0;i<mediaCount;++i) {
+            SavedSurfaceMedia media;
+            if(!(in>>media.uuid>>media.kind>>media.filename>>media.shaderMode))return std::nullopt;
+            if(media.filename=="-")media.filename.clear();
+            r.surfaceMedia.push_back(std::move(media));
+        }
     }
     in >> std::ws;
     if(!in.eof() || !valid(r)) return std::nullopt;

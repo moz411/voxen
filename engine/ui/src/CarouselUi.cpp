@@ -21,6 +21,7 @@ void drawCarousel(CarouselState& state) {
         ImGui::Separator();
         switch(state.page) {
         case 0:
+            state.mediaPlacementEnabled=false; // selecting brushes restores trigger painting
             ImGui::SeparatorText("OBJECTS / VOXENS + GLB");
             static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH","EARTHWORM","CLOUD","METABALLS","TENTACLE CREATURE","FRACTAL PYRAMID","PHYLLOTAXIS SPIRAL","STICKMAN ECHO","CACODEMON","GOLDEEN","PBR SMILE","PULSING CUBE CLOUD","RUBIK CUBE"};
             ImGui::BeginChild("objects-unified",ImVec2(0,170),true);
