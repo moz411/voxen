@@ -287,38 +287,16 @@ void drawCarousel(CarouselState& state) {
             ImGui::EndChild();
             ImGui::Text("Selection : %s",state.mediaToolKind==0?"aucune":
                 state.mediaToolFilename.c_str());
-            ImGui::SeparatorText("2. CIBLER UNE SURFACE META");
-            ImGui::BeginChild("tracked-meta-surfaces",ImVec2(0,105),true);
-            for(std::size_t i=0;i<state.detectedSurfaceUuids.size();++i) {
-                const auto& uuid=state.detectedSurfaceUuids[i];
-                const std::string label=state.detectedSurfaceLabels[i]+"##"+std::to_string(i);
-                const bool selected=uuid==state.selectedSurfaceUuid && !uuid.empty();
-                if(ImGui::Selectable(label.c_str(),selected) && !uuid.empty())
-                    state.selectedSurfaceUuid=uuid;
-                if(const auto* assignment=state.mediaEditor.find(uuid)) {
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("[%s]",assignment->filename.c_str());
-                }
-            }
-            ImGui::EndChild();
-            if(state.detectedSurfaceUuids.empty())
-                ImGui::TextDisabled("Aucun plan Meta suivi");
-            const auto* assigned=state.mediaEditor.find(state.selectedSurfaceUuid);
-            if(assigned)ImGui::Text("Actuel : %s",assigned->filename.c_str());
-            ImGui::BeginDisabled(state.selectedSurfaceUuid.empty() || state.mediaToolKind==0);
-            if(ImGui::Button("APPLIQUER A CETTE SURFACE",ImVec2(-1,38)))
-                state.mediaEditor.assign(state.selectedSurfaceUuid,
-                    SurfaceMedia{state.mediaToolKind,state.mediaToolFilename,state.mediaToolShaderMode});
-            ImGui::EndDisabled();
-            ImGui::BeginDisabled(state.selectedSurfaceUuid.empty());
-            if(ImGui::Button("SOBEL SUR CETTE SURFACE",ImVec2(-1,32)))
-                state.mediaEditor.assign(state.selectedSurfaceUuid,SurfaceMedia{0,"Sobel",0});
-            ImGui::EndDisabled();
-            ImGui::BeginDisabled(state.selectedSurfaceUuid.empty() || !assigned);
-            if(ImGui::Button("RETIRER"))
-                state.mediaEditor.assign(state.selectedSurfaceUuid,std::nullopt);
-            ImGui::EndDisabled();
-            ImGui::SameLine();
+            ImGui::SeparatorText("PLACEMENT SPATIAL");
+            ImGui::TextDisabled("Maintenir la gachette et pousser l'icone vers un mur, sol ou plafond.");
+            ImGui::TextDisabled("Intersection : apercu sur tout le plan, profondeur bloquee.");
+            ImGui::TextDisabled("Tirer vers soi : decrocher | relacher : confirmer.");
+            ImGui::Text("Distance %.2fm / taille %.2fx",state.placementDistance,state.mediaPreviewScale);
+            if(state.mediaDrag.active && state.mediaDrag.snapped)
+                ImGui::TextColored(ImVec4(.25f,.85f,.8f,1.f),"SURFACE ACCROCHEE - relacher pour fixer");
+            else if(state.mediaDrag.active)ImGui::TextDisabled("Glissement libre : pousser jusqu'au plan");
+            else ImGui::TextDisabled("Maintenir la gachette pour saisir l'icone");
+            if(!state.applyMediaStatus.empty())ImGui::TextWrapped("%s",state.applyMediaStatus.c_str());
             ImGui::BeginDisabled(!state.mediaEditor.canUndo());
             if(ImGui::Button("ANNULER"))state.mediaEditor.undo();
             ImGui::EndDisabled();
@@ -326,20 +304,8 @@ void drawCarousel(CarouselState& state) {
             ImGui::BeginDisabled(!state.mediaEditor.canRedo());
             if(ImGui::Button("RETABLIR"))state.mediaEditor.redo();
             ImGui::EndDisabled();
-            ImGui::Checkbox("PLACEMENT AVEC MANETTE",&state.mediaPlacementEnabled);
-            if(state.mediaPlacementEnabled) {
-                ImGui::TextDisabled("Joystick X : taille | Y : distance");
-                ImGui::TextDisabled("Maintenir gachette : saisir et pousser vers un plan");
-                ImGui::TextDisabled("Snap : profondeur bloquee | tirer : decoller");
-                ImGui::TextDisabled("Relacher sur le plan : fixer | ailleurs : annuler");
-                ImGui::Text("Distance %.2fm / taille %.2fx",state.placementDistance,state.mediaPreviewScale);
-                if(state.mediaPreviewSurface>=0)
-                    ImGui::Text("PREVIEW TEMPORAIRE : plan #%llu",(unsigned long long)state.mediaPreviewSurface);
-                else if(state.mediaDrag.active)ImGui::TextDisabled("GLISSEMENT : aucune surface accrochee");
-                if(!state.applyMediaStatus.empty())ImGui::TextWrapped("%s",state.applyMediaStatus.c_str());
-                if(ImGui::Button("TERMINER LE PLACEMENT",ImVec2(-1,34)))
-                    {state.mediaPlacementEnabled=false;state.mediaDrag.cancel();}
-            }
+            if(ImGui::Button("TERMINER LE PLACEMENT",ImVec2(-1,34)))
+                {state.mediaPlacementEnabled=false;state.mediaDrag.cancel();}
             if(ImGui::CollapsingHeader("ENVIRONNEMENT GLOBAL (explicite)")) {
                 ImGui::TextDisabled("Independant des affectations par surface.");
                 if(ImGui::Button("RETOUR PASSTHROUGH SOBEL",ImVec2(-1,36))) {

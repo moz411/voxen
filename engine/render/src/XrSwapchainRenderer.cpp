@@ -2292,12 +2292,9 @@ void XrSwapchainRenderer::updateControllerInteraction(
                     }
             }
             drag.update(editorPlacementDistance_,nearest);
-            if(drag.snapped) {
-                // Clamp the actual joystick-controlled distance too: the user
-                // never accumulates hidden overshoot while pushing the plane.
-                editorPlacementDistance_=std::min(editorPlacementDistance_,drag.snapped->depth);
-                imguiCarousel_.placementDistance=editorPlacementDistance_;
-            }
+            // Keep the requested joystick distance independent of the visual
+            // clamp: dragging back across the plane must release the snap.
+            // The icon itself is clamped by drag.visibleDistance at render time.
         }
         imguiCarousel_.mediaPreviewSurface=drag.snapped?
             static_cast<std::int64_t>(drag.snapped->id):-1;
