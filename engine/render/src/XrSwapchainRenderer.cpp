@@ -2289,15 +2289,8 @@ void XrSwapchainRenderer::updateControllerInteraction(
             if(hit && (!nearest || hit->depth<nearest->depth))nearest=std::move(hit);
         }
         if(drag.active) {
-            // Preserve the latched surface if another plane enters the ray.
-            if(drag.snapped && (!nearest || nearest->uuid!=drag.snapped->uuid)) {
-                nearest.reset();
-                for(const auto& surface:environmentSurfaces_.surfaces())
-                    if(surface.persistentUuid==drag.snapped->uuid) {
-                        nearest=voxen::ui::hitMediaSurface(surface,origin,dir);
-                        break;
-                    }
-            }
+            // Use the first visible MR plane along the ray. A previously
+            // snapped plane must never stay selected behind a nearer surface.
             drag.update(editorPlacementDistance_,nearest);
             // Keep the requested joystick distance independent of the visual
             // clamp: dragging back across the plane must release the snap.
