@@ -7,6 +7,8 @@
 #include <voxen/render/OpenBrushLightningStroke.hpp>
 #include <voxen/render/OpenBrushNeonTrailsStroke.hpp>
 #include <voxen/render/OpenBrushMagicDustStroke.hpp>
+#include <voxen/render/OpenBrushChromaticWaveStroke.hpp>
+#include <voxen/render/OpenBrushElectricityStroke.hpp>
 #include <limits>
 #include <fstream>
 #include <voxen/render/MandelbulbMesh.hpp>
@@ -89,6 +91,10 @@
 #include "openbrushNeonTrailsFrag.spv.hpp"
 #include "openbrushMagicDustVert.spv.hpp"
 #include "openbrushMagicDustFrag.spv.hpp"
+#include "openbrushChromaticWaveVert.spv.hpp"
+#include "openbrushChromaticWaveFrag.spv.hpp"
+#include "openbrushElectricityVert.spv.hpp"
+#include "openbrushElectricityFrag.spv.hpp"
 #include "openbrushSmokeVert.spv.hpp"
 #include "openbrushSmokeFrag.spv.hpp"
 #include "openbrushDotsVert.spv.hpp"
@@ -860,6 +866,9 @@ bool XrSwapchainRenderer::saveCurrentScene() {
     runtime.orbitRandomAxis=imguiCarousel_.orbitRandomAxis;
     runtime.motionGravity=imguiCarousel_.motionGravity;
     runtime.motionBounce=imguiCarousel_.motionBounce;
+    runtime.particleMotionMode=imguiCarousel_.particleMotionMode;
+    runtime.particleMotionSpeed=imguiCarousel_.particleMotionSpeed;
+    runtime.particleColorCycle=imguiCarousel_.particleColorCycle;
 #endif
     // Invalid or newer editor settings should never make the entire scene unsavable.
     if(!voxen::gallery::sanitizeForSave(runtime)) return false;
@@ -1012,6 +1021,9 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     imguiCarousel_.orbitRandomAxis=snapshot->orbitRandomAxis;
     imguiCarousel_.motionGravity=snapshot->motionGravity;
     imguiCarousel_.motionBounce=snapshot->motionBounce;
+    imguiCarousel_.particleMotionMode=snapshot->particleMotionMode;
+    imguiCarousel_.particleMotionSpeed=snapshot->particleMotionSpeed;
+    imguiCarousel_.particleColorCycle=snapshot->particleColorCycle;
 #endif
     return true;
 }
@@ -1681,7 +1693,8 @@ void XrSwapchainRenderer::createPipeline() {
             &out == &openbrushFirePipeline_ || &out == &openbrushSnowPipeline_ ||
             &out == &openbrushEmbersPipeline_ || &out == &openbrushBubblesPipeline_ ||
             &out == &openbrushLightningPipeline_ || &out == &openbrushNeonTrailsPipeline_ ||
-            &out == &openbrushMagicDustPipeline_) {
+            &out == &openbrushMagicDustPipeline_ || &out == &openbrushChromaticWavePipeline_ ||
+            &out == &openbrushElectricityPipeline_) {
             vi.vertexBindingDescriptionCount=1;
             vi.pVertexBindingDescriptions=&meshBinding;
             vi.vertexAttributeDescriptionCount=static_cast<uint32_t>(meshAttributes.size());
@@ -1713,7 +1726,8 @@ void XrSwapchainRenderer::createPipeline() {
             &out==&openbrushSnowPipeline_ || &out==&openbrushEmbersPipeline_ ||
             &out==&openbrushBubblesPipeline_ || &out==&openbrushMeshPipeline_ ||
             &out==&openbrushLightningPipeline_ || &out==&openbrushNeonTrailsPipeline_ ||
-            &out==&openbrushMagicDustPipeline_)
+            &out==&openbrushMagicDustPipeline_ || &out==&openbrushChromaticWavePipeline_ ||
+            &out==&openbrushElectricityPipeline_)
             ds.depthWriteEnable=VK_FALSE;
         if (&out == &panoramaPipeline_) ds.depthTestEnable=VK_FALSE;
         if (&out == &carouselPipeline_
@@ -1756,7 +1770,8 @@ void XrSwapchainRenderer::createPipeline() {
             blend.alphaBlendOp=VK_BLEND_OP_ADD;
         }
         if (&out==&openbrushSmokePipeline_ || &out==&openbrushFirePipeline_ || &out==&openbrushSnowPipeline_ || &out==&openbrushEmbersPipeline_ || &out==&openbrushBubblesPipeline_ ||
-            &out==&openbrushLightningPipeline_ || &out==&openbrushNeonTrailsPipeline_ || &out==&openbrushMagicDustPipeline_) {
+            &out==&openbrushLightningPipeline_ || &out==&openbrushNeonTrailsPipeline_ || &out==&openbrushMagicDustPipeline_ ||
+            &out==&openbrushChromaticWavePipeline_ || &out==&openbrushElectricityPipeline_) {
             blend.blendEnable=VK_TRUE;
             blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
             blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
@@ -1767,7 +1782,8 @@ void XrSwapchainRenderer::createPipeline() {
         }
         // Emissive fire: additive light accumulation, without depth writes.
         if (&out==&openbrushFirePipeline_ || &out==&openbrushLightningPipeline_ ||
-            &out==&openbrushNeonTrailsPipeline_ || &out==&openbrushMagicDustPipeline_) {
+            &out==&openbrushNeonTrailsPipeline_ || &out==&openbrushMagicDustPipeline_ ||
+            &out==&openbrushChromaticWavePipeline_ || &out==&openbrushElectricityPipeline_) {
             blend.blendEnable=VK_TRUE;
             blend.srcColorBlendFactor=VK_BLEND_FACTOR_SRC_ALPHA;
             blend.dstColorBlendFactor=VK_BLEND_FACTOR_ONE;
@@ -1809,7 +1825,8 @@ void XrSwapchainRenderer::createPipeline() {
         if(&out==&openbrushDotsPipeline_)pi.layout=openbrushDotsPipelineLayout_;
         if(&out==&openbrushMeshPipeline_)pi.layout=openbrushMeshPipelineLayout_;
         if(&out==&openbrushSmokePipeline_ || &out==&openbrushFirePipeline_ || &out==&openbrushSnowPipeline_ || &out==&openbrushEmbersPipeline_ || &out==&openbrushBubblesPipeline_ ||
-           &out==&openbrushLightningPipeline_ || &out==&openbrushNeonTrailsPipeline_ || &out==&openbrushMagicDustPipeline_)pi.layout=openbrushSmokePipelineLayout_;
+           &out==&openbrushLightningPipeline_ || &out==&openbrushNeonTrailsPipeline_ || &out==&openbrushMagicDustPipeline_ ||
+           &out==&openbrushChromaticWavePipeline_ || &out==&openbrushElectricityPipeline_)pi.layout=openbrushSmokePipelineLayout_;
         if(&out==&panoramaPipeline_)pi.layout=panoramaPipelineLayout_;
         if(&out==&galleryCylinderPicturePipeline_)pi.layout=galleryPicturePipelineLayout_;
         pi.renderPass=renderPass_;
@@ -1826,6 +1843,8 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(openbrushLightningVert,openbrushLightningVertSize,openbrushLightningFrag,openbrushLightningFragSize,openbrushLightningPipeline_);
     buildPipeline(openbrushNeonTrailsVert,openbrushNeonTrailsVertSize,openbrushNeonTrailsFrag,openbrushNeonTrailsFragSize,openbrushNeonTrailsPipeline_);
     buildPipeline(openbrushMagicDustVert,openbrushMagicDustVertSize,openbrushMagicDustFrag,openbrushMagicDustFragSize,openbrushMagicDustPipeline_);
+    buildPipeline(openbrushChromaticWaveVert,openbrushChromaticWaveVertSize,openbrushChromaticWaveFrag,openbrushChromaticWaveFragSize,openbrushChromaticWavePipeline_);
+    buildPipeline(openbrushElectricityVert,openbrushElectricityVertSize,openbrushElectricityFrag,openbrushElectricityFragSize,openbrushElectricityPipeline_);
     buildPipeline(openbrushDotsVert,openbrushDotsVertSize,openbrushDotsFrag,openbrushDotsFragSize,openbrushDotsPipeline_);
     buildPipeline(panoramaVert,panoramaVertSize,panoramaFrag,panoramaFragSize,panoramaPipeline_);
     buildPipeline(organicSphereVert, organicSphereVertSize, organicSphereFrag, organicSphereFragSize, organicSpherePipeline_);
@@ -2181,7 +2200,8 @@ void XrSwapchainRenderer::updateControllerInteraction(
         if(std::fabs(x)<0.30f)editorScaleStickLatched_=false;
         if(!editorScaleStickLatched_ && std::fabs(x)>0.72f) {
             imguiCarousel_.voxenScale=std::clamp(
-                imguiCarousel_.voxenScale*(x>0.f?1.20f:1.f/1.20f),0.18f,0.60f);
+                imguiCarousel_.voxenScale*(x>0.f?1.12f:1.f/1.12f),0.18f,
+                imguiCarousel_.particlePaintEnabled?6.f:0.60f);
             editorScaleStickLatched_=true;
         }
     } else {
@@ -2214,9 +2234,13 @@ void XrSwapchainRenderer::updateControllerInteraction(
         const bool lightning=smoke && imguiCarousel_.particlePreset==6;
         const bool neon=smoke && imguiCarousel_.particlePreset==7;
         const bool dust=smoke && imguiCarousel_.particlePreset==8;
+        const bool chromatic=smoke && imguiCarousel_.particlePreset==9;
+        const bool electricity=smoke && imguiCarousel_.particlePreset==10;
         // Normal Voxens remain one-per-trigger. Smoke samples a continuous
         // controller trajectory and uses the same saved-runtime point fields.
         v.preset=!smoke ? imguiCarousel_.voxenPreset :
+            electricity ? voxen::render::openbrush::ElectricityStrokePreset :
+            chromatic ? voxen::render::openbrush::ChromaticWaveStrokePreset :
             dust ? voxen::render::openbrush::MagicDustStrokePreset :
             neon ? voxen::render::openbrush::NeonTrailsStrokePreset :
             lightning ? voxen::render::openbrush::LightningStrokePreset :
@@ -2230,7 +2254,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         v.position={pose.position.x+0.25f*dir[0],
                     pose.position.y+0.25f*dir[1],
                     pose.position.z+0.25f*dir[2]};
-        v.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
+        v.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,smoke?6.f:0.60f);
         v.hue=smoke ? imguiCarousel_.smokeRgb[0] : imguiCarousel_.voxenHue;
         v.density=smoke ? imguiCarousel_.smokeRgb[1] : imguiCarousel_.voxenDensity;
         v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,11) :
@@ -2272,7 +2296,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
 void XrSwapchainRenderer::rebuildSmokePaintGpu() {
     if(device_==VK_NULL_HANDLE || !smokePaintDirty_)return;
     using namespace voxen::render::openbrush;
-    std::array<std::vector<SmokeStrokePoint>,9> strokes;
+    std::array<std::vector<SmokeStrokePoint>,11> strokes;
     for(const auto& v:voxens_) {
         int kind=-1;
         switch(v.preset) {
@@ -2285,6 +2309,8 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
         case LightningStrokePreset: kind=6; break;
         case NeonTrailsStrokePreset: kind=7; break;
         case MagicDustStrokePreset: kind=8; break;
+        case ChromaticWaveStrokePreset: kind=9; break;
+        case ElectricityStrokePreset: kind=10; break;
         default: break;
         }
         if(kind>=0)strokes[static_cast<std::size_t>(kind)].push_back(
@@ -2304,6 +2330,8 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
     append(makeLightningStrokeScene(strokes[6]));
     append(makeNeonTrailsStrokeScene(strokes[7]));
     append(makeMagicDustStrokeScene(strokes[8]));
+    append(makeChromaticWaveStrokeScene(strokes[9]));
+    append(makeElectricityStrokeScene(strokes[10]));
     const auto packed=packMeshes(combined);
     // renderImage() waits on fence_ after every vkQueueSubmit, for each eye.
     // Thus no submission referencing nativeParticleGpu_ is outstanding here:
@@ -3024,6 +3052,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         static const auto smokeStart=std::chrono::steady_clock::now();
         smoke.settings[0]=std::chrono::duration<float>(
             std::chrono::steady_clock::now()-smokeStart).count();
+        smoke.settings[1]=static_cast<float>(imguiCarousel_.particleMotionMode);
+        smoke.settings[2]=imguiCarousel_.particleMotionSpeed;
+        smoke.settings[3]=imguiCarousel_.particleColorCycle;
         if(immersiveSceneActive_)openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,
             openbrushMeshPipelineLayout_,vp,openbrushSmokePipeline_,
             openbrushSmokePipelineLayout_,openbrushSmokeTexture_.descriptor,&smoke);
@@ -3037,7 +3068,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             openbrushBubblesPipeline_,openbrushSmokePipelineLayout_,
             openbrushLightningPipeline_,openbrushSmokePipelineLayout_,
             openbrushNeonTrailsPipeline_,openbrushSmokePipelineLayout_,
-            openbrushMagicDustPipeline_,openbrushSmokePipelineLayout_);
+            openbrushMagicDustPipeline_,openbrushSmokePipelineLayout_,
+            openbrushChromaticWavePipeline_,openbrushSmokePipelineLayout_,
+            openbrushElectricityPipeline_,openbrushSmokePipelineLayout_);
 #else
         if(immersiveSceneActive_)openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,openbrushMeshPipelineLayout_,vp);
 #endif
@@ -3127,7 +3160,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             1.f-2.f*(y*y+z*z),2.f*(x*y+w*z),2.f*(x*z-w*y)};
         const std::array<float,3> up{
             2.f*(x*y-w*z),1.f-2.f*(x*x+z*z),2.f*(y*z+w*x)};
-        const float radius=0.5f*std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
+        const float radius=0.5f*std::clamp(imguiCarousel_.voxenScale,0.18f,
+            imguiCarousel_.particlePaintEnabled?6.f:0.60f);
         constexpr int segments=20;
         constexpr float tau=6.2831853071795864769f;
         vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,laserPipeline_);
@@ -4563,6 +4597,8 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(openbrushLightningPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushLightningPipeline_,nullptr);openbrushLightningPipeline_=VK_NULL_HANDLE;}
     if(openbrushNeonTrailsPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushNeonTrailsPipeline_,nullptr);openbrushNeonTrailsPipeline_=VK_NULL_HANDLE;}
     if(openbrushMagicDustPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushMagicDustPipeline_,nullptr);openbrushMagicDustPipeline_=VK_NULL_HANDLE;}
+    if(openbrushChromaticWavePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushChromaticWavePipeline_,nullptr);openbrushChromaticWavePipeline_=VK_NULL_HANDLE;}
+    if(openbrushElectricityPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushElectricityPipeline_,nullptr);openbrushElectricityPipeline_=VK_NULL_HANDLE;}
     if(openbrushEmbersPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushEmbersPipeline_,nullptr);openbrushEmbersPipeline_=VK_NULL_HANDLE;}
     if(openbrushSnowPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushSnowPipeline_,nullptr);openbrushSnowPipeline_=VK_NULL_HANDLE;}
     if(openbrushFirePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushFirePipeline_,nullptr);openbrushFirePipeline_=VK_NULL_HANDLE;}

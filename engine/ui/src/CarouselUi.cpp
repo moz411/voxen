@@ -88,6 +88,12 @@ void drawCarousel(CarouselState& state) {
                 if(ImGui::Selectable("MAGIC DUST (native)",state.particlePaintEnabled && state.particlePreset==8)) {
                     state.particlePreset=8;state.particlePaintEnabled=true;state.voxenPaintEnabled=true;
                 }
+                if(ImGui::Selectable("CHROMATIC WAVE (native)",state.particlePaintEnabled && state.particlePreset==9)) {
+                    state.particlePreset=9;state.particlePaintEnabled=true;state.voxenPaintEnabled=true;
+                }
+                if(ImGui::Selectable("ELECTRICITY (native)",state.particlePaintEnabled && state.particlePreset==10)) {
+                    state.particlePreset=10;state.particlePaintEnabled=true;state.voxenPaintEnabled=true;
+                }
                 ImGui::TextDisabled("Hold right trigger and draw a continuous stroke");
                 ImGui::TextDisabled("Native GPU particles / light ribbons");
                 ImGui::EndTabItem();
@@ -117,8 +123,13 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextDisabled(state.particlePaintEnabled ? "RIGHT TRIGGER: draw particles" : "RIGHT TRIGGER: place one Voxen");
             ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
             if(!state.voxenPaintEnabled)ImGui::TextDisabled("No Voxen selected for painting");
-            ImGui::SliderFloat("Size (m)",&state.voxenScale,0.18f,0.60f,"%.2f");
+            ImGui::SliderFloat("Size (m)",&state.voxenScale,0.18f,
+                state.particlePaintEnabled?6.f:0.60f,"%.2f",ImGuiSliderFlags_Logarithmic);
             if(state.particlePaintEnabled) {
+                static constexpr const char* animations[]={"NONE","OSCILLATE","ROTATE","DRIFT"};
+                ImGui::Combo("Brush motion",&state.particleMotionMode,animations,4);
+                ImGui::SliderFloat("Brush motion speed",&state.particleMotionSpeed,0.1f,4.f,"%.2f");
+                ImGui::SliderFloat("Hue cycle (rev/s)",&state.particleColorCycle,0.f,2.f,"%.2f");
                 ImGui::ColorPicker3("Particle RGB",state.smokeRgb,
                     ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_DisplayRGB |
                     ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_NoSidePreview);

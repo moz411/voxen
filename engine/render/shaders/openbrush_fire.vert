@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "openbrush_particle_anim.glsl"
 layout(location=0) in vec3 inPosition;
 layout(location=1) in vec3 inCenter;
 layout(location=2) in vec4 inColor;
@@ -49,5 +51,6 @@ void main() {
         vFlame=vec3(tip,sign(inUV.w),phase);
         vEmberDisk=vec2(0.0);
     }
-    gl_Position=camera.viewProjection*vec4(position,1.0);
+    gl_Position=camera.viewProjection*vec4(brushMotion(position,camera.settings,phase),1.0);
+    vColor.rgb=brushCycle(vColor.rgb,camera.settings);
 }

@@ -120,13 +120,16 @@ struct CarouselState {
     bool collideRoomMesh = true;
     // Legacy 20..26 presets remain readable but are not selectable.
     bool particlePaintEnabled = false;
-    int particlePreset = 0; // 0..5 existing, 6 Lightning, 7 Neon Trails, 8 Magic Dust
+    int particlePreset = 0; // 0..10, IDs 27..37; 9 Chromatic Wave, 10 Electricity
     int voxenPreset = 0;
     int flatVoxenVolume = 0; // 0 cube; 1 sphere // Plasma or Spheres Intersections
     bool voxenPaintEnabled = false;
     float voxenScale = 0.18f;
     float voxenHue = 0.52f;
     float smokeRgb[3] = {0.12f,0.8f,1.f}; // Smoke RGB stored in preset-27 hue/density/speed
+    int particleMotionMode=0; // 0 off, 1 oscillate, 2 rotate, 3 drift
+    float particleMotionSpeed=1.f;
+    float particleColorCycle=0.f; // hue revolutions per second
 
     float voxenDensity = 1.0f;
     float voxenSpeed = 1.0f;

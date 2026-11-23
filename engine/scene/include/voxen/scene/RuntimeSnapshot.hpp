@@ -42,6 +42,9 @@ struct SavedRuntime {
     bool orbitRandomAxis = false;
     bool motionGravity = false;
     float motionBounce = .82f;
+    int particleMotionMode=0;
+    float particleMotionSpeed=1.f;
+    float particleColorCycle=0.f;
 };
 inline bool valid(const SavedRuntime& r) {
     if(r.backgroundSourceKind<0 || r.backgroundSourceKind>2 ||
@@ -64,6 +67,9 @@ inline bool valid(const SavedRuntime& r) {
         r.musicTrack<0 || r.musicTrack>2 || r.musicFile<0 ||
         !std::isfinite(r.musicVolume) || r.musicVolume<0 || r.musicVolume>1 ||
         r.motionMode<0 || r.motionMode>255 ||
+        r.particleMotionMode<0 || r.particleMotionMode>3 ||
+        !std::isfinite(r.particleMotionSpeed) || r.particleMotionSpeed<0.1f || r.particleMotionSpeed>4.f ||
+        !std::isfinite(r.particleColorCycle) || r.particleColorCycle<0.f || r.particleColorCycle>2.f ||
         !std::isfinite(r.orbitRadius) || r.orbitRadius<0.4f || r.orbitRadius>5.f ||
         !std::isfinite(r.orbitSpeed) || r.orbitSpeed<0.1f || r.orbitSpeed>3.f ||
         !std::isfinite(r.liquidOpacity) || r.liquidOpacity<0 || r.liquidOpacity>1 ||
@@ -108,6 +114,9 @@ inline bool sanitizeForSave(SavedRuntime& r) {
     r.musicVolume=std::clamp(finiteOr(r.musicVolume,.45f),0.f,1.f);
     r.sceneKind=std::clamp(r.sceneKind,0,1);
     r.motionMode=std::clamp(r.motionMode,0,255);
+    r.particleMotionMode=std::clamp(r.particleMotionMode,0,3);
+    r.particleMotionSpeed=std::clamp(finiteOr(r.particleMotionSpeed,1.f),.1f,4.f);
+    r.particleColorCycle=std::clamp(finiteOr(r.particleColorCycle,0.f),0.f,2.f);
     r.orbitRadius=std::clamp(finiteOr(r.orbitRadius,1.5f),.4f,5.f);
     r.orbitSpeed=std::clamp(finiteOr(r.orbitSpeed,.8f),.1f,3.f);
     r.liquidOpacity=std::clamp(finiteOr(r.liquidOpacity,.42f),0.f,1.f);
@@ -130,7 +139,7 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
     if (!valid(r)) return {};
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<float>::max_digits10);
-    out << "VOXEN_RUNTIME 7\n" << r.voxens.size() << '\n';
+    out << "VOXEN_RUNTIME 8\n" << r.voxens.size() << '\n';
     out << r.sceneKind << '\n';
     out << (r.panoramaFile.empty() ? "-" : r.panoramaFile) << ' '
         << r.panoramaYawDegrees << ' ' << r.panoramaHorizontalDegrees << ' '
@@ -143,6 +152,7 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
         << r.cycleWallShaders << ' ' << r.wallCycleSeconds << ' '
         << r.differentShaderPerSurface << '\n';
     out << r.backgroundSourceKind << ' ' << (r.videoFile.empty()?"-":r.videoFile) << '\n';
+    out << r.particleMotionMode << ' ' << r.particleMotionSpeed << ' ' << r.particleColorCycle << '\n';
     for(const auto& v:r.voxens) {
         out << v.preset << ' ' << v.material << ' ' << v.scale << ' ' << v.hue
             << ' ' << v.density << ' ' << v.speed;
@@ -156,7 +166,7 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
     if(data.size()>1048576) return std::nullopt;
     std::istringstream in(data);
     std::string magic; int version=0; std::size_t count=0;
-    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version<1 || version>7) || count>4096)
+    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version<1 || version>8) || count>4096)
         return std::nullopt;
     SavedRuntime r;
     if(version>=3 && !(in>>r.sceneKind))return std::nullopt;
@@ -176,6 +186,8 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
         if(!(in>>r.backgroundSourceKind>>r.videoFile))return std::nullopt;
         if(r.videoFile=="-")r.videoFile.clear();
     } else r.backgroundSourceKind=r.panoramaFile.empty()?0:1;
+    if(version>=8 && !(in>>r.particleMotionMode>>r.particleMotionSpeed>>r.particleColorCycle))
+        return std::nullopt;
     for(std::size_t i=0;i<count;++i) {
         SavedVoxen v;
         if(!(in>>v.preset>>v.material>>v.scale>>v.hue>>v.density>>v.speed))

@@ -23,10 +23,10 @@ if(ANDROID OR WIN32)
         set(HEADER "${VOXEN_GENERATED_DIR}/${NAME}.spv.hpp")
         add_custom_command(
             OUTPUT "${HEADER}"
-            COMMAND "${VOXEN_GLSLC}" "${CMAKE_CURRENT_SOURCE_DIR}/render/shaders/${SOURCE}" -o "${SPV}"
+            COMMAND "${VOXEN_GLSLC}" -I"${CMAKE_CURRENT_SOURCE_DIR}/render/shaders" "${CMAKE_CURRENT_SOURCE_DIR}/render/shaders/${SOURCE}" -o "${SPV}"
             COMMAND "${CMAKE_COMMAND}" -DINPUT=${SPV} -DOUTPUT=${HEADER} -DSYMBOL=${NAME}
                     -P "${CMAKE_SOURCE_DIR}/cmake/EmbedBinary.cmake"
-            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/render/shaders/${SOURCE}" "${CMAKE_SOURCE_DIR}/cmake/EmbedBinary.cmake"
+            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/render/shaders/${SOURCE}" "${CMAKE_CURRENT_SOURCE_DIR}/render/shaders/openbrush_particle_anim.glsl" "${CMAKE_SOURCE_DIR}/cmake/EmbedBinary.cmake"
             VERBATIM
         )
         set(VOXEN_SHADER_HEADERS ${VOXEN_SHADER_HEADERS} "${HEADER}" PARENT_SCOPE)
@@ -83,6 +83,10 @@ if(ANDROID OR WIN32)
     voxen_embed_shader(openbrushNeonTrailsFrag openbrush_neon_trails.frag)
     voxen_embed_shader(openbrushMagicDustVert openbrush_magic_dust.vert)
     voxen_embed_shader(openbrushMagicDustFrag openbrush_magic_dust.frag)
+    voxen_embed_shader(openbrushChromaticWaveVert openbrush_chromatic_wave.vert)
+    voxen_embed_shader(openbrushChromaticWaveFrag openbrush_chromatic_wave.frag)
+    voxen_embed_shader(openbrushElectricityVert openbrush_electricity.vert)
+    voxen_embed_shader(openbrushElectricityFrag openbrush_electricity.frag)
     voxen_embed_shader(openbrushSmokeVert openbrush_smoke.vert)
     voxen_embed_shader(openbrushSmokeFrag openbrush_smoke.frag)
     voxen_embed_shader(openbrushDotsVert openbrush_dots.vert)

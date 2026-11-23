@@ -14,12 +14,17 @@ int main() {
     r.videoFile="ambient.mp4";
     r.panoramaFile="sky.jpg";
     r.differentShaderPerSurface=true;
+    r.particleMotionMode=2;
+    r.particleMotionSpeed=1.75f;
+    r.particleColorCycle=0.4f;
     auto bytes=encodeRuntime(r);
     auto loaded=decodeRuntime(bytes);
     assert(loaded && loaded->voxens.size()==1);
     assert(loaded->backgroundSourceKind==2 && loaded->videoFile=="ambient.mp4");
     assert(loaded->panoramaFile=="sky.jpg");
     assert(loaded->cycleWallShaders && loaded->differentShaderPerSurface);
+    assert(loaded->particleMotionMode==2 && loaded->particleMotionSpeed==1.75f &&
+           loaded->particleColorCycle==0.4f);
     assert(loaded->voxens[0].position==v.position);
     assert(loaded->voxens[0].velocity==v.velocity);
     assert(loaded->voxens[0].material==2);
@@ -36,6 +41,10 @@ int main() {
     auto old=decodeRuntime(v5);
     assert(old && old->cycleWallShaders && !old->differentShaderPerSurface);
     assert(old->backgroundSourceKind==0 && old->videoFile.empty());
+    assert(old->particleMotionMode==0 && old->particleColorCycle==0.f);
+    r.particleMotionMode=4;
+    assert(encodeRuntime(r).empty());
+    r.particleMotionMode=2;
     // New procedural and OpenBrush presets must survive a scene round-trip.
     SavedRuntime extended;
     extended.voxens.resize(300);

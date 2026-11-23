@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "openbrush_particle_anim.glsl"
 layout(location=0) in vec3 inPosition;
 layout(location=1) in vec3 inCenter;
 layout(location=2) in vec4 inColor;
@@ -26,7 +28,7 @@ void main() {
     vec2 rotated=rotation*local;
     float radius=inUV.w;
     vec3 billboard=(camera.cameraRight.xyz*rotated.x+camera.cameraUp.xyz*rotated.y)*radius;
-    gl_Position=camera.viewProjection*vec4(inCenter+offset+billboard,1.0);
-    vColor=inColor;
+    gl_Position=camera.viewProjection*vec4(brushMotion(inCenter+offset+billboard,camera.settings,phase),1.0);
+    vColor=vec4(brushCycle(inColor.rgb,camera.settings),inColor.a);
     vDisk=local;
 }

@@ -23,7 +23,7 @@ inline bool shouldSampleSmoke(const SmokeStrokePoint& previous,
     const float dx=next.center[0]-previous.center[0];
     const float dy=next.center[1]-previous.center[1];
     const float dz=next.center[2]-previous.center[2];
-    const float spacing=std::max(0.008f,next.size*0.12f);
+    const float spacing=std::clamp(next.size*0.12f,0.008f,0.09f);
     return dx*dx+dy*dy+dz*dz>=spacing*spacing;
 }
 inline CompiledScene makeSmokeStrokeScene(const std::vector<SmokeStrokePoint>& points) {

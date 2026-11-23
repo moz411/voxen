@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "openbrush_particle_anim.glsl"
 layout(location=0) in vec3 inPosition;
 layout(location=1) in vec3 inCenter;
 layout(location=2) in vec4 inColor;
@@ -21,7 +23,7 @@ void main() {
     float twinkle=0.75+0.25*sin(t*6.0+phase*4.7);
     float radius=inUV.w*twinkle;
     vec3 offset=(camera.right.xyz*inUV.x+camera.up.xyz*inUV.y)*radius;
-    gl_Position=camera.viewProjection*vec4(inCenter+drift+offset,1.0);
-    vColor=vec4(inColor.rgb,inColor.a*(1.0-age*0.85));
+    gl_Position=camera.viewProjection*vec4(brushMotion(inCenter+drift+offset,camera.settings,phase),1.0);
+    vColor=vec4(brushCycle(inColor.rgb,camera.settings),inColor.a*(1.0-age*0.85));
     vDisk=inUV.xy;
 }

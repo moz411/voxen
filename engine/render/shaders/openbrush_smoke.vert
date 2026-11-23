@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "openbrush_particle_anim.glsl"
 // Experimental Quest 3 Smoke billboard renderer.
 // Uses Open Brush's UV0.z rotation and a_normal particle center.
 // Motion is an inexpensive curl-like approximation, not the original simplex curl.
@@ -39,8 +41,8 @@ void main() {
     float pulse=0.82+0.18*sin(t*0.65+seed*9.0);
     vec3 displaced = inCenter + flow * 0.035;
     offset*=pulse;
-    gl_Position = camera.viewProjection * vec4(displaced + offset, 1.0);
+    gl_Position = camera.viewProjection * vec4(brushMotion(displaced + offset,camera.settings,seed), 1.0);
     vUV = inUV.xy;
-    vColor = inColor;
+    vColor = vec4(brushCycle(inColor.rgb,camera.settings),inColor.a);
     vSeed=seed;
 }

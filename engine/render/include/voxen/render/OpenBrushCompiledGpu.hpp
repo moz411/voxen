@@ -116,7 +116,11 @@ public:
                 VkPipeline neonPipeline=VK_NULL_HANDLE,
                 VkPipelineLayout neonLayout=VK_NULL_HANDLE,
                 VkPipeline dustPipeline=VK_NULL_HANDLE,
-                VkPipelineLayout dustLayout=VK_NULL_HANDLE) const {
+                VkPipelineLayout dustLayout=VK_NULL_HANDLE,
+                VkPipeline chromaticPipeline=VK_NULL_HANDLE,
+                VkPipelineLayout chromaticLayout=VK_NULL_HANDLE,
+                VkPipeline electricityPipeline=VK_NULL_HANDLE,
+                VkPipelineLayout electricityLayout=VK_NULL_HANDLE) const {
         if(empty()||!pipeline)return;
         const bool useSmoke=smokeBillboardCompatible_ && smokePipeline && smokeLayout && smokeTexture && smokeCamera;
         VkDeviceSize offset=0;
@@ -132,7 +136,9 @@ public:
                 && !(bubblesPipeline && bubblesLayout && smokeCamera && (draw.brushGuid=="voxen-native-bubbles" || draw.brushGuid=="voxen-native-stars"))
                 && !(lightningPipeline && lightningLayout && smokeCamera && draw.brushGuid=="voxen-native-lightning")
                 && !(neonPipeline && neonLayout && smokeCamera && draw.brushGuid=="voxen-native-neon-trails")
-                && !(dustPipeline && dustLayout && smokeCamera && draw.brushGuid=="voxen-native-magic-dust"))
+                && !(dustPipeline && dustLayout && smokeCamera && draw.brushGuid=="voxen-native-magic-dust")
+                && !(chromaticPipeline && chromaticLayout && smokeCamera && draw.brushGuid=="voxen-native-chromatic-wave")
+                && !(electricityPipeline && electricityLayout && smokeCamera && draw.brushGuid=="voxen-native-electricity"))
                 vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
         if(firePipeline && fireLayout && smokeCamera) {
             vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,firePipeline);
@@ -178,6 +184,8 @@ public:
         drawNative(lightningPipeline,lightningLayout,"voxen-native-lightning");
         drawNative(neonPipeline,neonLayout,"voxen-native-neon-trails");
         drawNative(dustPipeline,dustLayout,"voxen-native-magic-dust");
+        drawNative(chromaticPipeline,chromaticLayout,"voxen-native-chromatic-wave");
+        drawNative(electricityPipeline,electricityLayout,"voxen-native-electricity");
         if(!useSmoke)return;
         vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,smokePipeline);
         vkCmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_GRAPHICS,

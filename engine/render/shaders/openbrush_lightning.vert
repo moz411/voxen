@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "openbrush_particle_anim.glsl"
 layout(location=0) in vec3 inPosition;
 layout(location=1) in vec3 inCenter;
 layout(location=2) in vec4 inColor;
@@ -24,8 +26,8 @@ void main() {
                  sin(progress*89.0-seed*9.0-time*31.0)*0.24;
     float width=inUV.w*(1.0-progress*0.55);
     vec3 center=inCenter+lateral*jitter*width*2.7*progress;
-    gl_Position=camera.viewProjection*vec4(center+lateral*inUV.y*width,1.0);
-    vColor=inColor;
+    gl_Position=camera.viewProjection*vec4(brushMotion(center+lateral*inUV.y*width,camera.settings,seed),1.0);
+    vColor=vec4(brushCycle(inColor.rgb,camera.settings),inColor.a);
     float cycle=fract(time*1.15+seed*0.12);
     // Main arc first, followed by delayed forks and micro-arcs.
     float front=clamp((cycle-level*0.13)*2.5,0.0,1.0);

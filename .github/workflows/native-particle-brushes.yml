@@ -18,7 +18,7 @@ jobs:
       - name: Compile and run native brush geometry tests
         run: |
           set -euo pipefail
-          for brush in smoke stars fire snow embers bubbles lightning neon_trails magic_dust; do
+          for brush in smoke stars fire snow embers bubbles lightning neon_trails magic_dust chromatic_wave electricity; do
             src="tests/openbrush_${brush}_stroke.cpp"
             if [ -f "$src" ]; then
               g++ -std=c++17 -Wall -Wextra -Iengine/render/include "$src" -o "/tmp/test-${brush}"
@@ -32,7 +32,7 @@ jobs:
       - name: Validate particle shaders
         run: |
           set -euo pipefail
-          for shader in engine/render/shaders/openbrush_{fire,snow,embers,bubbles,lightning,neon_trails,magic_dust}.{vert,frag}; do
+          for shader in engine/render/shaders/openbrush_{smoke,fire,snow,embers,bubbles,lightning,neon_trails,magic_dust,chromatic_wave,electricity}.{vert,frag}; do
             if [ ! -f "$shader" ]; then continue; fi
-            glslangValidator -V "$shader" -o /tmp/particle.spv
+            glslangValidator -V -Iengine/render/shaders "$shader" -o /tmp/particle.spv
           done

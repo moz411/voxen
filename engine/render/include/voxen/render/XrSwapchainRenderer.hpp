@@ -315,6 +315,8 @@ private:
     VkPipeline openbrushLightningPipeline_ = VK_NULL_HANDLE;
     VkPipeline openbrushNeonTrailsPipeline_ = VK_NULL_HANDLE;
     VkPipeline openbrushMagicDustPipeline_ = VK_NULL_HANDLE;
+    VkPipeline openbrushChromaticWavePipeline_ = VK_NULL_HANDLE;
+    VkPipeline openbrushElectricityPipeline_ = VK_NULL_HANDLE;
     VkPipeline openbrushSmokePipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout openbrushSmokePipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline openbrushMeshPipeline_ = VK_NULL_HANDLE;
