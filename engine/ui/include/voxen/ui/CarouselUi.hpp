@@ -61,6 +61,9 @@ struct CarouselState {
     int wallVideoSelected = -1;
     // -1 = global sphere; otherwise stable detected surface ID.
     std::int64_t backgroundTargetSurface = -1;
+    bool mediaPlacementEnabled=false; // controller preview and trigger-to-assign
+    std::int64_t mediaPreviewSurface=-1; // snapped Meta plane, -1 = free preview
+    float mediaPreviewScale=1.f;
     std::vector<std::uint64_t> detectedSurfaceIds;
     std::vector<std::string> detectedSurfaceLabels;
     struct AppliedMedia { int kind=0; std::string filename; int shaderMode=0; };

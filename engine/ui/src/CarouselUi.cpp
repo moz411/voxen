@@ -250,6 +250,7 @@ void drawCarousel(CarouselState& state) {
                                       state.wallShaderMode==modeIds[i])) {
                     state.backgroundSourceKind=3;
                     state.wallShaderMode=modeIds[i];
+                    state.mediaPlacementEnabled=true;
                     state.cycleWallShaders=false; // manual selection stops slideshow
                     state.liquidRoom=true;
                     state.panoramaSelected=-1;
@@ -277,6 +278,7 @@ void drawCarousel(CarouselState& state) {
                                       state.panoramaSelected==i)) {
                     state.backgroundSourceKind=1;
                     state.panoramaSelected=i;
+                    state.mediaPlacementEnabled=true;
                     state.panoramaSlideshow=false;
                     state.videoSelected=-1;
                 }
@@ -293,6 +295,7 @@ void drawCarousel(CarouselState& state) {
                                       state.videoSelected==i)) {
                     state.backgroundSourceKind=2;
                     state.videoSelected=i;
+                    state.mediaPlacementEnabled=true;
                     state.panoramaSelected=-1;
                 }
             }
@@ -309,6 +312,16 @@ void drawCarousel(CarouselState& state) {
                 ImGui::SliderFloat("Panorama yaw",&state.panoramaYawDegrees,-180.f,180.f,"%.0f deg");
                 ImGui::SliderFloat("Horizontal coverage",&state.panoramaHorizontalDegrees,60.f,360.f,"%.0f deg");
                 ImGui::SliderFloat("Vertical coverage",&state.panoramaVerticalDegrees,30.f,180.f,"%.0f deg");
+            }
+            ImGui::SeparatorText("CONTROLLER PLACEMENT");
+            ImGui::Checkbox("Place media with right controller",&state.mediaPlacementEnabled);
+            if(state.mediaPlacementEnabled) {
+                ImGui::TextDisabled("RIGHT STICK X: resize preview / Y: distance");
+                ImGui::TextDisabled("RIGHT TRIGGER: assign to snapped wall/floor/ceiling");
+                ImGui::Text("Distance: %.2f m | Scale: %.2fx",state.placementDistance,state.mediaPreviewScale);
+                if(state.mediaPreviewSurface>=0)
+                    ImGui::Text("SNAPPED: surface #%llu",(unsigned long long)state.mediaPreviewSurface);
+                else ImGui::TextDisabled("Move preview close to a tracked surface");
             }
             ImGui::SeparatorText("APPLY TO");
             if(ImGui::Selectable("GLOBAL SPHERE",state.backgroundTargetSurface==-1)) {

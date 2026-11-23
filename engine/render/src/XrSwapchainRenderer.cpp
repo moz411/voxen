@@ -2217,7 +2217,11 @@ void XrSwapchainRenderer::updateControllerInteraction(
         // avoids drift, while a logarithmic step spans the full 10x range.
         const float sizeAxis=std::fabs(x)>0.18f ?
             std::copysign((std::fabs(x)-0.18f)/0.82f,x) : 0.f;
-        if(sizeAxis!=0.f)imguiCarousel_.voxenScale=std::clamp(
+        if(sizeAxis!=0.f && imguiCarousel_.mediaPlacementEnabled)
+            imguiCarousel_.mediaPreviewScale=std::clamp(
+                imguiCarousel_.mediaPreviewScale*std::exp(sizeAxis*0.025f),0.1f,10.f);
+        if(sizeAxis!=0.f && !imguiCarousel_.mediaPlacementEnabled)
+            imguiCarousel_.voxenScale=std::clamp(
             imguiCarousel_.voxenScale*std::exp(sizeAxis*0.025f),0.18f,
             imguiCarousel_.particlePaintEnabled?6.f:0.60f);
         const float distanceAxis=std::fabs(y)>0.18f ?
@@ -2229,12 +2233,75 @@ void XrSwapchainRenderer::updateControllerInteraction(
         editorPresetStickLatched_=false;
         editorScaleStickLatched_=false;
     }
+    // Snap the media preview to the nearest physically detected Meta plane.
+    // Use the complete finite oriented rectangle, not an infinite wall plane.
+    if(editingMode() && !immersiveSceneActive_ &&
+       imguiCarousel_.mediaPlacementEnabled && tracked[1]) {
+        const auto& pose=poses[1];
+        const auto& q=pose.orientation;
+        const std::array<float,3> dir{
+            -2.f*(q.x*q.z+q.w*q.y),
+            -2.f*(q.y*q.z-q.w*q.x),
+            -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        const std::array<float,3> preview{
+            pose.position.x+editorPlacementDistance_*dir[0],
+            pose.position.y+editorPlacementDistance_*dir[1],
+            pose.position.z+editorPlacementDistance_*dir[2]};
+        float bestDistance=.18f;
+        std::int64_t nearest=-1;
+        for(const auto& surface:environmentSurfaces_.surfaces()) {
+            if(!surface.tracked || surface.classification==voxen::scene::SurfaceClass::Unknown ||
+               surface.halfExtents[0]<=.05f || surface.halfExtents[1]<=.05f)continue;
+            const auto& o=surface.orientation;
+            // World-space local X,Y,Z axes from surface quaternion.
+            const std::array<float,3> axisX{
+                1.f-2.f*(o[1]*o[1]+o[2]*o[2]),
+                2.f*(o[0]*o[1]+o[2]*o[3]),
+                2.f*(o[0]*o[2]-o[1]*o[3])};
+            const std::array<float,3> axisY{
+                2.f*(o[0]*o[1]-o[2]*o[3]),
+                1.f-2.f*(o[0]*o[0]+o[2]*o[2]),
+                2.f*(o[1]*o[2]+o[0]*o[3])};
+            const std::array<float,3> axisZ{
+                2.f*(o[0]*o[2]+o[1]*o[3]),
+                2.f*(o[1]*o[2]-o[0]*o[3]),
+                1.f-2.f*(o[0]*o[0]+o[1]*o[1])};
+            const std::array<float,3> delta{
+                preview[0]-surface.center[0],preview[1]-surface.center[1],
+                preview[2]-surface.center[2]};
+            const auto dot=[&](const std::array<float,3>& a){
+                return delta[0]*a[0]+delta[1]*a[1]+delta[2]*a[2];};
+            if(std::fabs(dot(axisX))>surface.halfExtents[0]+.08f ||
+               std::fabs(dot(axisY))>surface.halfExtents[1]+.08f)continue;
+            const float d=std::fabs(dot(axisZ));
+            if(d<bestDistance){bestDistance=d;nearest=static_cast<std::int64_t>(surface.id);}
+        }
+        imguiCarousel_.mediaPreviewSurface=nearest;
+        if(galleryTriggerEdge && !panelAimed_ && nearest>=0) {
+            CarouselState::AppliedMedia media{};
+            media.kind=imguiCarousel_.backgroundSourceKind;
+            media.shaderMode=imguiCarousel_.wallShaderMode;
+            if(media.kind==1 && imguiCarousel_.panoramaSelected>=0 &&
+               static_cast<std::size_t>(imguiCarousel_.panoramaSelected)<imguiCarousel_.panoramaFiles.size())
+                media.filename=imguiCarousel_.panoramaFiles[imguiCarousel_.panoramaSelected];
+            else if(media.kind==2 && imguiCarousel_.videoSelected>=0 &&
+                    static_cast<std::size_t>(imguiCarousel_.videoSelected)<imguiCarousel_.videoFiles.size())
+                media.filename=imguiCarousel_.videoFiles[imguiCarousel_.videoSelected];
+            else if(media.kind==3)media.filename="Shader";
+            if(media.kind==3 || !media.filename.empty()) {
+                imguiCarousel_.surfaceMedia[static_cast<std::uint64_t>(nearest)]=std::move(media);
+                imguiCarousel_.backgroundTargetSurface=nearest;
+                imguiCarousel_.applyMediaRequest=true;
+                imguiCarousel_.applyMediaStatus="Assigned media to snapped surface";
+            }
+        }
+    } else imguiCarousel_.mediaPreviewSurface=-1;
     // A single trigger click places exactly one instance. Never place when
     // aiming at the carousel, or during gallery/immersive interactions.
     if(tracked[1] && (galleryTriggerEdge ||
        (pressed[1] && imguiCarousel_.particlePaintEnabled)) && pendingGalleryFloorAction_==0 &&
        editingMode() && !immersiveSceneActive_ &&
-       imguiCarousel_.voxenPaintEnabled && !panelAimed_
+       imguiCarousel_.voxenPaintEnabled && !imguiCarousel_.mediaPlacementEnabled && !panelAimed_
 #ifdef VOXEN_WITH_GLB_IMPORT
        && !glbPreview_
 #endif
@@ -3088,6 +3155,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         // The placement reference follows the same distance for native brushes
         // and Voxens, without adding a persistent object to the scene.
         if(editingMode() && imguiCarousel_.voxenPaintEnabled &&
+           !imguiCarousel_.mediaPlacementEnabled &&
 #ifdef VOXEN_WITH_GLB_IMPORT
            !glbPreview_ &&
 #endif
