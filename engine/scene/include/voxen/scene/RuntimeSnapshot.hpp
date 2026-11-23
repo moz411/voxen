@@ -27,9 +27,19 @@ struct SavedSurfaceMedia {
     std::string filename;
     int shaderMode=0;
 };
+struct SavedFreeMedia {
+    int kind=0, shaderMode=0;
+    std::string filename;
+    std::array<float,3> center{};
+    std::array<float,4> orientation{0.f,0.f,0.f,1.f};
+    std::array<float,2> halfExtents{.15f,.15f};
+    int motionMode=0;
+    float motionSpeed=1.f;
+};
 struct SavedRuntime {
     std::vector<SavedVoxen> voxens;
     std::vector<SavedSurfaceMedia> surfaceMedia;
+    std::vector<SavedFreeMedia> freeMedia;
     std::string panoramaFile;
     std::string videoFile;
     int backgroundSourceKind=0;
@@ -58,7 +68,19 @@ struct SavedRuntime {
     float particleColorCycle=0.f;
 };
 inline bool valid(const SavedRuntime& r) {
-    if(r.surfaceMedia.size()>256)return false;
+    if(r.surfaceMedia.size()>256 || r.freeMedia.size()>256)return false;
+    for(const auto& media:r.freeMedia) {
+        if(media.kind<1 || media.kind>3 || media.shaderMode<0 || media.shaderMode>255 ||
+           media.filename.size()>128 || media.filename.find_first_of("/\\ \t\r\n")!=std::string::npos ||
+           media.filename.find("..")!=std::string::npos ||
+           (media.kind!=3 && media.filename.empty()) ||
+           media.motionMode<0 || media.motionMode>4 ||
+           !std::isfinite(media.motionSpeed) || media.motionSpeed<.1f || media.motionSpeed>4.f)
+            return false;
+        for(float v:media.center)if(!std::isfinite(v))return false;
+        for(float v:media.orientation)if(!std::isfinite(v))return false;
+        for(float v:media.halfExtents)if(!std::isfinite(v) || v<.01f || v>10.f)return false;
+    }
     for(const auto& media:r.surfaceMedia) {
         if(media.uuid.empty() || media.uuid.size()>80 ||
            media.uuid.find_first_not_of("0123456789abcdefABCDEF-")!=std::string::npos ||
@@ -172,7 +194,7 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
     if (!valid(r)) return {};
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<float>::max_digits10);
-    out << "VOXEN_RUNTIME 10\n" << r.voxens.size() << '\n';
+    out << "VOXEN_RUNTIME 11\n" << r.voxens.size() << '\n';
     out << r.sceneKind << '\n';
     out << (r.panoramaFile.empty() ? "-" : r.panoramaFile) << ' '
         << r.panoramaYawDegrees << ' ' << r.panoramaHorizontalDegrees << ' '
@@ -201,13 +223,22 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
         out << media.uuid << ' ' << media.kind << ' '
             << (media.filename.empty()?"-":media.filename) << ' '
             << media.shaderMode << '\n';
+    out << r.freeMedia.size() << '\n';
+    for(const auto& media:r.freeMedia) {
+        out << media.kind << ' ' << (media.filename.empty()?"-":media.filename)
+            << ' ' << media.shaderMode;
+        for(float v:media.center)out << ' ' << v;
+        for(float v:media.orientation)out << ' ' << v;
+        for(float v:media.halfExtents)out << ' ' << v;
+        out << ' ' << media.motionMode << ' ' << media.motionSpeed << '\n';
+    }
     return out.str();
 }
 inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
     if(data.size()>1048576) return std::nullopt;
     std::istringstream in(data);
     std::string magic; int version=0; std::size_t count=0;
-    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version<1 || version>10) || count>4096)
+    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version<1 || version>11) || count>4096)
         return std::nullopt;
     SavedRuntime r;
     if(version>=3 && !(in>>r.sceneKind))return std::nullopt;
@@ -257,6 +288,20 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
             if(!(in>>media.uuid>>media.kind>>media.filename>>media.shaderMode))return std::nullopt;
             if(media.filename=="-")media.filename.clear();
             r.surfaceMedia.push_back(std::move(media));
+        }
+    }
+    if(version>=11) {
+        std::size_t mediaCount=0;
+        if(!(in>>mediaCount) || mediaCount>256)return std::nullopt;
+        for(std::size_t i=0;i<mediaCount;++i) {
+            SavedFreeMedia media;
+            if(!(in>>media.kind>>media.filename>>media.shaderMode))return std::nullopt;
+            if(media.filename=="-")media.filename.clear();
+            for(float& v:media.center)if(!(in>>v))return std::nullopt;
+            for(float& v:media.orientation)if(!(in>>v))return std::nullopt;
+            for(float& v:media.halfExtents)if(!(in>>v))return std::nullopt;
+            if(!(in>>media.motionMode>>media.motionSpeed))return std::nullopt;
+            r.freeMedia.push_back(std::move(media));
         }
     }
     in >> std::ws;
