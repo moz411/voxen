@@ -428,6 +428,10 @@ private:
         bool motionEnabled=true; // per-instance physics enablement
         int lodLevel=-1; // Chosen once per stereo frame using both eye positions
     };
+    std::vector<voxen::gallery::SavedFreeMedia> freeMedia_;
+    std::vector<voxen::gallery::SavedFreeMedia> editorFreeMedia_;
+    std::optional<std::size_t> draggedFreeMedia_;
+    float grabbedFreeMediaDepth_=0.f;
     std::vector<PlasmaVoxen> voxens_;
     std::vector<PlasmaVoxen> editorVoxens_; // Suspended while gallery/immersion runs.
     // Transient hand-fired Spike Bloom orbs and GPU-rendered impact pulses.
