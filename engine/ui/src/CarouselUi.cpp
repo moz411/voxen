@@ -124,16 +124,18 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextDisabled("X: undo one stroke/placement per press (history)");
             ImGui::Text("Placement distance: %.2f m",state.placementDistance);
             ImGui::TextDisabled(state.particlePaintEnabled ? "RIGHT TRIGGER: draw particles" : "RIGHT TRIGGER: place one Voxen");
-            if(ImGui::Button(state.particlePaintEnabled ?
-                (state.particleColorCycle<=0.f ? "Animate colors: OFF" :
-                 state.particleColorCycle<0.75f ? "Animate colors: SLOW" :
-                 state.particleColorCycle<1.5f ? "Animate colors: MEDIUM" :
-                 "Animate colors: FAST") : "Evolve colors")) {
-                if(state.particlePaintEnabled)
-                    state.particleColorCycle=state.particleColorCycle<=0.f ? 0.5f :
-                        state.particleColorCycle<0.75f ? 1.f :
-                        state.particleColorCycle<1.5f ? 2.f : 0.f;
-                else state.voxenHue=std::fmod(state.voxenHue+0.125f,1.f);
+            if(state.particlePaintEnabled) {
+                static constexpr const char* colorModes[]={
+                    "FIXED COLOR","CYCLE SLOW","CYCLE MEDIUM","CYCLE FAST",
+                    "EVOLVING: START TO END OF STROKE"};
+                ImGui::Combo("Color variation",&state.brushColorMode,colorModes,5);
+                state.particleColorCycle=state.brushColorMode==1 ? 0.5f :
+                    state.brushColorMode==2 ? 1.f :
+                    state.brushColorMode==3 ? 2.f : 0.f;
+                if(state.brushColorMode==4)
+                    ImGui::ColorEdit3("End-of-stroke color",state.brushEndRgb);
+            } else if(ImGui::Button("Evolve Voxen color")) {
+                state.voxenHue=std::fmod(state.voxenHue+0.125f,1.f);
             }
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.18f,
                 state.particlePaintEnabled?6.f:0.60f,"%.2f",ImGuiSliderFlags_Logarithmic);

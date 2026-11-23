@@ -131,6 +131,8 @@ struct CarouselState {
     int particleMotionMode=0; // 0 off, 1 oscillate, 2 rotate, 3 drift
     float particleMotionSpeed=1.f;
     float particleColorCycle=0.f; // hue revolutions per second
+    int brushColorMode=0; // 0 fixed, 1..3 animated, 4 gradient along stroke
+    float brushEndRgb[3]={1.f,0.2f,0.55f};
 
     float voxenDensity = 1.0f;
     float voxenSpeed = 1.0f;
