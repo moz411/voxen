@@ -531,7 +531,11 @@ void XrSwapchainRenderer::requestGalleryDelete() {
         std::optional<std::size_t> freeIndex;
         std::string surfaceUuid;
         for(std::size_t i=0;i<freeMedia_.size();++i) {
-            const auto hit=voxen::ui::hitMediaSurface(freeMediaPlane(freeMedia_[i]),origin,dir);
+            auto pickPlane=freeMediaPlane(freeMedia_[i]);
+            // Small previews remain pickable without enlarging their render quad.
+            pickPlane.halfExtents[0]=std::max(pickPlane.halfExtents[0],.065f);
+            pickPlane.halfExtents[1]=std::max(pickPlane.halfExtents[1],.065f);
+            const auto hit=voxen::ui::hitMediaSurface(pickPlane,origin,dir);
             if(hit && hit->depth<nearest) {
                 nearest=hit->depth;
                 freeIndex=i;
@@ -2415,7 +2419,11 @@ void XrSwapchainRenderer::updateControllerInteraction(
             float nearest=8.1f;
             draggedFreeMedia_.reset();
             for(std::size_t i=0;i<freeMedia_.size();++i) {
-                const auto hit=voxen::ui::hitMediaSurface(freeMediaPlane(freeMedia_[i]),origin,dir);
+                auto pickPlane=freeMediaPlane(freeMedia_[i]);
+            // Small previews remain pickable without enlarging their render quad.
+            pickPlane.halfExtents[0]=std::max(pickPlane.halfExtents[0],.065f);
+            pickPlane.halfExtents[1]=std::max(pickPlane.halfExtents[1],.065f);
+            const auto hit=voxen::ui::hitMediaSurface(pickPlane,origin,dir);
                 if(hit && hit->depth<nearest) {
                     nearest=hit->depth;
                     draggedFreeMedia_=i;
