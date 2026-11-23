@@ -127,7 +127,9 @@ public:
                 VkPipeline electricityPipeline=VK_NULL_HANDLE,
                 VkPipelineLayout electricityLayout=VK_NULL_HANDLE,
                 VkPipeline sunPipeline=VK_NULL_HANDLE,
-                VkPipelineLayout sunLayout=VK_NULL_HANDLE) const {
+                VkPipelineLayout sunLayout=VK_NULL_HANDLE,
+                VkPipeline chaosCityPipeline=VK_NULL_HANDLE,
+                VkPipelineLayout chaosCityLayout=VK_NULL_HANDLE) const {
         if(empty()||!pipeline)return;
         const bool useSmoke=smokeBillboardCompatible_ && smokePipeline && smokeLayout && smokeTexture && smokeCamera;
         VkDeviceSize offset=0;
@@ -146,7 +148,8 @@ public:
                 && !(dustPipeline && dustLayout && smokeCamera && draw.brushGuid=="voxen-native-magic-dust")
                 && !(chromaticPipeline && chromaticLayout && smokeCamera && draw.brushGuid=="voxen-native-chromatic-wave")
                 && !(electricityPipeline && electricityLayout && smokeCamera && draw.brushGuid=="voxen-native-electricity")
-                && !(sunPipeline && sunLayout && smokeCamera && draw.brushGuid=="voxen-native-sun"))
+                && !(sunPipeline && sunLayout && smokeCamera && draw.brushGuid=="voxen-native-sun")
+                && !(chaosCityPipeline && chaosCityLayout && smokeCamera && draw.brushGuid=="voxen-native-chaos-city"))
                 vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
         // Each draw is exactly one stroke. Its animation settings are immutable
         // and captured when the user begins painting, never read from the UI.
@@ -222,6 +225,7 @@ public:
         drawNative(chromaticPipeline,chromaticLayout,"voxen-native-chromatic-wave");
         drawNative(electricityPipeline,electricityLayout,"voxen-native-electricity");
         drawNative(sunPipeline,sunLayout,"voxen-native-sun");
+        drawNative(chaosCityPipeline,chaosCityLayout,"voxen-native-chaos-city");
         if(!useSmoke)return;
         vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,smokePipeline);
         vkCmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_GRAPHICS,
