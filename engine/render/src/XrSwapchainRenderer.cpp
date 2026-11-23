@@ -605,6 +605,7 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
         imguiCarousel_=editorSettings_;
         imguiCarousel_.editMode=true;
         imguiCarousel_.visible=true;
+        imguiCarousel_.selectedFreeMedia=-1;
         voxens_.swap(editorVoxens_);
         freeMedia_.swap(editorFreeMedia_);
         draggedFreeMedia_.reset();
@@ -1154,6 +1155,7 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
         restoredMedia[media.uuid]={media.kind,media.filename,media.shaderMode};
     imguiCarousel_.mediaEditor.restore(std::move(restoredMedia));
     imguiCarousel_.mediaPlacementEnabled=false;
+    imguiCarousel_.selectedFreeMedia=-1;
     imguiCarousel_.mediaDrag.cancel();
 #endif
     return true;
