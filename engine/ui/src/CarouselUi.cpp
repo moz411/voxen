@@ -306,6 +306,15 @@ void drawCarousel(CarouselState& state) {
             ImGui::EndDisabled();
             if(ImGui::Button("TERMINER LE PLACEMENT",ImVec2(-1,34)))
                 {state.mediaPlacementEnabled=false;state.mediaDrag.cancel();}
+            if(state.selectedFreeMedia>=0 && ImGui::CollapsingHeader("OBJET PLAT SELECTIONNE")) {
+                static constexpr const char* movements[]={
+                    "STATIQUE","FLOTTEMENT","BALANCEMENT H","BALANCEMENT Z","ORBITE"};
+                if(ImGui::Combo("Mouvement",&state.selectedFreeMotion,movements,5))
+                    state.applyFreeProperties=true;
+                if(ImGui::SliderFloat("Vitesse",&state.selectedFreeSpeed,.1f,4.f))
+                    state.applyFreeProperties=true;
+                ImGui::TextDisabled("Gachette sur l'objet : deplacer | B : supprimer");
+            }
             if(ImGui::CollapsingHeader("ENVIRONNEMENT GLOBAL (explicite)")) {
                 ImGui::TextDisabled("Independant des affectations par surface.");
                 if(ImGui::Button("RETOUR PASSTHROUGH SOBEL",ImVec2(-1,36))) {
