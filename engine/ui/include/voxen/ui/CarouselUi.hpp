@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <utility>
 #include <voxen/ui/SurfaceMediaEditor.hpp>
+#include <voxen/ui/SurfaceMediaDrag.hpp>
 
 namespace voxen::ui {
 // UI and XR geometry are intentionally separate: controller rays must be
@@ -64,7 +65,7 @@ struct CarouselState {
     int wallVideoSelected = -1;
     // -1 = global sphere; otherwise stable detected surface ID.
     std::int64_t backgroundTargetSurface = -1;
-    bool mediaPlacementEnabled=false; // controller preview and trigger-to-assign
+    bool mediaPlacementEnabled=false; // controller preview and hold-to-drag
     std::int64_t mediaPreviewSurface=-1; // snapped Meta plane, -1 = free preview
     float mediaPreviewScale=1.f;
     int mediaToolKind=0; // 0 no selection, 1 picture, 2 video, 3 shader
@@ -75,6 +76,7 @@ struct CarouselState {
     std::vector<std::uint64_t> detectedSurfaceIds;
     std::vector<std::string> detectedSurfaceLabels;
     SurfaceMediaEditor mediaEditor;
+    SurfaceMediaDrag mediaDrag; // transient; excluded from scene snapshots
     bool applyMediaRequest=false;
     std::string applyMediaStatus;
     bool videoRescanRequest = false;
@@ -170,6 +172,7 @@ struct CarouselState {
     bool gpuAvailable = false;
     // Selecting a media tool never modifies rendering or persisted assignments.
     void selectMedia(int kind,std::string filename,int shader=0) {
+        mediaDrag.cancel();
         mediaToolKind=kind;
         mediaToolFilename=std::move(filename);
         mediaToolShaderMode=shader;

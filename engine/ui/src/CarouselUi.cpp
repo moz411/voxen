@@ -329,12 +329,16 @@ void drawCarousel(CarouselState& state) {
             ImGui::Checkbox("PLACEMENT AVEC MANETTE",&state.mediaPlacementEnabled);
             if(state.mediaPlacementEnabled) {
                 ImGui::TextDisabled("Joystick X : taille | Y : distance");
-                ImGui::TextDisabled("Gachette : appliquer UNIQUEMENT au plan vise");
+                ImGui::TextDisabled("Maintenir gachette : saisir et pousser vers un plan");
+                ImGui::TextDisabled("Snap : profondeur bloquee | tirer : decoller");
+                ImGui::TextDisabled("Relacher sur le plan : fixer | ailleurs : annuler");
                 ImGui::Text("Distance %.2fm / taille %.2fx",state.placementDistance,state.mediaPreviewScale);
                 if(state.mediaPreviewSurface>=0)
-                    ImGui::Text("SNAP : plan #%llu",(unsigned long long)state.mediaPreviewSurface);
+                    ImGui::Text("PREVIEW TEMPORAIRE : plan #%llu",(unsigned long long)state.mediaPreviewSurface);
+                else if(state.mediaDrag.active)ImGui::TextDisabled("GLISSEMENT : aucune surface accrochee");
+                if(!state.applyMediaStatus.empty())ImGui::TextWrapped("%s",state.applyMediaStatus.c_str());
                 if(ImGui::Button("TERMINER LE PLACEMENT",ImVec2(-1,34)))
-                    state.mediaPlacementEnabled=false;
+                    {state.mediaPlacementEnabled=false;state.mediaDrag.cancel();}
             }
             if(ImGui::CollapsingHeader("ENVIRONNEMENT GLOBAL (explicite)")) {
                 ImGui::TextDisabled("Independant des affectations par surface.");

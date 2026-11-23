@@ -16,6 +16,12 @@ target_include_directories(surface_media_editor_smoke PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../engine/scene/include)
 add_test(NAME surface_media_editor_smoke COMMAND surface_media_editor_smoke)
 
+add_executable(surface_media_drag_smoke ${CMAKE_CURRENT_SOURCE_DIR}/surface_media_drag_smoke.cpp)
+target_include_directories(surface_media_drag_smoke PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../engine/ui/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../engine/scene/include)
+add_test(NAME surface_media_drag_smoke COMMAND surface_media_drag_smoke)
+
 # Compile the decoder timeline on host as well; Android MediaCodec is guarded.
 add_executable(mp3_feature_timeline_smoke
     ${CMAKE_CURRENT_SOURCE_DIR}/mp3_feature_timeline_smoke.cpp
