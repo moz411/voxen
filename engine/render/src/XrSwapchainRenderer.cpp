@@ -553,6 +553,8 @@ void XrSwapchainRenderer::requestGalleryDelete() {
         }
         if(freeIndex) {
             freeMedia_.erase(freeMedia_.begin()+static_cast<std::ptrdiff_t>(*freeIndex));
+            imguiCarousel_.selectedFreeMedia=-1;
+            draggedFreeMedia_.reset();
             imguiCarousel_.applyMediaStatus="Free media deleted";
         } else if(!surfaceUuid.empty()) {
             imguiCarousel_.mediaEditor.assign(surfaceUuid,std::nullopt);
@@ -605,6 +607,7 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
         imguiCarousel_.visible=true;
         voxens_.swap(editorVoxens_);
         freeMedia_.swap(editorFreeMedia_);
+        draggedFreeMedia_.reset();
         smokePaintDirty_=true;
         pendingGalleryFloorAction_=0;
     } else {
@@ -1095,6 +1098,7 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     }
     voxens_=std::move(restored);
     freeMedia_=snapshot->freeMedia;
+    draggedFreeMedia_.reset();
     nextBrushStrokeId_=1;
     for(const auto& v:voxens_)if(v.strokeId>=nextBrushStrokeId_)
         nextBrushStrokeId_=v.strokeId+1;
@@ -2392,6 +2396,9 @@ void XrSwapchainRenderer::updateControllerInteraction(
                 quad.motionMode=std::clamp(imguiCarousel_.motionMode,0,4);
                 quad.motionSpeed=std::clamp(imguiCarousel_.particleMotionSpeed,.1f,4.f);
                 freeMedia_.push_back(std::move(quad));
+                imguiCarousel_.selectedFreeMedia=static_cast<int>(freeMedia_.size()-1);
+                imguiCarousel_.selectedFreeMotion=freeMedia_.back().motionMode;
+                imguiCarousel_.selectedFreeSpeed=freeMedia_.back().motionSpeed;
                 placed=true;
             }
             drag.cancel();
@@ -2429,7 +2436,12 @@ void XrSwapchainRenderer::updateControllerInteraction(
                     draggedFreeMedia_=i;
                 }
             }
-            if(draggedFreeMedia_)grabbedFreeMediaDepth_=nearest;
+            if(draggedFreeMedia_) {
+                grabbedFreeMediaDepth_=nearest;
+                imguiCarousel_.selectedFreeMedia=static_cast<int>(*draggedFreeMedia_);
+                imguiCarousel_.selectedFreeMotion=freeMedia_[*draggedFreeMedia_].motionMode;
+                imguiCarousel_.selectedFreeSpeed=freeMedia_[*draggedFreeMedia_].motionSpeed;
+            }
         }
         if(draggedFreeMedia_ && *draggedFreeMedia_<freeMedia_.size() && pressed[1]) {
             auto& item=freeMedia_[*draggedFreeMedia_];
@@ -2440,6 +2452,14 @@ void XrSwapchainRenderer::updateControllerInteraction(
         }
     }
     if(!pressed[1])draggedFreeMedia_.reset();
+    if(imguiCarousel_.applyFreeProperties) {
+        imguiCarousel_.applyFreeProperties=false;
+        const int index=imguiCarousel_.selectedFreeMedia;
+        if(index>=0 && static_cast<std::size_t>(index)<freeMedia_.size()) {
+            freeMedia_[index].motionMode=std::clamp(imguiCarousel_.selectedFreeMotion,0,4);
+            freeMedia_[index].motionSpeed=std::clamp(imguiCarousel_.selectedFreeSpeed,.1f,4.f);
+        }
+    }
     // A single trigger click places exactly one instance. Never place when
     // aiming at the carousel, or during gallery/immersive interactions.
     if(tracked[1] && (galleryTriggerEdge ||
@@ -2852,9 +2872,16 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
     freeDraws.reserve(freeMedia_.size()+1);
     for(const auto& item:freeMedia_) {
         auto plane=freeMediaPlane(item);
-        // Per-object motion: oscillation about the saved transform.
-        if(item.motionMode!=0)
-            plane.center[1]+=.08f*std::sin(seconds*item.motionSpeed);
+        // Object-local motion is evaluated relative to its saved placement.
+        const float phase=seconds*item.motionSpeed;
+        switch(item.motionMode) {
+            case 1:plane.center[1]+=.08f*std::sin(phase);break;
+            case 2:plane.center[0]+=.08f*std::sin(phase);break;
+            case 3:plane.center[2]+=.08f*std::sin(phase);break;
+            case 4:plane.center[0]+=.08f*std::cos(phase);
+                   plane.center[2]+=.08f*std::sin(phase);break;
+            default:break;
+        }
         freeDraws.push_back({plane,{item.kind,item.filename,item.shaderMode}});
     }
     if(editingMode() && imguiCarousel_.mediaPlacementEnabled &&
