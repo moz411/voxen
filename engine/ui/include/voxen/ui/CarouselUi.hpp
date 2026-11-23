@@ -67,6 +67,10 @@ struct CarouselState {
     std::int64_t backgroundTargetSurface = -1;
     bool mediaPlacementEnabled=false; // controller preview and hold-to-drag
     bool mediaDragPending=false; // selected with trigger held on carousel
+    int selectedFreeMedia=-1;
+    int selectedFreeMotion=0;
+    float selectedFreeSpeed=1.f;
+    bool applyFreeProperties=false;
     std::int64_t mediaPreviewSurface=-1; // snapped Meta plane, -1 = free preview
     float mediaPreviewScale=1.f;
     int mediaToolKind=0; // 0 no selection, 1 picture, 2 video, 3 shader
