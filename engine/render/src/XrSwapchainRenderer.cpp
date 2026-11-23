@@ -2329,42 +2329,70 @@ void XrSwapchainRenderer::undoLastPlacement() {
 void XrSwapchainRenderer::rebuildSmokePaintGpu() {
     if(device_==VK_NULL_HANDLE || !smokePaintDirty_)return;
     using namespace voxen::render::openbrush;
-    std::array<std::vector<SmokeStrokePoint>,11> strokes;
+    // Build each trigger-held stroke separately: geometry, gradient and motion
+    // are immutable once placed. Legacy v8 points (strokeId=0) are grouped by
+    // consecutive brush type to preserve existing saved scenes.
+    struct StrokeGroup {
+        int kind=0;
+        std::uint32_t id=0;
+        PlasmaVoxen settings;
+        std::vector<SmokeStrokePoint> points;
+    };
+    std::vector<StrokeGroup> groups;
+    groups.reserve(std::min<std::size_t>(voxens_.size(),128));
     for(const auto& v:voxens_) {
-        int kind=-1;
-        switch(v.preset) {
-        case SmokeStrokePreset: kind=0; break;
-        case StarsStrokePreset: kind=1; break;
-        case FireStrokePreset: kind=2; break;
-        case SnowStrokePreset: kind=3; break;
-        case EmbersStrokePreset: kind=4; break;
-        case BubblesStrokePreset: kind=5; break;
-        case LightningStrokePreset: kind=6; break;
-        case NeonTrailsStrokePreset: kind=7; break;
-        case MagicDustStrokePreset: kind=8; break;
-        case ChromaticWaveStrokePreset: kind=9; break;
-        case ElectricityStrokePreset: kind=10; break;
-        default: break;
+        const int kind=v.preset-27;
+        if(kind<0 || kind>=11)continue;
+        if(groups.empty() || groups.back().kind!=kind ||
+           (v.strokeId!=0 && groups.back().id!=v.strokeId) ||
+           (v.strokeId==0 && groups.back().id!=0)) {
+            groups.push_back({kind,v.strokeId,v,{}});
         }
-        if(kind>=0)strokes[static_cast<std::size_t>(kind)].push_back(
+        groups.back().points.push_back(
             {v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
     }
     CompiledScene combined;
     combined.formatVersion=2;
-    auto append=[&](CompiledScene&& scene) {
-        for(auto& mesh:scene.meshes)combined.meshes.push_back(std::move(mesh));
-    };
-    append(makeStarsStrokeScene(strokes[1]));
-    append(makeFireStrokeScene(strokes[2]));
-    append(makeSnowStrokeScene(strokes[3]));
-    append(makeEmbersStrokeScene(strokes[4]));
-    append(makeBubblesStrokeScene(strokes[5]));
-    append(makeSmokeStrokeScene(strokes[0]));
-    append(makeLightningStrokeScene(strokes[6]));
-    append(makeNeonTrailsStrokeScene(strokes[7]));
-    append(makeMagicDustStrokeScene(strokes[8]));
-    append(makeChromaticWaveStrokeScene(strokes[9]));
-    append(makeElectricityStrokeScene(strokes[10]));
+    bool hasSmoke=false;
+    for(auto& group:groups) {
+        const auto n=group.points.size();
+        const auto& settings=group.settings;
+        if(settings.brushColorMode==4 && n>1) {
+            // Color is interpolated along the stroke, not with wall-clock time.
+            const auto startRgb=group.points.front().rgb;
+            for(std::size_t i=0;i<n;++i) {
+                const float t=static_cast<float>(i)/static_cast<float>(n-1);
+                for(int c=0;c<3;++c)
+                    group.points[i].rgb[c]=startRgb[c]*(1.f-t)+settings.brushEndRgb[c]*t;
+            }
+        }
+        CompiledScene scene;
+        switch(group.kind) {
+        case 0: scene=makeSmokeStrokeScene(group.points);hasSmoke=true;break;
+        case 1: scene=makeStarsStrokeScene(group.points);break;
+        case 2: scene=makeFireStrokeScene(group.points);break;
+        case 3: scene=makeSnowStrokeScene(group.points);break;
+        case 4: scene=makeEmbersStrokeScene(group.points);break;
+        case 5: scene=makeBubblesStrokeScene(group.points);break;
+        case 6: scene=makeLightningStrokeScene(group.points);break;
+        case 7: scene=makeNeonTrailsStrokeScene(group.points);break;
+        case 8: scene=makeMagicDustStrokeScene(group.points);break;
+        case 9: scene=makeChromaticWaveStrokeScene(group.points);break;
+        case 10: scene=makeElectricityStrokeScene(group.points);break;
+        default: break;
+        }
+        std::array<float,3> center{};
+        for(const auto& p:group.points)
+            for(int k=0;k<3;++k)center[k]+=p.center[k];
+        for(float& c:center)c/=static_cast<float>(n);
+        for(auto& mesh:scene.meshes) {
+            mesh.motionMode=settings.brushMotion;
+            mesh.motionSpeed=settings.brushMotionSpeed;
+            mesh.colorCycle=settings.brushColorCycle;
+            mesh.motionCenter=center;
+            combined.meshes.push_back(std::move(mesh));
+        }
+    }
     const auto packed=packMeshes(combined);
     // renderImage() waits on fence_ after every vkQueueSubmit, for each eye.
     // Thus no submission referencing nativeParticleGpu_ is outstanding here:
@@ -2373,7 +2401,7 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
     nativeParticleGpu_.destroy(device_);
     nativeParticleGpu_.upload(device_,physicalDevice_,packed);
 #ifdef VOXEN_WITH_GLB_IMPORT
-    if(!strokes[0].empty()) {
+    if(hasSmoke) {
 #ifdef __ANDROID__
         const std::filesystem::path root="/sdcard/Android/data/org.voxen.xr/files";
 #else
@@ -3080,35 +3108,6 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         std::copy(std::begin(projView.m),std::end(projView.m),vp.begin());
 #ifdef VOXEN_WITH_GLB_IMPORT
         voxen::render::openbrush::SmokeCameraPush smoke{};
-        // Rotate the complete native-brush artwork as one rigid group around
-        // its centroid, not each vertex independently. The saved geometry
-        // remains in world coordinates; only the draw transform changes.
-        if(imguiCarousel_.particleMotionMode==4 && !voxens_.empty()) {
-            std::array<float,3> center{};
-            std::size_t count=0;
-            for(const auto& v:voxens_)if(v.preset>=27 && v.preset<=37){
-                for(int k=0;k<3;++k)center[k]+=v.position[k];
-                ++count;
-            }
-            if(count){
-                for(float& c:center)c/=static_cast<float>(count);
-                const float angle=std::chrono::duration<float>(
-                    std::chrono::steady_clock::now()-animationStart_).count()*
-                    imguiCarousel_.particleMotionSpeed*0.65f;
-                const float c=std::cos(angle),s=std::sin(angle);
-                // OpenXR matrices are column-major; right-multiply by a
-                // rotation around the artwork centroid.
-                std::array<float,16> transform{c,0.f,-s,0.f,
-                    0.f,1.f,0.f,0.f,s,0.f,c,0.f,
-                    center[0]-c*center[0]-s*center[2],0.f,
-                    center[2]+s*center[0]-c*center[2],1.f};
-                std::array<float,16> rotated{};
-                for(int col=0;col<4;++col)for(int row=0;row<4;++row)
-                    for(int k=0;k<4;++k)
-                        rotated[col*4+row]+=vp[k*4+row]*transform[col*4+k];
-                vp=rotated;
-            }
-        }
         smoke.viewProjection=vp;
         const auto& rotation=xrView.pose.orientation;
         const float sx=rotation.x,sy=rotation.y,sz=rotation.z,sw=rotation.w;
@@ -3117,9 +3116,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         static const auto smokeStart=std::chrono::steady_clock::now();
         smoke.settings[0]=std::chrono::duration<float>(
             std::chrono::steady_clock::now()-smokeStart).count();
-        smoke.settings[1]=static_cast<float>(imguiCarousel_.particleMotionMode==4 ? 0 : imguiCarousel_.particleMotionMode);
-        smoke.settings[2]=imguiCarousel_.particleMotionSpeed;
-        smoke.settings[3]=imguiCarousel_.particleColorCycle;
+        // Runtime strokes override these per draw. External .vxmesh keeps defaults.
+        smoke.settings[1]=0.f;
+        smoke.settings[2]=1.f;
+        smoke.settings[3]=0.f;
         if(immersiveSceneActive_)openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,
             openbrushMeshPipelineLayout_,vp,openbrushSmokePipeline_,
             openbrushSmokePipelineLayout_,openbrushSmokeTexture_.descriptor,&smoke);
