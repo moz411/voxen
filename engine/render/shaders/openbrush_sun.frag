@@ -4,6 +4,8 @@
 layout(location=0) in vec2 vDisk;
 layout(location=1) in vec4 vColor;
 layout(location=2) in float vTime;
+layout(location=3) in vec3 vNormal;
+layout(location=4) in float vSphere;
 layout(location=0) out vec4 outColor;
 float hash21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float noise(vec2 p) {
@@ -12,6 +14,15 @@ float noise(vec2 p) {
                mix(hash21(i+vec2(0,1)),hash21(i+vec2(1,1)),f.x),f.y);
 }
 void main() {
+    if(vSphere>.5) {
+        vec3 n=normalize(vNormal);
+        float gran=noise(n.xy*19.0+vec2(vTime*.35,-vTime*.23));
+        float detail=noise(n.yz*37.0+vec2(-vTime*.42,vTime*.27));
+        float hot=.75+.25*gran+.1*detail;
+        vec3 emission=mix(vec3(2.7,.55,.04),vec3(3.5,2.7,1.35),hot);
+        outColor=vec4(emission,1.0);
+        return;
+    }
     float r=length(vDisk);
     if(r>1.4142)discard;
     float theta=atan(vDisk.y,vDisk.x);

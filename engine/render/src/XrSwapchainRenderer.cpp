@@ -1738,13 +1738,18 @@ void XrSwapchainRenderer::createPipeline() {
         ) ? VK_FALSE : VK_TRUE;
         // Translucent particle layers must not write depth: otherwise the first
         // flake/bubble occludes later translucent layers in the same eye.
-        if (&out==&openbrushSmokePipeline_ || &out==&openbrushFirePipeline_ || &out==&openbrushSunPipeline_ || &out==&openbrushChaosCityPipeline_ ||
+        if (&out==&openbrushSmokePipeline_ || &out==&openbrushFirePipeline_ || &out==&openbrushSunPipeline_ ||
             &out==&openbrushSnowPipeline_ || &out==&openbrushEmbersPipeline_ ||
             &out==&openbrushBubblesPipeline_ || &out==&openbrushMeshPipeline_ ||
             &out==&openbrushLightningPipeline_ || &out==&openbrushNeonTrailsPipeline_ ||
             &out==&openbrushMagicDustPipeline_ || &out==&openbrushChromaticWavePipeline_ ||
             &out==&openbrushElectricityPipeline_)
             ds.depthWriteEnable=VK_FALSE;
+        // Opaque architecture writes depth so nearer buildings occlude farther ones.
+        if (&out==&openbrushChaosCityPipeline_) {
+            ds.depthTestEnable=VK_TRUE;
+            ds.depthWriteEnable=VK_TRUE;
+        }
         if (&out == &panoramaPipeline_) ds.depthTestEnable=VK_FALSE;
         if (&out == &carouselPipeline_
 #ifdef VOXEN_WITH_IMGUI
@@ -1817,7 +1822,7 @@ void XrSwapchainRenderer::createPipeline() {
             blend.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
             blend.alphaBlendOp=VK_BLEND_OP_ADD;
         }
-        if(solidVoxen) blend.blendEnable=VK_FALSE;
+        if(solidVoxen || &out==&openbrushChaosCityPipeline_) blend.blendEnable=VK_FALSE;
         if(&out==&meshDepthPipeline_) {
             blend.colorWriteMask=0;
             blend.blendEnable=VK_FALSE;
