@@ -835,6 +835,9 @@ bool XrSwapchainRenderer::saveCurrentScene() {
         saved.preset=v.preset; saved.position=v.position; saved.velocity=v.velocity;
         saved.scale=v.scale; saved.hue=v.hue; saved.density=v.density;
         saved.speed=v.speed; saved.material=v.material;
+        saved.strokeId=v.strokeId; saved.brushMotion=v.brushMotion;
+        saved.brushMotionSpeed=v.brushMotionSpeed; saved.brushColorMode=v.brushColorMode;
+        saved.brushColorCycle=v.brushColorCycle; saved.brushEndRgb=v.brushEndRgb;
         runtime.voxens.push_back(saved);
     }
 #ifdef VOXEN_WITH_IMGUI
@@ -975,9 +978,16 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
         item.preset=v.preset; item.position=v.position; item.velocity=v.velocity;
         item.scale=std::max(0.18f,v.scale); item.hue=v.hue; item.density=v.density;
         item.speed=v.speed; item.material=v.material;
+        item.strokeId=v.strokeId; item.brushMotion=v.brushMotion;
+        item.brushMotionSpeed=v.brushMotionSpeed; item.brushColorMode=v.brushColorMode;
+        item.brushColorCycle=v.brushColorCycle; item.brushEndRgb=v.brushEndRgb;
         restored.push_back(item);
     }
     voxens_=std::move(restored);
+    nextBrushStrokeId_=1;
+    for(const auto& v:voxens_)if(v.strokeId>=nextBrushStrokeId_)
+        nextBrushStrokeId_=v.strokeId+1;
+    placementHistory_.clear();
     smokePaintDirty_=true;
     lastVoxenValid_=false;
     physicsAccumulator_=0.f;
@@ -2258,6 +2268,16 @@ void XrSwapchainRenderer::updateControllerInteraction(
         v.material=v.preset>=4 ? std::clamp(imguiCarousel_.voxenMaterial,0,11) :
             std::clamp(imguiCarousel_.mandelbulbMaterial,0,2);
         v.speed=smoke ? imguiCarousel_.smokeRgb[2] : imguiCarousel_.voxenSpeed;
+        if(smoke){
+            if(!smokeTriggerActive_)++nextBrushStrokeId_;
+            v.strokeId=nextBrushStrokeId_;
+            v.brushMotion=imguiCarousel_.particleMotionMode;
+            v.brushMotionSpeed=imguiCarousel_.particleMotionSpeed;
+            v.brushColorMode=imguiCarousel_.brushColorMode;
+            v.brushColorCycle=imguiCarousel_.particleColorCycle;
+            v.brushEndRgb={imguiCarousel_.brushEndRgb[0],
+                imguiCarousel_.brushEndRgb[1],imguiCarousel_.brushEndRgb[2]};
+        }
         v.motionEnabled=!smoke && imguiCarousel_.motionEnabled;
         v.velocity={dir[0]*imguiCarousel_.motionSpeed,
                     dir[1]*imguiCarousel_.motionSpeed,

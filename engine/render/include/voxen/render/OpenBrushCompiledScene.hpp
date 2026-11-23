@@ -18,6 +18,10 @@ struct CompiledMesh {
     // UV0 is always 4 floats/vertex in memory; v1 UV.xy is zero-padded.
     std::vector<float> positions, normals, colors, uv0;
     std::vector<std::uint32_t> indices;
+    // Runtime-only draw metadata. Not part of VXMSH binary format.
+    int motionMode=0;
+    float motionSpeed=1.f, colorCycle=0.f;
+    std::array<float,3> motionCenter{};
 };
 struct CompiledScene {
     std::uint32_t formatVersion=1;

@@ -417,6 +417,10 @@ private:
         float speed=1.0f;
         std::array<float,3> velocity{};
         int material=0;
+        std::uint32_t strokeId=0;
+        int brushMotion=0, brushColorMode=0;
+        float brushMotionSpeed=1.f, brushColorCycle=0.f;
+        std::array<float,3> brushEndRgb{1.f,.2f,.55f};
         bool motionEnabled=true; // per-instance physics enablement
         int lodLevel=-1; // Chosen once per stereo frame using both eye positions
     };
@@ -501,6 +505,7 @@ private:
     bool editorPresetStickLatched_=false;
     bool editorScaleStickLatched_=false;
     float editorPlacementDistance_=0.25f;
+    std::uint32_t nextBrushStrokeId_=1;
     std::vector<std::size_t> placementHistory_; // start index of each stroke or single Voxen
     std::array<XrPosef, 2> controllerPoses_{};
     std::array<bool, 2> controllerTracked_{};

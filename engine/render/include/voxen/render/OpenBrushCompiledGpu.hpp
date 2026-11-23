@@ -28,6 +28,9 @@ static_assert(sizeof(SmokeCameraPush)==112);
 struct MeshDraw {
     std::string brushGuid;
     std::uint32_t firstIndex=0, indexCount=0;
+    int motionMode=0;
+    float motionSpeed=1.f, colorCycle=0.f;
+    std::array<float,3> motionCenter{};
 };
 struct PackedMeshes {
     bool smokeBillboardCompatible=false;
@@ -57,7 +60,8 @@ inline PackedMeshes packMeshes(const CompiledScene& scene) {
             out.vertices.push_back(v);
         }
         MeshDraw draw{mesh.brushGuid,static_cast<std::uint32_t>(out.indices.size()),
-                      static_cast<std::uint32_t>(mesh.indices.size())};
+                      static_cast<std::uint32_t>(mesh.indices.size()),mesh.motionMode,
+                      mesh.motionSpeed,mesh.colorCycle,mesh.motionCenter};
         for(auto index:mesh.indices) {
             if(index>=n)throw std::runtime_error("VXMSH: index out of range");
             out.indices.push_back(base+index);

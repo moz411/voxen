@@ -146,7 +146,7 @@ void drawCarousel(CarouselState& state) {
                 if(state.particleMotionMode==4)
                     ImGui::TextDisabled("Rigid rotation of all native strokes around their centroid");
                 ImGui::SliderFloat("Brush motion speed",&state.particleMotionSpeed,0.1f,4.f,"%.2f");
-                ImGui::SliderFloat("Hue cycle (rev/s)",&state.particleColorCycle,0.f,2.f,"%.2f");
+                ImGui::TextDisabled("Animation and colors are captured per new stroke.");
                 ImGui::ColorPicker3("Particle RGB",state.smokeRgb,
                     ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_DisplayRGB |
                     ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_NoSidePreview);

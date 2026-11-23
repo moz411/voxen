@@ -16,6 +16,10 @@ struct SavedVoxen {
     std::array<float,3> position{}, velocity{};
     float scale = .18f, hue = .52f, density = 1.f, speed = 1.f;
     int material = 0;
+    std::uint32_t strokeId=0; // one ID per trigger-held stroke
+    int brushMotion=0, brushColorMode=0;
+    float brushMotionSpeed=1.f, brushColorCycle=0.f;
+    std::array<float,3> brushEndRgb{1.f,.2f,.55f};
 };
 struct SavedRuntime {
     std::vector<SavedVoxen> voxens;
@@ -83,6 +87,11 @@ inline bool valid(const SavedRuntime& r) {
             v.hue<0 || v.hue>1 || v.density<=0 || v.density>10 || v.speed<=0 || v.speed>10) return false;
         for(float x:v.position) if(!std::isfinite(x)) return false;
         for(float x:v.velocity) if(!std::isfinite(x)) return false;
+        if(v.brushMotion<0 || v.brushMotion>4 || v.brushColorMode<0 || v.brushColorMode>4 ||
+           !std::isfinite(v.brushMotionSpeed) || v.brushMotionSpeed<.1f || v.brushMotionSpeed>4.f ||
+           !std::isfinite(v.brushColorCycle) || v.brushColorCycle<0.f || v.brushColorCycle>2.f)
+            return false;
+        for(float c:v.brushEndRgb)if(!std::isfinite(c) || c<0.f || c>1.f)return false;
     }
     return true;
 }
@@ -132,6 +141,11 @@ inline bool sanitizeForSave(SavedRuntime& r) {
         v.speed=std::clamp(finiteOr(v.speed,1.f),.001f,10.f);
         for (float& x:v.position) x=finiteOr(x,0.f);
         for (float& x:v.velocity) x=finiteOr(x,0.f);
+        v.brushMotion=std::clamp(v.brushMotion,0,4);
+        v.brushColorMode=std::clamp(v.brushColorMode,0,4);
+        v.brushMotionSpeed=std::clamp(finiteOr(v.brushMotionSpeed,1.f),.1f,4.f);
+        v.brushColorCycle=std::clamp(finiteOr(v.brushColorCycle,0.f),0.f,2.f);
+        for(float& c:v.brushEndRgb)c=std::clamp(finiteOr(c,1.f),0.f,1.f);
     }
     return valid(r);
 }
@@ -139,7 +153,7 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
     if (!valid(r)) return {};
     std::ostringstream out;
     out << std::setprecision(std::numeric_limits<float>::max_digits10);
-    out << "VOXEN_RUNTIME 8\n" << r.voxens.size() << '\n';
+    out << "VOXEN_RUNTIME 9\n" << r.voxens.size() << '\n';
     out << r.sceneKind << '\n';
     out << (r.panoramaFile.empty() ? "-" : r.panoramaFile) << ' '
         << r.panoramaYawDegrees << ' ' << r.panoramaHorizontalDegrees << ' '
@@ -158,6 +172,9 @@ inline std::string encodeRuntime(const SavedRuntime& r) {
             << ' ' << v.density << ' ' << v.speed;
         for(float x:v.position) out << ' ' << x;
         for(float x:v.velocity) out << ' ' << x;
+        out << ' ' << v.strokeId << ' ' << v.brushMotion << ' ' << v.brushMotionSpeed
+            << ' ' << v.brushColorMode << ' ' << v.brushColorCycle;
+        for(float x:v.brushEndRgb)out << ' ' << x;
         out << '\n';
     }
     return out.str();
@@ -166,7 +183,7 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
     if(data.size()>1048576) return std::nullopt;
     std::istringstream in(data);
     std::string magic; int version=0; std::size_t count=0;
-    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version<1 || version>8) || count>4096)
+    if(!(in>>magic>>version>>count) || magic!="VOXEN_RUNTIME" || (version<1 || version>9) || count>4096)
         return std::nullopt;
     SavedRuntime r;
     if(version>=3 && !(in>>r.sceneKind))return std::nullopt;
@@ -194,6 +211,18 @@ inline std::optional<SavedRuntime> decodeRuntime(const std::string& data) {
             return std::nullopt;
         for(float& x:v.position) if(!(in>>x)) return std::nullopt;
         for(float& x:v.velocity) if(!(in>>x)) return std::nullopt;
+        if(version>=9) {
+            if(!(in>>v.strokeId>>v.brushMotion>>v.brushMotionSpeed>>v.brushColorMode>>v.brushColorCycle))
+                return std::nullopt;
+            for(float& x:v.brushEndRgb)if(!(in>>x))return std::nullopt;
+        } else if(v.preset>=27 && v.preset<=37) {
+            // Legacy v8 scenes had scene-global animation. Preserve that visual
+            // behavior while assigning independent defaults to each old stroke.
+            v.brushMotion=r.particleMotionMode;
+            v.brushMotionSpeed=r.particleMotionSpeed;
+            v.brushColorCycle=r.particleColorCycle;
+            v.brushColorMode=r.particleColorCycle>0.f?2:0;
+        }
         r.voxens.push_back(v);
     }
     in >> std::ws;
