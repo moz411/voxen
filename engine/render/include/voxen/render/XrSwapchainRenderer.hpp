@@ -501,8 +501,7 @@ private:
     bool editorPresetStickLatched_=false;
     bool editorScaleStickLatched_=false;
     float editorPlacementDistance_=0.25f;
-    std::size_t lastPlacementStart_=0;
-    bool lastPlacementAvailable_=false;
+    std::vector<std::size_t> placementHistory_; // start index of each stroke or single Voxen
     std::array<XrPosef, 2> controllerPoses_{};
     std::array<bool, 2> controllerTracked_{};
     bool firstFrameLogged_ = false;

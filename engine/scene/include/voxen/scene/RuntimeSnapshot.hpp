@@ -67,7 +67,7 @@ inline bool valid(const SavedRuntime& r) {
         r.musicTrack<0 || r.musicTrack>2 || r.musicFile<0 ||
         !std::isfinite(r.musicVolume) || r.musicVolume<0 || r.musicVolume>1 ||
         r.motionMode<0 || r.motionMode>255 ||
-        r.particleMotionMode<0 || r.particleMotionMode>3 ||
+        r.particleMotionMode<0 || r.particleMotionMode>4 ||
         !std::isfinite(r.particleMotionSpeed) || r.particleMotionSpeed<0.1f || r.particleMotionSpeed>4.f ||
         !std::isfinite(r.particleColorCycle) || r.particleColorCycle<0.f || r.particleColorCycle>2.f ||
         !std::isfinite(r.orbitRadius) || r.orbitRadius<0.4f || r.orbitRadius>5.f ||
@@ -114,7 +114,7 @@ inline bool sanitizeForSave(SavedRuntime& r) {
     r.musicVolume=std::clamp(finiteOr(r.musicVolume,.45f),0.f,1.f);
     r.sceneKind=std::clamp(r.sceneKind,0,1);
     r.motionMode=std::clamp(r.motionMode,0,255);
-    r.particleMotionMode=std::clamp(r.particleMotionMode,0,3);
+    r.particleMotionMode=std::clamp(r.particleMotionMode,0,4);
     r.particleMotionSpeed=std::clamp(finiteOr(r.particleMotionSpeed,1.f),.1f,4.f);
     r.particleColorCycle=std::clamp(finiteOr(r.particleColorCycle,0.f),0.f,2.f);
     r.orbitRadius=std::clamp(finiteOr(r.orbitRadius,1.5f),.4f,5.f);

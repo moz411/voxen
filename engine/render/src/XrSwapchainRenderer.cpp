@@ -2277,10 +2277,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
             }
         }
         if(accept && voxens_.size()<4096) {
-            if(!smoke || !smokeTriggerActive_) {
-                lastPlacementStart_=voxens_.size();
-                lastPlacementAvailable_=true;
-            }
+            if(!smoke || !smokeTriggerActive_)placementHistory_.push_back(voxens_.size());
             voxens_.push_back(v);
             if(smoke)smokePaintDirty_=true;
 #ifdef __ANDROID__
@@ -2297,10 +2294,11 @@ void XrSwapchainRenderer::updateControllerInteraction(
 
 void XrSwapchainRenderer::undoLastPlacement() {
 #ifdef VOXEN_WITH_IMGUI
-    if(!editingMode() || immersiveSceneActive_ || !lastPlacementAvailable_ ||
-       lastPlacementStart_>=voxens_.size())return;
-    voxens_.erase(voxens_.begin()+static_cast<std::ptrdiff_t>(lastPlacementStart_),voxens_.end());
-    lastPlacementAvailable_=false;
+    if(!editingMode() || immersiveSceneActive_ || placementHistory_.empty())return;
+    const auto start=placementHistory_.back();
+    placementHistory_.pop_back();
+    if(start>=voxens_.size())return;
+    voxens_.erase(voxens_.begin()+static_cast<std::ptrdiff_t>(start),voxens_.end());
     smokeTriggerActive_=false;
     smokePaintDirty_=true;
     lastVoxenValid_=false;
@@ -3020,8 +3018,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         }
 #ifdef VOXEN_WITH_IMGUI
         // Only one right-hand tool preview can be active at once.
-        // Live selected Voxen preview, not part of the saved scene.
-        if(editingMode() && imguiCarousel_.voxenPaintEnabled && !imguiCarousel_.particlePaintEnabled &&
+        // The placement reference follows the same distance for native brushes
+        // and Voxens, without adding a persistent object to the scene.
+        if(editingMode() && imguiCarousel_.voxenPaintEnabled &&
 #ifdef VOXEN_WITH_GLB_IMPORT
            !glbPreview_ &&
 #endif
@@ -3032,12 +3031,13 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             const float dy=-2.f*(q.y*q.z-q.w*q.x);
             const float dz=-(1.f-2.f*(q.x*q.x+q.y*q.y));
             PlasmaVoxen preview;
-            preview.preset=imguiCarousel_.voxenPreset;
+            preview.preset=imguiCarousel_.particlePaintEnabled ? 4 : imguiCarousel_.voxenPreset;
             preview.flatVolume=imguiCarousel_.flatVoxenVolume;
             preview.position={pose.position.x+editorPlacementDistance_*dx,
                               pose.position.y+editorPlacementDistance_*dy,
                               pose.position.z+editorPlacementDistance_*dz};
-            preview.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
+            preview.scale=imguiCarousel_.particlePaintEnabled ? 0.045f :
+                std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
             preview.hue=imguiCarousel_.voxenHue;
             preview.density=imguiCarousel_.voxenDensity;
             preview.speed=imguiCarousel_.voxenSpeed;
@@ -3059,6 +3059,35 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         std::copy(std::begin(projView.m),std::end(projView.m),vp.begin());
 #ifdef VOXEN_WITH_GLB_IMPORT
         voxen::render::openbrush::SmokeCameraPush smoke{};
+        // Rotate the complete native-brush artwork as one rigid group around
+        // its centroid, not each vertex independently. The saved geometry
+        // remains in world coordinates; only the draw transform changes.
+        if(imguiCarousel_.particleMotionMode==4 && !voxens_.empty()) {
+            std::array<float,3> center{};
+            std::size_t count=0;
+            for(const auto& v:voxens_)if(v.preset>=27 && v.preset<=37){
+                for(int k=0;k<3;++k)center[k]+=v.position[k];
+                ++count;
+            }
+            if(count){
+                for(float& c:center)c/=static_cast<float>(count);
+                const float angle=std::chrono::duration<float>(
+                    std::chrono::steady_clock::now()-animationStart_).count()*
+                    imguiCarousel_.particleMotionSpeed*0.65f;
+                const float c=std::cos(angle),s=std::sin(angle);
+                // OpenXR matrices are column-major; right-multiply by a
+                // rotation around the artwork centroid.
+                std::array<float,16> transform{c,0.f,-s,0.f,
+                    0.f,1.f,0.f,0.f,s,0.f,c,0.f,
+                    center[0]-c*center[0]-s*center[2],0.f,
+                    center[2]+s*center[0]-c*center[2],1.f};
+                std::array<float,16> rotated{};
+                for(int col=0;col<4;++col)for(int row=0;row<4;++row)
+                    for(int k=0;k<4;++k)
+                        rotated[col*4+row]+=vp[k*4+row]*transform[col*4+k];
+                vp=rotated;
+            }
+        }
         smoke.viewProjection=vp;
         const auto& rotation=xrView.pose.orientation;
         const float sx=rotation.x,sy=rotation.y,sz=rotation.z,sw=rotation.w;
@@ -3067,7 +3096,7 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         static const auto smokeStart=std::chrono::steady_clock::now();
         smoke.settings[0]=std::chrono::duration<float>(
             std::chrono::steady_clock::now()-smokeStart).count();
-        smoke.settings[1]=static_cast<float>(imguiCarousel_.particleMotionMode);
+        smoke.settings[1]=static_cast<float>(imguiCarousel_.particleMotionMode==4 ? 0 : imguiCarousel_.particleMotionMode);
         smoke.settings[2]=imguiCarousel_.particleMotionSpeed;
         smoke.settings[3]=imguiCarousel_.particleColorCycle;
         if(immersiveSceneActive_)openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,
@@ -4092,6 +4121,7 @@ void XrSwapchainRenderer::render(
             imguiCarousel_.sceneNew=false;
             if(imguiCarousel_.editMode && !immersiveSceneActive_) {
                 voxens_.clear();
+                placementHistory_.clear();
                 smokePaintDirty_=true;
                 editingSavedSceneId_.reset();
                 lastVoxenValid_=false;
@@ -4192,7 +4222,7 @@ void XrSwapchainRenderer::render(
         if(imguiCarousel_.voxenClear){
             editingSavedSceneId_.reset();
             voxens_.clear();
-            lastPlacementAvailable_=false;
+            placementHistory_.clear();
             smokePaintDirty_=true;
             lastVoxenValid_=false;
             imguiCarousel_.voxenClear=false;

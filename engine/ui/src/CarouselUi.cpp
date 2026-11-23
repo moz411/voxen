@@ -120,7 +120,7 @@ void drawCarousel(CarouselState& state) {
                 ImGui::Combo("Surface material",&state.voxenMaterial,materials,12);
             }
             ImGui::TextDisabled("RIGHT STICK: LEFT/RIGHT size (hold) | UP/DOWN distance");
-            ImGui::TextDisabled("X: undo last placement / complete brush stroke");
+            ImGui::TextDisabled("X: undo one stroke/placement per press (history)");
             ImGui::Text("Placement distance: %.2f m",state.placementDistance);
             ImGui::TextDisabled(state.particlePaintEnabled ? "RIGHT TRIGGER: draw particles" : "RIGHT TRIGGER: place one Voxen");
             ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
@@ -129,8 +129,10 @@ void drawCarousel(CarouselState& state) {
                 state.particlePaintEnabled?6.f:0.60f,"%.2f",ImGuiSliderFlags_Logarithmic);
             ImGui::SeparatorText("MOTION / ANIMATION");
             if(state.particlePaintEnabled) {
-                static constexpr const char* animations[]={"NONE","OSCILLATE","ROTATE","DRIFT"};
-                ImGui::Combo("Brush motion",&state.particleMotionMode,animations,4);
+                static constexpr const char* animations[]={"NONE","OSCILLATE","ROTATE","DRIFT","ORBIT WHOLE SCENE"};
+                ImGui::Combo("Brush motion",&state.particleMotionMode,animations,5);
+                if(state.particleMotionMode==4)
+                    ImGui::TextDisabled("Rigid rotation of all native strokes around their centroid");
                 ImGui::SliderFloat("Brush motion speed",&state.particleMotionSpeed,0.1f,4.f,"%.2f");
                 ImGui::SliderFloat("Hue cycle (rev/s)",&state.particleColorCycle,0.f,2.f,"%.2f");
                 ImGui::ColorPicker3("Particle RGB",state.smokeRgb,
