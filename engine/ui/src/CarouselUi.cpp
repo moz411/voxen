@@ -144,9 +144,9 @@ void drawCarousel(CarouselState& state) {
                 static constexpr const char* animations[]={"NONE","OSCILLATE","ROTATE","DRIFT","ORBIT WHOLE SCENE"};
                 ImGui::Combo("Brush motion",&state.particleMotionMode,animations,5);
                 if(state.particleMotionMode==4)
-                    ImGui::TextDisabled("Rigid rotation of all native strokes around their centroid");
+                    ImGui::TextDisabled("Rotate each new stroke around its own centroid");
                 ImGui::SliderFloat("Brush motion speed",&state.particleMotionSpeed,0.1f,4.f,"%.2f");
-                ImGui::TextDisabled("Animation and colors are captured per new stroke.");
+                ImGui::TextDisabled("Motion and color settings apply only to the next stroke.");
                 ImGui::ColorPicker3("Particle RGB",state.smokeRgb,
                     ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_DisplayRGB |
                     ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_NoSidePreview);

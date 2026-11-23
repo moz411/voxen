@@ -43,8 +43,40 @@ int main() {
     assert(old->backgroundSourceKind==0 && old->videoFile.empty());
     assert(old->particleMotionMode==0 && old->particleColorCycle==0.f);
     r.particleMotionMode=4;
+    assert(decodeRuntime(encodeRuntime(r)));
+    r.particleMotionMode=5;
     assert(encodeRuntime(r).empty());
     r.particleMotionMode=2;
+    // Runtime v9 captures animation and gradient for each individual stroke.
+    SavedRuntime strokes;
+    SavedVoxen first,second;
+    first.preset=27;first.strokeId=41;first.brushMotion=4;
+    first.brushMotionSpeed=2.5f;first.brushColorMode=4;
+    first.brushEndRgb={.9f,.1f,.3f};
+    second.preset=27;second.strokeId=42;second.brushMotion=1;
+    second.brushColorMode=2;second.brushColorCycle=1.f;
+    strokes.voxens={first,second};
+    auto strokeBytes=encodeRuntime(strokes);
+    assert(strokeBytes.find("VOXEN_RUNTIME 9")!=std::string::npos);
+    auto strokeRoundtrip=decodeRuntime(strokeBytes);
+    assert(strokeRoundtrip && strokeRoundtrip->voxens.size()==2);
+    assert(strokeRoundtrip->voxens[0].strokeId==41);
+    assert(strokeRoundtrip->voxens[0].brushMotion==4);
+    assert(strokeRoundtrip->voxens[0].brushMotionSpeed==2.5f);
+    assert(strokeRoundtrip->voxens[0].brushColorMode==4);
+    assert(strokeRoundtrip->voxens[0].brushEndRgb==first.brushEndRgb);
+    assert(strokeRoundtrip->voxens[1].strokeId==42);
+    assert(strokeRoundtrip->voxens[1].brushMotion==1);
+    assert(strokeRoundtrip->voxens[1].brushColorCycle==1.f);
+    // Existing v8 scenes must decode without per-stroke fields.
+    const std::string legacyV8="VOXEN_RUNTIME 8\\n1\\n0\\n- 0 220 75\\n"
+        "0 0 0 0.45 0 0 0 0 0.82 1.5 0.8 0\\n"
+        "0 0.42 0 0 30 0\\n0 -\\n2 1.5 0.5\\n"
+        "27 0 0.18 0.1 0.2 0.3 0 0 0 0 0 0\\n";
+    auto legacy=decodeRuntime(legacyV8);
+    assert(legacy && legacy->voxens.size()==1);
+    assert(legacy->voxens[0].brushMotion==2);
+    assert(legacy->voxens[0].brushColorCycle==0.5f);
     // New procedural and OpenBrush presets must survive a scene round-trip.
     SavedRuntime extended;
     extended.voxens.resize(300);
