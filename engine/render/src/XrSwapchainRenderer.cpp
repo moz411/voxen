@@ -196,6 +196,17 @@ std::vector<std::string> scanVideoFiles() {
 
 } // namespace
 
+voxen::scene::EnvironmentSurface freeMediaPlane(
+    const voxen::gallery::SavedFreeMedia& media) {
+    voxen::scene::EnvironmentSurface surface{};
+    surface.tracked=true;
+    surface.persistentUuid="f";
+    surface.classification=voxen::scene::SurfaceClass::Wall;
+    surface.center=media.center;
+    surface.orientation=media.orientation;
+    surface.halfExtents=media.halfExtents;
+    return surface;
+}
 
 #ifdef VOXEN_WITH_GLB_IMPORT
 void XrSwapchainRenderer::rescanGlbAssets() {
@@ -245,6 +256,35 @@ XrSwapchainRenderer::selectedSurfaceVideo() const {
                 return SurfaceVideoSelection{
                     std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/Videos") /
                         std::filesystem::path(drag.media.filename).filename(),surface};
+    // One Android decoder: preview takes precedence, then a placed free quad,
+    // then a surface assignment. All share the same surface-video pipeline.
+    if(imguiCarousel_.mediaPlacementEnabled && imguiCarousel_.mediaToolKind==2 &&
+       !imguiCarousel_.mediaToolFilename.empty() && controllerTracked_[1]) {
+        const auto& pose=controllerPoses_[1];
+        const auto& q=pose.orientation;
+        const float d=imguiCarousel_.mediaDrag.visibleDistance;
+        voxen::gallery::SavedFreeMedia preview;
+        preview.kind=2;
+        preview.center={pose.position.x-d*2.f*(q.x*q.z+q.w*q.y),
+            pose.position.y-d*2.f*(q.y*q.z-q.w*q.x),
+            pose.position.z-d*(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        preview.orientation={q.x,q.y,q.z,q.w};
+        const float size=.14f*imguiCarousel_.mediaPreviewScale;
+        preview.halfExtents={size,size};
+        for(const auto& surface:environmentSurfaces_.surfaces())
+            if(imguiCarousel_.mediaPreviewSurface>=0 &&
+               surface.id==static_cast<std::uint64_t>(imguiCarousel_.mediaPreviewSurface))
+                return SurfaceVideoSelection{
+                    std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/Videos") /
+                    imguiCarousel_.mediaToolFilename,surface};
+        return SurfaceVideoSelection{
+            std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/Videos") /
+            imguiCarousel_.mediaToolFilename,freeMediaPlane(preview)};
+    }
+    for(const auto& media:freeMedia_)if(media.kind==2 && !media.filename.empty())
+        return SurfaceVideoSelection{
+            std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/Videos") /
+                media.filename,freeMediaPlane(media)};
     for(const auto& surface : environmentSurfaces_.surfaces()) {
         if(!surface.tracked || surface.halfExtents[0]<=0.05f ||
             surface.halfExtents[1]<=0.05f) continue;
@@ -477,6 +517,46 @@ std::vector<voxen::gallery::SceneId> XrSwapchainRenderer::savedSceneIds() const 
 }
 
 void XrSwapchainRenderer::requestGalleryDelete() {
+#ifdef VOXEN_WITH_IMGUI
+    if(editingMode() && !immersiveSceneActive_ && controllerTracked_[1]) {
+        // The B button is shared with gallery deletion. In edit mode it
+        // ray-selects the nearest free quad or MR-media attachment.
+        const auto& pose=controllerPoses_[1];
+        const auto& q=pose.orientation;
+        const std::array<float,3> origin{pose.position.x,pose.position.y,pose.position.z};
+        const std::array<float,3> dir{
+            -2.f*(q.x*q.z+q.w*q.y),-2.f*(q.y*q.z-q.w*q.x),
+            -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        float nearest=std::numeric_limits<float>::max();
+        std::optional<std::size_t> freeIndex;
+        std::string surfaceUuid;
+        for(std::size_t i=0;i<freeMedia_.size();++i) {
+            const auto hit=voxen::ui::hitMediaSurface(freeMediaPlane(freeMedia_[i]),origin,dir);
+            if(hit && hit->depth<nearest) {
+                nearest=hit->depth;
+                freeIndex=i;
+                surfaceUuid.clear();
+            }
+        }
+        for(const auto& surface:environmentSurfaces_.surfaces()) {
+            if(!imguiCarousel_.mediaEditor.find(surface.persistentUuid))continue;
+            const auto hit=voxen::ui::hitMediaSurface(surface,origin,dir);
+            if(hit && hit->depth<nearest) {
+                nearest=hit->depth;
+                freeIndex.reset();
+                surfaceUuid=surface.persistentUuid;
+            }
+        }
+        if(freeIndex) {
+            freeMedia_.erase(freeMedia_.begin()+static_cast<std::ptrdiff_t>(*freeIndex));
+            imguiCarousel_.applyMediaStatus="Free media deleted";
+        } else if(!surfaceUuid.empty()) {
+            imguiCarousel_.mediaEditor.assign(surfaceUuid,std::nullopt);
+            imguiCarousel_.applyMediaStatus="Surface media removed; Sobel restored";
+        }
+        return;
+    }
+#endif
     // Delete only the current ray-hovered gallery sphere; never delete a
     // previous selection or an immersive-scene object by accident.
     if(editingMode() || immersiveSceneActive_ || galleryDragging_ ||
@@ -520,6 +600,7 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
         imguiCarousel_.editMode=true;
         imguiCarousel_.visible=true;
         voxens_.swap(editorVoxens_);
+        freeMedia_.swap(editorFreeMedia_);
         smokePaintDirty_=true;
         pendingGalleryFloorAction_=0;
     } else {
@@ -527,6 +608,7 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
         editorSettings_.editMode=true;
         editorSettings_.visible=true;
         voxens_.swap(editorVoxens_);
+        freeMedia_.swap(editorFreeMedia_);
         smokePaintDirty_=true;
         imguiCarousel_.editMode=false;
         imguiCarousel_.visible=false;
@@ -849,6 +931,7 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
 bool XrSwapchainRenderer::saveCurrentScene() {
     if (!sceneRepository_) return false;
     voxen::gallery::SavedRuntime runtime;
+    runtime.freeMedia=freeMedia_;
     runtime.voxens.reserve(voxens_.size());
     for (const auto& v : voxens_) {
         voxen::gallery::SavedVoxen saved;
@@ -1007,6 +1090,7 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
         restored.push_back(item);
     }
     voxens_=std::move(restored);
+    freeMedia_=snapshot->freeMedia;
     nextBrushStrokeId_=1;
     for(const auto& v:voxens_)if(v.strokeId>=nextBrushStrokeId_)
         nextBrushStrokeId_=v.strokeId+1;
@@ -1062,6 +1146,7 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
         restoredMedia[media.uuid]={media.kind,media.filename,media.shaderMode};
     imguiCarousel_.mediaEditor.restore(std::move(restoredMedia));
     imguiCarousel_.mediaPlacementEnabled=false;
+    imguiCarousel_.mediaDrag.cancel();
 #endif
     return true;
 }
@@ -2260,22 +2345,11 @@ void XrSwapchainRenderer::updateControllerInteraction(
         editorPresetStickLatched_=false;
         editorScaleStickLatched_=false;
     }
-    // Hold trigger to carry media along the ray; only commit on release.
-    // Dragging is entirely transient, including the provisional GPU override.
+    // A selected media is a live quad preview. The trigger is used once to
+    // place it; no trigger hold is needed to move or resize the preview.
     if(editingMode() && !immersiveSceneActive_ &&
        imguiCarousel_.mediaPlacementEnabled && tracked[1]) {
         auto& drag=imguiCarousel_.mediaDrag;
-        // Selection occurs in the ImGui frame after controller input. On the
-        // next frame, continue the very same held trigger as a spatial drag.
-        const bool fromCarousel=imguiCarousel_.mediaDragPending && pressed[1];
-        const bool fromWorld=galleryTriggerEdge && !panelAimed_;
-        if((fromCarousel || fromWorld) && imguiCarousel_.mediaToolKind>=1 &&
-           pendingGalleryFloorAction_==0) {
-            drag.begin({imguiCarousel_.mediaToolKind,imguiCarousel_.mediaToolFilename,
-                imguiCarousel_.mediaToolShaderMode},editorPlacementDistance_);
-            imguiCarousel_.mediaDragPending=false;
-        }
-        if(!pressed[1])imguiCarousel_.mediaDragPending=false;
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         const std::array<float,3> dir{
@@ -2288,35 +2362,83 @@ void XrSwapchainRenderer::updateControllerInteraction(
             auto hit=voxen::ui::hitMediaSurface(surface,origin,dir);
             if(hit && (!nearest || hit->depth<nearest->depth))nearest=std::move(hit);
         }
-        if(drag.active) {
-            // Use the first visible MR plane along the ray. A previously
-            // snapped plane must never stay selected behind a nearer surface.
-            drag.update(editorPlacementDistance_,nearest);
-            // Keep the requested joystick distance independent of the visual
-            // clamp: dragging back across the plane must release the snap.
-            // The icon itself is clamped by drag.visibleDistance at render time.
-        }
+        if(!drag.active)
+            drag.begin({imguiCarousel_.mediaToolKind,imguiCarousel_.mediaToolFilename,
+                imguiCarousel_.mediaToolShaderMode},editorPlacementDistance_);
+        drag.update(editorPlacementDistance_,nearest);
         imguiCarousel_.mediaPreviewSurface=drag.snapped?
             static_cast<std::int64_t>(drag.snapped->id):-1;
-        if(!pressed[1] && drag.active) {
-            const auto uuid=drag.snapped?drag.snapped->uuid:std::string{};
-            const bool committed=drag.finish(imguiCarousel_.mediaEditor);
-            if(committed)imguiCarousel_.selectedSurfaceUuid=uuid;
-            imguiCarousel_.applyMediaStatus=committed?
-                "Surface committed (Undo available)":"Placement cancelled (no change)";
+        if(galleryTriggerEdge && !panelAimed_ && pendingGalleryFloorAction_==0) {
+            bool placed=false;
+            if(drag.snapped) {
+                const auto uuid=drag.snapped->uuid;
+                placed=drag.finish(imguiCarousel_.mediaEditor);
+                if(placed)imguiCarousel_.selectedSurfaceUuid=uuid;
+            } else if(freeMedia_.size()<256) {
+                voxen::gallery::SavedFreeMedia quad;
+                quad.kind=imguiCarousel_.mediaToolKind;
+                quad.filename=imguiCarousel_.mediaToolFilename;
+                quad.shaderMode=imguiCarousel_.mediaToolShaderMode;
+                quad.center={origin[0]+dir[0]*drag.visibleDistance,
+                    origin[1]+dir[1]*drag.visibleDistance,
+                    origin[2]+dir[2]*drag.visibleDistance};
+                quad.orientation={q.x,q.y,q.z,q.w};
+                const float halfSize=.14f*imguiCarousel_.mediaPreviewScale;
+                quad.halfExtents={halfSize,halfSize};
+                quad.motionMode=std::clamp(imguiCarousel_.motionMode,0,4);
+                quad.motionSpeed=std::clamp(imguiCarousel_.particleMotionSpeed,.1f,4.f);
+                freeMedia_.push_back(std::move(quad));
+                placed=true;
+            }
+            drag.cancel();
+            imguiCarousel_.mediaPlacementEnabled=false;
+            imguiCarousel_.mediaDragPending=false;
             imguiCarousel_.mediaPreviewSurface=-1;
+            imguiCarousel_.applyMediaStatus=placed?
+                "Media placed (B to delete when aimed)":"Placement failed";
         }
     } else {
         imguiCarousel_.mediaDrag.cancel();
-        if(!pressed[1])imguiCarousel_.mediaDragPending=false;
         imguiCarousel_.mediaPreviewSurface=-1;
     }
+    // Existing free-media quads are movable by pointing and holding trigger.
+    // This shares the controller ray with gallery picking but is editor-only.
+    if(editingMode() && !immersiveSceneActive_ && tracked[1] &&
+       !imguiCarousel_.mediaPlacementEnabled) {
+        const auto& pose=poses[1];
+        const auto& q=pose.orientation;
+        const std::array<float,3> dir{
+            -2.f*(q.x*q.z+q.w*q.y),-2.f*(q.y*q.z-q.w*q.x),
+            -(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        const std::array<float,3> origin{pose.position.x,pose.position.y,pose.position.z};
+        if(galleryTriggerEdge && !panelAimed_) {
+            float nearest=8.1f;
+            draggedFreeMedia_.reset();
+            for(std::size_t i=0;i<freeMedia_.size();++i) {
+                const auto hit=voxen::ui::hitMediaSurface(freeMediaPlane(freeMedia_[i]),origin,dir);
+                if(hit && hit->depth<nearest) {
+                    nearest=hit->depth;
+                    draggedFreeMedia_=i;
+                }
+            }
+            if(draggedFreeMedia_)grabbedFreeMediaDepth_=nearest;
+        }
+        if(draggedFreeMedia_ && *draggedFreeMedia_<freeMedia_.size() && pressed[1]) {
+            auto& item=freeMedia_[*draggedFreeMedia_];
+            item.center={origin[0]+dir[0]*grabbedFreeMediaDepth_,
+                origin[1]+dir[1]*grabbedFreeMediaDepth_,
+                origin[2]+dir[2]*grabbedFreeMediaDepth_};
+            item.orientation={q.x,q.y,q.z,q.w};
+        }
+    }
+    if(!pressed[1])draggedFreeMedia_.reset();
     // A single trigger click places exactly one instance. Never place when
     // aiming at the carousel, or during gallery/immersive interactions.
     if(tracked[1] && (galleryTriggerEdge ||
        (pressed[1] && imguiCarousel_.particlePaintEnabled)) && pendingGalleryFloorAction_==0 &&
        editingMode() && !immersiveSceneActive_ &&
-       imguiCarousel_.voxenPaintEnabled && !imguiCarousel_.mediaPlacementEnabled && !panelAimed_
+       imguiCarousel_.voxenPaintEnabled && !imguiCarousel_.mediaPlacementEnabled &&
+       !draggedFreeMedia_ && !panelAimed_
 #ifdef VOXEN_WITH_GLB_IMPORT
        && !glbPreview_
 #endif
@@ -2712,12 +2834,45 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
     const auto& previewDrag=imguiCarousel_.mediaDrag;
+    // One quad representation drives placed media and the transient preview.
+    // World-space pose is independent of MR anchors until it intersects a plane.
+    struct FreeDraw {
+        voxen::scene::EnvironmentSurface surface;
+        voxen::ui::SurfaceMedia media;
+    };
+    std::vector<FreeDraw> freeDraws;
+    freeDraws.reserve(freeMedia_.size()+1);
+    for(const auto& item:freeMedia_) {
+        auto plane=freeMediaPlane(item);
+        // Per-object motion: oscillation about the saved transform.
+        if(item.motionMode!=0)
+            plane.center[1]+=.08f*std::sin(seconds*item.motionSpeed);
+        freeDraws.push_back({plane,{item.kind,item.filename,item.shaderMode}});
+    }
+    if(editingMode() && imguiCarousel_.mediaPlacementEnabled &&
+       controllerTracked_[1] && imguiCarousel_.mediaPreviewSurface<0) {
+        const auto& pose=controllerPoses_[1];
+        const auto& q=pose.orientation;
+        const float d=previewDrag.active?previewDrag.visibleDistance:editorPlacementDistance_;
+        voxen::gallery::SavedFreeMedia preview;
+        preview.center={pose.position.x-d*2.f*(q.x*q.z+q.w*q.y),
+            pose.position.y-d*2.f*(q.y*q.z-q.w*q.x), // normalized below
+            pose.position.z-d*(1.f-2.f*(q.x*q.x+q.y*q.y))};
+        preview.orientation={q.x,q.y,q.z,q.w};
+        const float halfSize=.14f*imguiCarousel_.mediaPreviewScale;
+        preview.halfExtents={halfSize,halfSize};
+        freeDraws.push_back({freeMediaPlane(preview),
+            {imguiCarousel_.mediaToolKind,imguiCarousel_.mediaToolFilename,
+                imguiCarousel_.mediaToolShaderMode}});
+    }
     const auto resolvedSurfaceMedia=[&](const std::string& uuid)->const voxen::ui::SurfaceMedia* {
         if(previewDrag.active && previewDrag.snapped && previewDrag.snapped->uuid==uuid)
             return &previewDrag.media;
         return imguiCarousel_.mediaEditor.find(uuid);
     };
-    const bool hasExplicitWallShader=(previewDrag.active && previewDrag.snapped &&
+    const bool hasExplicitWallShader=std::any_of(freeDraws.begin(),freeDraws.end(),
+        [](const FreeDraw& item){return item.media.kind==3;}) ||
+        (previewDrag.active && previewDrag.snapped &&
         previewDrag.media.kind==3) || std::any_of(
         imguiCarousel_.mediaEditor.assignments().begin(),
         imguiCarousel_.mediaEditor.assignments().end(),
@@ -2862,6 +3017,23 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             vkCmdDraw(commandBuffer_,6,1,0,0);
             wallRendered=true;
         }
+        for(const auto& item:freeDraws) {
+            if(item.media.kind!=3)continue;
+            const int activeMode=item.media.shaderMode;
+            vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,choosePipeline(activeMode));
+            const Mat4 mvp=multiply(projView,surfaceModel(item.surface));
+            ProceduralPushConstants pc{mvp,{seconds,globalSpeed,1.f,
+                std::max(liquidOpacity,.42f)}};
+            if(activeMode==1) {
+                pc.parameters[0]=wallColor[0];
+                pc.parameters[1]=wallColor[1];
+                pc.parameters[2]=wallColor[2];
+                pc.parameters[3]=solidOpacity;
+            }
+            vkCmdPushConstants(commandBuffer_,pipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,6,1,0,0);
+        }
         const bool hasTrackedPlane=std::any_of(environmentSurfaces_.surfaces().begin(),
             environmentSurfaces_.surfaces().end(),[](const auto& surface){
                 return surface.tracked && surface.halfExtents[0]>.05f &&
@@ -2896,6 +3068,19 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 galleryPicturePipelineLayout_,0,1,&descriptor,0,nullptr);
             ProceduralPushConstants pc{multiply(projView,surfaceModel(surface)),{0.f,0.f,0.f,0.f}};
+            vkCmdPushConstants(commandBuffer_,galleryPicturePipelineLayout_,
+                VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
+            vkCmdDraw(commandBuffer_,6,1,0,0);
+        }
+        for(const auto& item:freeDraws) {
+            if(item.media.kind!=1)continue;
+            const auto picture=galleryPictureCache_.find(item.media.filename);
+            if(picture==galleryPictureCache_.end() || !picture->second.texture.descriptor)continue;
+            const auto descriptor=picture->second.texture.descriptor;
+            vkCmdBindDescriptorSets(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                galleryPicturePipelineLayout_,0,1,&descriptor,0,nullptr);
+            ProceduralPushConstants pc{multiply(projView,surfaceModel(item.surface)),
+                {0.f,0.f,0.f,0.f}};
             vkCmdPushConstants(commandBuffer_,galleryPicturePipelineLayout_,
                 VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(pc),&pc);
             vkCmdDraw(commandBuffer_,6,1,0,0);
@@ -4014,10 +4199,12 @@ void XrSwapchainRenderer::render(
                     }) || std::any_of(imguiCarousel_.mediaEditor.assignments().begin(),
                         imguiCarousel_.mediaEditor.assignments().end(),
                     [&](const auto& item){return item.second.kind==1 && item.second.filename==entry.first;}) ||
-                    (imguiCarousel_.mediaDrag.active && imguiCarousel_.mediaDrag.snapped &&
-                     imguiCarousel_.mediaDrag.media.kind==1 &&
-                     imguiCarousel_.mediaDrag.media.filename==entry.first);
-                if(!used){stale=true;break;}
+                    (imguiCarousel_.mediaPlacementEnabled &&
+                     imguiCarousel_.mediaToolKind==1 &&
+                     imguiCarousel_.mediaToolFilename==entry.first);
+                if(!used && !std::any_of(freeMedia_.begin(),freeMedia_.end(),
+                    [&](const auto& item){return item.kind==1 && item.filename==entry.first;}))
+                    {stale=true;break;}
             }
             if(stale) {
                 vkDeviceWaitIdle(device_);
@@ -4030,8 +4217,12 @@ void XrSwapchainRenderer::render(
                             imguiCarousel_.mediaEditor.assignments().end(),
                         [&](const auto& item){return item.second.kind==1 && item.second.filename==it->first;});
                     const auto& drag=imguiCarousel_.mediaDrag;
-                    if(used || (drag.active && drag.snapped && drag.media.kind==1 &&
-                       drag.media.filename==it->first)){++it;continue;}
+                    if(used || (imguiCarousel_.mediaPlacementEnabled &&
+                       imguiCarousel_.mediaToolKind==1 &&
+                       imguiCarousel_.mediaToolFilename==it->first) ||
+                       std::any_of(freeMedia_.begin(),freeMedia_.end(),
+                           [&](const auto& item){return item.kind==1 && item.filename==it->first;}))
+                       {++it;continue;}
                     auto& tex=it->second.texture;
                     if(tex.sampler)vkDestroySampler(device_,tex.sampler,nullptr);
                     if(tex.view)vkDestroyImageView(device_,tex.view,nullptr);
@@ -4062,11 +4253,11 @@ void XrSwapchainRenderer::render(
             }
             if(!galleryPictureDecodeFuture_.valid()) {
                 const auto& drag=imguiCarousel_.mediaDrag;
-                if(drag.active && drag.snapped && drag.media.kind==1 &&
-                   !drag.media.filename.empty() &&
-                   !galleryPictureCache_.count(drag.media.filename) &&
-                   std::find(panoramaNames_.begin(),panoramaNames_.end(),drag.media.filename)!=panoramaNames_.end()) {
-                    galleryPictureRequestedFilename_=drag.media.filename;
+                if(imguiCarousel_.mediaPlacementEnabled && imguiCarousel_.mediaToolKind==1 &&
+                   !imguiCarousel_.mediaToolFilename.empty() &&
+                   !galleryPictureCache_.count(imguiCarousel_.mediaToolFilename) &&
+                   std::find(panoramaNames_.begin(),panoramaNames_.end(),imguiCarousel_.mediaToolFilename)!=panoramaNames_.end()) {
+                    galleryPictureRequestedFilename_=imguiCarousel_.mediaToolFilename;
                     const auto file=panoramaRoot_/galleryPictureRequestedFilename_;
                     VkPhysicalDeviceProperties props{};
                     vkGetPhysicalDeviceProperties(physicalDevice_,&props);
@@ -4074,6 +4265,22 @@ void XrSwapchainRenderer::render(
                     galleryPictureDecodeFuture_=std::async(std::launch::async,[file,limit] {
                         return decodePanoramaImage(file,limit,8ull*1024ull*1024ull);
                     });
+                }
+            }
+            if(!galleryPictureDecodeFuture_.valid()) {
+                for(const auto& item:freeMedia_) {
+                    if(item.kind!=1 || item.filename.empty() ||
+                       galleryPictureCache_.count(item.filename))continue;
+                    if(std::find(panoramaNames_.begin(),panoramaNames_.end(),item.filename)==panoramaNames_.end())continue;
+                    galleryPictureRequestedFilename_=item.filename;
+                    const auto file=panoramaRoot_/item.filename;
+                    VkPhysicalDeviceProperties props{};
+                    vkGetPhysicalDeviceProperties(physicalDevice_,&props);
+                    const int limit=static_cast<int>(std::min(props.limits.maxImageDimension2D,1024u));
+                    galleryPictureDecodeFuture_=std::async(std::launch::async,[file,limit] {
+                        return decodePanoramaImage(file,limit,8ull*1024ull*1024ull);
+                    });
+                    break;
                 }
             }
             if(!galleryPictureDecodeFuture_.valid()) {
