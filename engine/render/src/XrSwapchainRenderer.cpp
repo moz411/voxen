@@ -2265,10 +2265,17 @@ void XrSwapchainRenderer::updateControllerInteraction(
     if(editingMode() && !immersiveSceneActive_ &&
        imguiCarousel_.mediaPlacementEnabled && tracked[1]) {
         auto& drag=imguiCarousel_.mediaDrag;
-        if(galleryTriggerEdge && !panelAimed_ && imguiCarousel_.mediaToolKind>=1 &&
-           pendingGalleryFloorAction_==0)
+        // Selection occurs in the ImGui frame after controller input. On the
+        // next frame, continue the very same held trigger as a spatial drag.
+        const bool fromCarousel=imguiCarousel_.mediaDragPending && pressed[1];
+        const bool fromWorld=galleryTriggerEdge && !panelAimed_;
+        if((fromCarousel || fromWorld) && imguiCarousel_.mediaToolKind>=1 &&
+           pendingGalleryFloorAction_==0) {
             drag.begin({imguiCarousel_.mediaToolKind,imguiCarousel_.mediaToolFilename,
                 imguiCarousel_.mediaToolShaderMode},editorPlacementDistance_);
+            imguiCarousel_.mediaDragPending=false;
+        }
+        if(!pressed[1])imguiCarousel_.mediaDragPending=false;
         const auto& pose=poses[1];
         const auto& q=pose.orientation;
         const std::array<float,3> dir{
@@ -2282,15 +2289,8 @@ void XrSwapchainRenderer::updateControllerInteraction(
             if(hit && (!nearest || hit->depth<nearest->depth))nearest=std::move(hit);
         }
         if(drag.active) {
-            // Preserve the latched surface if another plane enters the ray.
-            if(drag.snapped && (!nearest || nearest->uuid!=drag.snapped->uuid)) {
-                nearest.reset();
-                for(const auto& surface:environmentSurfaces_.surfaces())
-                    if(surface.persistentUuid==drag.snapped->uuid) {
-                        nearest=voxen::ui::hitMediaSurface(surface,origin,dir);
-                        break;
-                    }
-            }
+            // Use the first visible MR plane along the ray. A previously
+            // snapped plane must never stay selected behind a nearer surface.
             drag.update(editorPlacementDistance_,nearest);
             // Keep the requested joystick distance independent of the visual
             // clamp: dragging back across the plane must release the snap.
@@ -2308,6 +2308,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         }
     } else {
         imguiCarousel_.mediaDrag.cancel();
+        if(!pressed[1])imguiCarousel_.mediaDragPending=false;
         imguiCarousel_.mediaPreviewSurface=-1;
     }
     // A single trigger click places exactly one instance. Never place when

@@ -66,6 +66,7 @@ struct CarouselState {
     // -1 = global sphere; otherwise stable detected surface ID.
     std::int64_t backgroundTargetSurface = -1;
     bool mediaPlacementEnabled=false; // controller preview and hold-to-drag
+    bool mediaDragPending=false; // selected with trigger held on carousel
     std::int64_t mediaPreviewSurface=-1; // snapped Meta plane, -1 = free preview
     float mediaPreviewScale=1.f;
     int mediaToolKind=0; // 0 no selection, 1 picture, 2 video, 3 shader
@@ -177,6 +178,7 @@ struct CarouselState {
         mediaToolFilename=std::move(filename);
         mediaToolShaderMode=shader;
         mediaPlacementEnabled=kind>=1 && kind<=3;
+        mediaDragPending=mediaPlacementEnabled;
     }
     void clearGlobalMedia() {
         backgroundSourceKind=0;liquidRoom=false;cycleWallShaders=false;

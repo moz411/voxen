@@ -59,9 +59,11 @@ int main() {
     assert(editor.find(wall.persistentUuid)->filename=="cloud.jpg");
     CarouselState carousel;
     carousel.selectMedia(3,"Shader",12);
+    assert(carousel.mediaDragPending);
     carousel.mediaDrag.begin({3,"Shader",12},.25f);
     carousel.mediaDrag.update(2.5f,hit);
     carousel.selectMedia(1,"cloud.jpg");
+    assert(carousel.mediaDragPending);
     assert(!carousel.mediaDrag.active && !carousel.mediaDrag.snapped);
     assert(!carousel.liquidRoom); // No global rendering change on select/drag.
     std::cout<<"Surface media drag: PASS\n";

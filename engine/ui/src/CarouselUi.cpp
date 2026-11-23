@@ -242,7 +242,7 @@ void drawCarousel(CarouselState& state) {
 
 
         case 1: {
-            ImGui::SeparatorText("SURFACES / 1. CHOISIR UN MEDIA");
+            ImGui::SeparatorText("MEDIAS A DEPOSER");
             static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","RAINBOW SPIRAL","MOBIUS SPIRAL","THEREMIN WAVE","GEOMETRIC KALEIDOSCOPE","CHROMATIC EDGES","COSMIC PALETTE","SYNTHWAVE SUNSET","OCEAN WAVES","UNIVERSE WITHIN","CYBERCITY","VORONOI FALL","TAN GLITCH"};
             static constexpr int modeIds[]={0,1,2,3,4,5,6,7,10,11,12,13,14,15,16,17,19,20,21,22};
             ImGui::BeginChild("background-unified",ImVec2(0,235),true);
@@ -288,8 +288,8 @@ void drawCarousel(CarouselState& state) {
             ImGui::Text("Selection : %s",state.mediaToolKind==0?"aucune":
                 state.mediaToolFilename.c_str());
             ImGui::SeparatorText("PLACEMENT SPATIAL");
-            ImGui::TextDisabled("Maintenir la gachette et pousser l'icone vers un mur, sol ou plafond.");
-            ImGui::TextDisabled("Intersection : apercu sur tout le plan, profondeur bloquee.");
+            ImGui::TextDisabled("Maintenir la gachette sur un media et deplacer l'icone vers une surface.");
+            ImGui::TextDisabled("Le plan surligne est la cible du depot.");
             ImGui::TextDisabled("Tirer vers soi : decrocher | relacher : confirmer.");
             ImGui::Text("Distance %.2fm / taille %.2fx",state.placementDistance,state.mediaPreviewScale);
             if(state.mediaDrag.active && state.mediaDrag.snapped)
