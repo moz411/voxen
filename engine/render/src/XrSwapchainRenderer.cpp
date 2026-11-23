@@ -1,6 +1,7 @@
 #include <voxen/render/XrSwapchainRenderer.hpp>
 #include <voxen/render/OpenBrushStarsStroke.hpp>
 #include <voxen/render/OpenBrushFireStroke.hpp>
+#include <voxen/render/OpenBrushSunStroke.hpp>
 #include <voxen/render/OpenBrushSnowStroke.hpp>
 #include <voxen/render/OpenBrushEmbersStroke.hpp>
 #include <voxen/render/OpenBrushBubblesStroke.hpp>
@@ -85,6 +86,8 @@
 #include "openbrushSnowFrag.spv.hpp"
 #include "openbrushFireVert.spv.hpp"
 #include "openbrushFireFrag.spv.hpp"
+#include "openbrushSunVert.spv.hpp"
+#include "openbrushSunFrag.spv.hpp"
 #include "openbrushLightningVert.spv.hpp"
 #include "openbrushLightningFrag.spv.hpp"
 #include "openbrushNeonTrailsVert.spv.hpp"
@@ -1700,7 +1703,7 @@ void XrSwapchainRenderer::createPipeline() {
         // Without these bindings Vulkan supplies zero/default attributes,
         // making the animated brushes invisible despite valid draw calls.
         if (&out == &openbrushMeshPipeline_ || &out == &openbrushSmokePipeline_ ||
-            &out == &openbrushFirePipeline_ || &out == &openbrushSnowPipeline_ ||
+            &out == &openbrushFirePipeline_ || &out == &openbrushSunPipeline_ || &out == &openbrushSnowPipeline_ ||
             &out == &openbrushEmbersPipeline_ || &out == &openbrushBubblesPipeline_ ||
             &out == &openbrushLightningPipeline_ || &out == &openbrushNeonTrailsPipeline_ ||
             &out == &openbrushMagicDustPipeline_ || &out == &openbrushChromaticWavePipeline_ ||
@@ -1732,7 +1735,7 @@ void XrSwapchainRenderer::createPipeline() {
         ) ? VK_FALSE : VK_TRUE;
         // Translucent particle layers must not write depth: otherwise the first
         // flake/bubble occludes later translucent layers in the same eye.
-        if (&out==&openbrushSmokePipeline_ || &out==&openbrushFirePipeline_ ||
+        if (&out==&openbrushSmokePipeline_ || &out==&openbrushFirePipeline_ || &out==&openbrushSunPipeline_ ||
             &out==&openbrushSnowPipeline_ || &out==&openbrushEmbersPipeline_ ||
             &out==&openbrushBubblesPipeline_ || &out==&openbrushMeshPipeline_ ||
             &out==&openbrushLightningPipeline_ || &out==&openbrushNeonTrailsPipeline_ ||
@@ -1791,7 +1794,7 @@ void XrSwapchainRenderer::createPipeline() {
             blend.alphaBlendOp=VK_BLEND_OP_ADD;
         }
         // Emissive fire: additive light accumulation, without depth writes.
-        if (&out==&openbrushFirePipeline_ || &out==&openbrushLightningPipeline_ ||
+        if (&out==&openbrushFirePipeline_ || &out==&openbrushSunPipeline_ || &out==&openbrushLightningPipeline_ ||
             &out==&openbrushNeonTrailsPipeline_ || &out==&openbrushMagicDustPipeline_ ||
             &out==&openbrushChromaticWavePipeline_ || &out==&openbrushElectricityPipeline_) {
             blend.blendEnable=VK_TRUE;
@@ -1847,6 +1850,7 @@ void XrSwapchainRenderer::createPipeline() {
     buildPipeline(openbrushMeshVert,openbrushMeshVertSize,openbrushMeshFrag,openbrushMeshFragSize,openbrushMeshPipeline_);
     buildPipeline(openbrushSmokeVert,openbrushSmokeVertSize,openbrushSmokeFrag,openbrushSmokeFragSize,openbrushSmokePipeline_);
     buildPipeline(openbrushFireVert,openbrushFireVertSize,openbrushFireFrag,openbrushFireFragSize,openbrushFirePipeline_);
+    buildPipeline(openbrushSunVert,openbrushSunVertSize,openbrushSunFrag,openbrushSunFragSize,openbrushSunPipeline_);
     buildPipeline(openbrushSnowVert,openbrushSnowVertSize,openbrushSnowFrag,openbrushSnowFragSize,openbrushSnowPipeline_);
     buildPipeline(openbrushEmbersVert,openbrushEmbersVertSize,openbrushEmbersFrag,openbrushEmbersFragSize,openbrushEmbersPipeline_);
     buildPipeline(openbrushBubblesVert,openbrushBubblesVertSize,openbrushBubblesFrag,openbrushBubblesFragSize,openbrushBubblesPipeline_);
@@ -2236,6 +2240,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
         const bool smoke=imguiCarousel_.particlePaintEnabled;
         const bool stars=smoke && imguiCarousel_.particlePreset==1;
         const bool fire=smoke && imguiCarousel_.particlePreset==2;
+        const bool sun=smoke && imguiCarousel_.particlePreset==11;
         const bool snow=smoke && imguiCarousel_.particlePreset==3;
         const bool embers=smoke && imguiCarousel_.particlePreset==4;
         const bool bubbles=smoke && imguiCarousel_.particlePreset==5;
@@ -2256,6 +2261,7 @@ void XrSwapchainRenderer::updateControllerInteraction(
             embers ? voxen::render::openbrush::EmbersStrokePreset :
             snow ? voxen::render::openbrush::SnowStrokePreset :
             fire ? voxen::render::openbrush::FireStrokePreset :
+            sun ? voxen::render::openbrush::SunStrokePreset :
             stars ? voxen::render::openbrush::StarsStrokePreset :
                     voxen::render::openbrush::SmokeStrokePreset;
         v.flatVolume=imguiCarousel_.flatVoxenVolume;
@@ -2342,7 +2348,7 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
     groups.reserve(std::min<std::size_t>(voxens_.size(),128));
     for(const auto& v:voxens_) {
         const int kind=v.preset-27;
-        if(kind<0 || kind>=11)continue;
+        if(kind<0 || kind>=12)continue;
         if(groups.empty() || groups.back().kind!=kind ||
            (v.strokeId!=0 && groups.back().id!=v.strokeId) ||
            (v.strokeId==0 && groups.back().id!=0)) {
@@ -2371,6 +2377,7 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
         case 0: scene=makeSmokeStrokeScene(group.points);hasSmoke=true;break;
         case 1: scene=makeStarsStrokeScene(group.points);break;
         case 2: scene=makeFireStrokeScene(group.points);break;
+        case 11: scene=makeSunStrokeScene(group.points);break;
         case 3: scene=makeSnowStrokeScene(group.points);break;
         case 4: scene=makeEmbersStrokeScene(group.points);break;
         case 5: scene=makeBubblesStrokeScene(group.points);break;
@@ -3135,7 +3142,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             openbrushNeonTrailsPipeline_,openbrushSmokePipelineLayout_,
             openbrushMagicDustPipeline_,openbrushSmokePipelineLayout_,
             openbrushChromaticWavePipeline_,openbrushSmokePipelineLayout_,
-            openbrushElectricityPipeline_,openbrushSmokePipelineLayout_);
+            openbrushElectricityPipeline_,openbrushSmokePipelineLayout_,
+            openbrushSunPipeline_,openbrushSmokePipelineLayout_);
 #else
         if(immersiveSceneActive_)openbrushMeshGpu_.record(commandBuffer_,openbrushMeshPipeline_,openbrushMeshPipelineLayout_,vp);
 #endif
@@ -4611,6 +4619,7 @@ void XrSwapchainRenderer::shutdown() noexcept {
     if(openbrushEmbersPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushEmbersPipeline_,nullptr);openbrushEmbersPipeline_=VK_NULL_HANDLE;}
     if(openbrushSnowPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushSnowPipeline_,nullptr);openbrushSnowPipeline_=VK_NULL_HANDLE;}
     if(openbrushFirePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushFirePipeline_,nullptr);openbrushFirePipeline_=VK_NULL_HANDLE;}
+    if(openbrushSunPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushSunPipeline_,nullptr);openbrushSunPipeline_=VK_NULL_HANDLE;}
     if(openbrushSmokePipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushSmokePipeline_,nullptr);openbrushSmokePipeline_=VK_NULL_HANDLE;}
     if(openbrushSmokePipelineLayout_!=VK_NULL_HANDLE){vkDestroyPipelineLayout(device_,openbrushSmokePipelineLayout_,nullptr);openbrushSmokePipelineLayout_=VK_NULL_HANDLE;}
     if(openbrushMeshPipeline_!=VK_NULL_HANDLE){vkDestroyPipeline(device_,openbrushMeshPipeline_,nullptr);openbrushMeshPipeline_=VK_NULL_HANDLE;}

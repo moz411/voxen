@@ -92,6 +92,9 @@ void drawCarousel(CarouselState& state) {
                 if(ImGui::Selectable("CHROMATIC WAVE (native)",state.particlePaintEnabled && state.particlePreset==9)) {
                     state.particlePreset=9;state.particlePaintEnabled=true;state.voxenPaintEnabled=true;
                 }
+                if(ImGui::Selectable("SUN (incandescent)",state.particlePaintEnabled && state.particlePreset==11)) {
+                    state.particlePreset=11;state.particlePaintEnabled=true;state.voxenPaintEnabled=true;
+                }
                 if(ImGui::Selectable("ELECTRICITY (native)",state.particlePaintEnabled && state.particlePreset==10)) {
                     state.particlePreset=10;state.particlePaintEnabled=true;state.voxenPaintEnabled=true;
                 }
