@@ -23,7 +23,7 @@ struct SavedVoxen {
 };
 struct SavedSurfaceMedia {
     std::string uuid; // Meta spatial-entity UUID, stable across scene reloads
-    int kind=0; // 1 picture, 2 video, 3 procedural shader
+    int kind=0; // 0 local passthrough/Sobel, 1 picture, 2 video, 3 shader
     std::string filename;
     int shaderMode=0;
 };
@@ -62,7 +62,7 @@ inline bool valid(const SavedRuntime& r) {
     for(const auto& media:r.surfaceMedia) {
         if(media.uuid.empty() || media.uuid.size()>80 ||
            media.uuid.find_first_not_of("0123456789abcdefABCDEF-")!=std::string::npos ||
-           media.kind<1 || media.kind>3 || media.shaderMode<0 || media.shaderMode>255 ||
+           media.kind<0 || media.kind>3 || media.shaderMode<0 || media.shaderMode>255 ||
            media.filename.size()>128 || media.filename.find('/')!=std::string::npos ||
            media.filename.find('\\')!=std::string::npos ||
            media.filename.find("..")!=std::string::npos ||

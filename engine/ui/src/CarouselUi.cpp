@@ -13,16 +13,23 @@ void drawCarousel(CarouselState& state) {
     constexpr ImGuiWindowFlags flags=ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse;
     if (ImGui::Begin("VOXEN",nullptr,flags)) {
-        if (ImGui::Button("< PREV")) state.page=(state.page+3)%4;
-        ImGui::SameLine();
-        ImGui::Text("%.*s",static_cast<int>(pages[state.page].size()),pages[state.page].data());
-        ImGui::SameLine();
-        if (ImGui::Button("NEXT >")) state.page=(state.page+1)%4;
+        const float gap=ImGui::GetStyle().ItemSpacing.x;
+        const float width=std::max(50.f,(ImGui::GetContentRegionAvail().x-3.f*gap)/4.f);
+        for(int i=0;i<4;++i) {
+            if(i)ImGui::SameLine();
+            const bool active=i==state.page;
+            if(active)ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(.13f,.39f,.54f,1.f));
+            if(ImGui::Button(pages[i].data(),ImVec2(width,42))) {
+                state.page=i;
+                if(i!=1)state.mediaPlacementEnabled=false;
+            }
+            if(active)ImGui::PopStyleColor();
+        }
         ImGui::Separator();
         switch(state.page) {
         case 0:
             state.mediaPlacementEnabled=false; // selecting brushes restores trigger painting
-            ImGui::SeparatorText("OBJECTS / VOXENS + GLB");
+            ImGui::SeparatorText("CREER / OBJETS ET BRUSHES");
             static constexpr const char* presets[]={"PLASMA","SPHERES INTERSECTIONS","MANDELBULB","STRANGE ATTRACTOR","ORGANIC SPHERE","TORUS KNOT","SPIKE BLOOM","JELLYFISH","EARTHWORM","CLOUD","METABALLS","TENTACLE CREATURE","FRACTAL PYRAMID","PHYLLOTAXIS SPIRAL","STICKMAN ECHO","CACODEMON","GOLDEEN","PBR SMILE","PULSING CUBE CLOUD","RUBIK CUBE"};
             ImGui::BeginChild("objects-unified",ImVec2(0,170),true);
             if(ImGui::BeginTabBar("object-media-tabs")) {
@@ -146,7 +153,7 @@ void drawCarousel(CarouselState& state) {
             }
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.18f,
                 state.particlePaintEnabled?6.f:0.60f,"%.2f",ImGuiSliderFlags_Logarithmic);
-            ImGui::SeparatorText("MOTION / ANIMATION");
+            if(ImGui::CollapsingHeader("MOUVEMENT / ANIMATION")) {
             if(state.particlePaintEnabled) {
                 static constexpr const char* animations[]={"NONE","OSCILLATE","ROTATE","DRIFT","ORBIT WHOLE SCENE"};
                 ImGui::Combo("Brush motion",&state.particleMotionMode,animations,5);
@@ -154,6 +161,7 @@ void drawCarousel(CarouselState& state) {
                     ImGui::TextDisabled("Rotate each new stroke around its own centroid");
                 ImGui::SliderFloat("Brush motion speed",&state.particleMotionSpeed,0.1f,4.f,"%.2f");
                 ImGui::TextDisabled("Motion and color settings apply only to the next stroke.");
+                if(ImGui::CollapsingHeader("PALETTE RGB AVANCEE")) {
                 ImGui::ColorPicker3("Particle RGB",state.smokeRgb,
                     ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_DisplayRGB |
                     ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_NoSidePreview);
@@ -170,6 +178,7 @@ void drawCarousel(CarouselState& state) {
                         std::copy(palette[i],palette[i]+3,state.smokeRgb);
                     if(i!=5)ImGui::SameLine();
                     ImGui::PopID();
+                }
                 }
             } else ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
             ImGui::SliderFloat(state.voxenPreset>=4 ? "Deformation" : "Density",&state.voxenDensity,0.3f,2.f);
@@ -205,6 +214,7 @@ void drawCarousel(CarouselState& state) {
             ImGui::TextDisabled("Audio / deformation / trajectories: next steps");
             }
             }
+            }
             if(!state.voxenPaintEnabled) {
             ImGui::SeparatorText("GLB SETTINGS");
             static constexpr const char* glbModes[]={"ORIGINAL","VOXEN"};
@@ -232,72 +242,42 @@ void drawCarousel(CarouselState& state) {
 
 
         case 1: {
-            ImGui::SeparatorText("BACKGROUNDS / SHADERS + IMAGES + MP4");
+            ImGui::SeparatorText("SURFACES / 1. CHOISIR UN MEDIA");
             static constexpr const char* effects[]={"LIQUID ROOM","SOLID COLOR","MATRIX RAIN","HEPP GLOW","PHI FIELD","MANDELBROT ZOOM","SOUND DEMO","MIDNIGHT RIDE","RAINBOW SPIRAL","MOBIUS SPIRAL","THEREMIN WAVE","GEOMETRIC KALEIDOSCOPE","CHROMATIC EDGES","COSMIC PALETTE","SYNTHWAVE SUNSET","OCEAN WAVES","UNIVERSE WITHIN","CYBERCITY","VORONOI FALL","TAN GLITCH"};
             static constexpr int modeIds[]={0,1,2,3,4,5,6,7,10,11,12,13,14,15,16,17,19,20,21,22};
             ImGui::BeginChild("background-unified",ImVec2(0,235),true);
             if(ImGui::BeginTabBar("background-media-tabs")) {
             if(ImGui::BeginTabItem("PASSTHROUGH")) {
-            if(ImGui::Selectable("[MR] PASSTHROUGH SOBEL",state.backgroundSourceKind==0)) {
-                state.backgroundSourceKind=0;
-                state.panoramaSelected=-1;
-            }
+                ImGui::TextWrapped("Sobel est le fond par defaut des surfaces sans media.");
+                ImGui::TextDisabled("Pour restaurer Sobel, effacer la surface ou le fond global.");
             ImGui::EndTabItem();
             }
             if(ImGui::BeginTabItem("SHADERS")) {
             for(int i=0;i<20;++i) {
                 const std::string label=std::string("[SHADER] ")+effects[i]+"##bgsh"+std::to_string(i);
-                if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==3 &&
-                                      state.wallShaderMode==modeIds[i])) {
-                    state.backgroundSourceKind=3;
-                    state.wallShaderMode=modeIds[i];
-                    state.mediaPlacementEnabled=true;
-                    state.cycleWallShaders=false; // manual selection stops slideshow
-                    state.liquidRoom=true;
-                    state.panoramaSelected=-1;
+                if(ImGui::Selectable(label.c_str(),state.mediaToolKind==3 &&
+                                      state.mediaToolShaderMode==modeIds[i])) {
+                    state.selectMedia(3,"Shader",modeIds[i]);
                 }
             }
-            ImGui::Separator();
-            if(ImGui::Checkbox("SLIDESHOW (all shaders)",&state.cycleWallShaders) &&
-               state.cycleWallShaders) {
-                state.backgroundSourceKind=3;
-                state.liquidRoom=true;
-                state.panoramaSelected=-1;
-            }
-            ImGui::Checkbox("Different shader per surface",&state.differentShaderPerSurface);
-            ImGui::SliderFloat("Shader duration (seconds)",&state.wallCycleSeconds,
-                               10.f,90.f,"%.0f s");
-            ImGui::TextDisabled(state.differentShaderPerSurface
-                ? "Each unassigned surface cycles with a stable offset"
-                : "Same shader on all unassigned Meta surfaces");
             ImGui::EndTabItem();
             }
             if(ImGui::BeginTabItem("IMAGES")) {
             for(int i=0;i<static_cast<int>(state.panoramaFiles.size());++i) {
                 const std::string label="[IMAGE] "+state.panoramaFiles[i]+"##bgi"+std::to_string(i);
-                if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==1 &&
-                                      state.panoramaSelected==i)) {
-                    state.backgroundSourceKind=1;
-                    state.panoramaSelected=i;
-                    state.mediaPlacementEnabled=true;
-                    state.panoramaSlideshow=false;
-                    state.videoSelected=-1;
+                if(ImGui::Selectable(label.c_str(),state.mediaToolKind==1 &&
+                                      state.mediaToolFilename==state.panoramaFiles[i])) {
+                    state.selectMedia(1,state.panoramaFiles[i]);
                 }
             }
-            ImGui::Separator();
-            ImGui::Checkbox("SLIDESHOW (all images)",&state.panoramaSlideshow);
-            ImGui::SliderFloat("Slide duration (seconds)",&state.panoramaSlideshowSeconds,5.f,120.f,"%.0f s");
             ImGui::EndTabItem();
             }
             if(ImGui::BeginTabItem("VIDEOS")) {
             for(int i=0;i<static_cast<int>(state.videoFiles.size());++i) {
                 const std::string label="[MP4] "+state.videoFiles[i]+"##bgv"+std::to_string(i);
-                if(ImGui::Selectable(label.c_str(),state.backgroundSourceKind==2 &&
-                                      state.videoSelected==i)) {
-                    state.backgroundSourceKind=2;
-                    state.videoSelected=i;
-                    state.mediaPlacementEnabled=true;
-                    state.panoramaSelected=-1;
+                if(ImGui::Selectable(label.c_str(),state.mediaToolKind==2 &&
+                                      state.mediaToolFilename==state.videoFiles[i])) {
+                    state.selectMedia(2,state.videoFiles[i]);
                 }
             }
             ImGui::EndTabItem();
@@ -305,92 +285,90 @@ void drawCarousel(CarouselState& state) {
             ImGui::EndTabBar();
             }
             ImGui::EndChild();
-            if(state.backgroundSourceKind==2)
-                ImGui::TextDisabled("MP4: Android Surface / OpenXR equirect2 (experimental)");
-            if(state.backgroundSourceKind==1 && !state.panoramaStatus.empty())
-                ImGui::TextWrapped("%s",state.panoramaStatus.c_str());
-            if(state.backgroundSourceKind==1 || state.backgroundSourceKind==2) {
-                ImGui::SliderFloat("Panorama yaw",&state.panoramaYawDegrees,-180.f,180.f,"%.0f deg");
-                ImGui::SliderFloat("Horizontal coverage",&state.panoramaHorizontalDegrees,60.f,360.f,"%.0f deg");
-                ImGui::SliderFloat("Vertical coverage",&state.panoramaVerticalDegrees,30.f,180.f,"%.0f deg");
-            }
-            ImGui::SeparatorText("CONTROLLER PLACEMENT");
-            ImGui::Checkbox("Place media with right controller",&state.mediaPlacementEnabled);
-            if(state.mediaPlacementEnabled) {
-                ImGui::TextDisabled("RIGHT STICK X: resize preview / Y: distance");
-                ImGui::TextDisabled("RIGHT TRIGGER: assign to snapped wall/floor/ceiling");
-                ImGui::Text("Distance: %.2f m | Scale: %.2fx",state.placementDistance,state.mediaPreviewScale);
-                if(state.mediaPreviewSurface>=0)
-                    ImGui::Text("SNAPPED: surface #%llu",(unsigned long long)state.mediaPreviewSurface);
-                else ImGui::TextDisabled("Move preview close to a tracked surface");
-            }
-            ImGui::SeparatorText("APPLY TO");
-            if(ImGui::Selectable("GLOBAL SPHERE",state.backgroundTargetSurface==-1)) {
-                state.backgroundTargetSurface=-1;
-            }
-            ImGui::BeginChild("tracked-meta-surfaces",ImVec2(0,138),true);
-            for(std::size_t i=0;i<state.detectedSurfaceIds.size();++i) {
-                const auto id=state.detectedSurfaceIds[i];
-                const std::string label=state.detectedSurfaceLabels[i]+"##surface"+std::to_string(id);
-                if(ImGui::Selectable(label.c_str(),
-                   state.backgroundTargetSurface>=0 &&
-                   static_cast<std::uint64_t>(state.backgroundTargetSurface)==id)) {
-                    state.backgroundTargetSurface=static_cast<std::int64_t>(id);
-                    // Preserve existing wall shader rendering when a shader is
-                    // selected. Image and video surface projection remain pending.
-                    if(state.backgroundSourceKind==3) {
-                        state.wallSourceKind=0;
-                        state.liquidRoom=true;
-                    } else if(state.backgroundSourceKind==1) {
-                        state.wallSourceKind=1;
-                        state.wallImageSelected=state.panoramaSelected;
-                    } else if(state.backgroundSourceKind==2) {
-                        state.wallSourceKind=2;
-                        state.wallVideoSelected=state.videoSelected;
-                    }
+            ImGui::Text("Selection : %s",state.mediaToolKind==0?"aucune":
+                state.mediaToolFilename.c_str());
+            ImGui::SeparatorText("2. CIBLER UNE SURFACE META");
+            ImGui::BeginChild("tracked-meta-surfaces",ImVec2(0,105),true);
+            for(std::size_t i=0;i<state.detectedSurfaceUuids.size();++i) {
+                const auto& uuid=state.detectedSurfaceUuids[i];
+                const std::string label=state.detectedSurfaceLabels[i]+"##"+std::to_string(i);
+                const bool selected=uuid==state.selectedSurfaceUuid && !uuid.empty();
+                if(ImGui::Selectable(label.c_str(),selected) && !uuid.empty())
+                    state.selectedSurfaceUuid=uuid;
+                if(const auto* assignment=state.mediaEditor.find(uuid)) {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("[%s]",assignment->filename.c_str());
                 }
             }
             ImGui::EndChild();
-            if(state.detectedSurfaceIds.empty())
-                ImGui::TextDisabled("No tracked Meta planes available");
-            if(state.backgroundTargetSurface>=0) {
-                const auto id=static_cast<std::uint64_t>(state.backgroundTargetSurface);
-                const auto existing=state.surfaceMedia.find(id);
-                if(existing!=state.surfaceMedia.end())
-                    ImGui::Text("Assigned: %s",existing->second.filename.c_str());
-                if(ImGui::Button("APPLY SELECTED MEDIA")) {
-                    CarouselState::AppliedMedia media{};
-                    media.kind=state.backgroundSourceKind;
-                    media.shaderMode=state.wallShaderMode;
-                    if(media.kind==1 && state.panoramaSelected>=0 &&
-                       static_cast<std::size_t>(state.panoramaSelected)<state.panoramaFiles.size())
-                        media.filename=state.panoramaFiles[state.panoramaSelected];
-                    else if(media.kind==2 && state.videoSelected>=0 &&
-                            static_cast<std::size_t>(state.videoSelected)<state.videoFiles.size())
-                        media.filename=state.videoFiles[state.videoSelected];
-                    else if(media.kind==3) media.filename="Shader";
-                    else media.filename="Passthrough";
-                    if(media.kind!=1 && media.kind!=2 || !media.filename.empty()) {
-                        state.surfaceMedia[id]=std::move(media);
-                        state.applyMediaRequest=true;
+            if(state.detectedSurfaceUuids.empty())
+                ImGui::TextDisabled("Aucun plan Meta suivi");
+            const auto* assigned=state.mediaEditor.find(state.selectedSurfaceUuid);
+            if(assigned)ImGui::Text("Actuel : %s",assigned->filename.c_str());
+            ImGui::BeginDisabled(state.selectedSurfaceUuid.empty() || state.mediaToolKind==0);
+            if(ImGui::Button("APPLIQUER A CETTE SURFACE",ImVec2(-1,38)))
+                state.mediaEditor.assign(state.selectedSurfaceUuid,
+                    SurfaceMedia{state.mediaToolKind,state.mediaToolFilename,state.mediaToolShaderMode});
+            ImGui::EndDisabled();
+            ImGui::BeginDisabled(state.selectedSurfaceUuid.empty());
+            if(ImGui::Button("SOBEL SUR CETTE SURFACE",ImVec2(-1,32)))
+                state.mediaEditor.assign(state.selectedSurfaceUuid,SurfaceMedia{0,"Sobel",0});
+            ImGui::EndDisabled();
+            ImGui::BeginDisabled(state.selectedSurfaceUuid.empty() || !assigned);
+            if(ImGui::Button("RETIRER"))
+                state.mediaEditor.assign(state.selectedSurfaceUuid,std::nullopt);
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!state.mediaEditor.canUndo());
+            if(ImGui::Button("ANNULER"))state.mediaEditor.undo();
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(!state.mediaEditor.canRedo());
+            if(ImGui::Button("RETABLIR"))state.mediaEditor.redo();
+            ImGui::EndDisabled();
+            ImGui::Checkbox("PLACEMENT AVEC MANETTE",&state.mediaPlacementEnabled);
+            if(state.mediaPlacementEnabled) {
+                ImGui::TextDisabled("Joystick X : taille | Y : distance");
+                ImGui::TextDisabled("Gachette : appliquer UNIQUEMENT au plan vise");
+                ImGui::Text("Distance %.2fm / taille %.2fx",state.placementDistance,state.mediaPreviewScale);
+                if(state.mediaPreviewSurface>=0)
+                    ImGui::Text("SNAP : plan #%llu",(unsigned long long)state.mediaPreviewSurface);
+                if(ImGui::Button("TERMINER LE PLACEMENT",ImVec2(-1,34)))
+                    state.mediaPlacementEnabled=false;
+            }
+            if(ImGui::CollapsingHeader("ENVIRONNEMENT GLOBAL (explicite)")) {
+                ImGui::TextDisabled("Independant des affectations par surface.");
+                if(ImGui::Button("RETOUR PASSTHROUGH SOBEL",ImVec2(-1,36))) {
+                    state.clearGlobalMedia();
+                }
+                ImGui::BeginDisabled(state.mediaToolKind==0);
+                if(ImGui::Button("APPLIQUER LA SELECTION AU GLOBAL",ImVec2(-1,36)))
+                    state.applySelectedGlobally();
+                ImGui::EndDisabled();
+                if(state.liquidRoom) {
+                    ImGui::Checkbox("Diaporama shaders GLOBAL",&state.cycleWallShaders);
+                    ImGui::Checkbox("Decalage par surface",&state.differentShaderPerSurface);
+                    if(state.cycleWallShaders)ImGui::SliderFloat("Duree (s)",&state.wallCycleSeconds,10.f,90.f);
+                    ImGui::SliderFloat("Opacite shader",&state.liquidOpacity,0.f,0.6f);
+                }
+                if(state.backgroundSourceKind==1 || state.backgroundSourceKind==2) {
+                    ImGui::SliderFloat("Yaw panorama",&state.panoramaYawDegrees,-180.f,180.f);
+                    ImGui::SliderFloat("Couverture H",&state.panoramaHorizontalDegrees,60.f,360.f);
+                    ImGui::SliderFloat("Couverture V",&state.panoramaVerticalDegrees,30.f,180.f);
+                    if(state.backgroundSourceKind==1) {
+                        ImGui::Checkbox("Diaporama images",&state.panoramaSlideshow);
+                        if(state.panoramaSlideshow)ImGui::SliderFloat("Duree diapo (s)",
+                            &state.panoramaSlideshowSeconds,5.f,120.f);
                     }
                 }
-                ImGui::SameLine();
-                if(ImGui::Button("CLEAR ASSIGNMENT")) {
-                    state.surfaceMedia.erase(id);
-                    state.applyMediaRequest=true;
-                }
-                const auto currentAssignment=state.surfaceMedia.find(id);
-                if(currentAssignment!=state.surfaceMedia.end() &&
-                   currentAssignment->second.kind==2)
-                    ImGui::TextDisabled("MP4 via OpenXR quad (one active surface at a time)");
             }
-            if(!state.applyMediaStatus.empty())
-                ImGui::TextWrapped("%s",state.applyMediaStatus.c_str());
-            if(state.backgroundSourceKind==3) {
-                ImGui::SliderFloat("Shader opacity",&state.liquidOpacity,0.f,0.6f);
-                ImGui::Checkbox("Scene mesh wireframe",&state.showSceneMesh);
+            if(ImGui::CollapsingHeader("OPTIONS AVANCEES")) {
+                ImGui::Checkbox("Maillage scene",&state.showSceneMesh);
+                ImGui::Checkbox("Occlusion monde reel",&state.sceneOcclusion);
+                ImGui::SliderFloat("Biais profondeur",&state.sceneDepthBias,0.f,0.02f);
             }
+            if(!state.applyMediaStatus.empty())ImGui::TextWrapped("%s",state.applyMediaStatus.c_str());
+            ImGui::TextDisabled("Videos : une seule surface MP4 active simultanement");
             break;
         }
         case 2: {
@@ -416,8 +394,7 @@ void drawCarousel(CarouselState& state) {
             ImGui::SliderFloat("Music volume",&state.musicVolume,0.f,1.f);
             ImGui::TextDisabled(state.musicSource==0 ? "Procedural ambient loops" : "MP3 playlist / loop enabled");
             if(state.musicSource==0&&!state.musicReady)ImGui::TextDisabled("Audio output unavailable");
-            ImGui::Separator();
-            ImGui::TextUnformatted("AUDIO REACTIVE");
+            if(ImGui::CollapsingHeader("AUDIO REACTIVE / FFT")) {
             ImGui::Checkbox("Enable MP3 reactions",&state.audioReactiveEnabled);
             if(state.musicSource!=1)ImGui::TextDisabled("Select MP3 FILES to analyze music");
             ImGui::BeginDisabled(!state.audioReactiveEnabled || state.musicSource!=1);
@@ -433,6 +410,7 @@ void drawCarousel(CarouselState& state) {
             ImGui::ProgressBar(std::clamp(state.audioReactiveMid*12.f,0.f,1.f),ImVec2(-1,0),"Mid");
             ImGui::ProgressBar(std::clamp(state.audioReactiveTreble*12.f,0.f,1.f),ImVec2(-1,0),"Treble");
             ImGui::ProgressBar(std::clamp(state.audioReactiveRms*3.f,0.f,1.f),ImVec2(-1,0),"RMS");
+            }
 
             break;
         }

@@ -1,10 +1,13 @@
 #pragma once
 #include <array>
+#include <algorithm>
 #include <cstdint>
 #include <string_view>
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <utility>
+#include <voxen/ui/SurfaceMediaEditor.hpp>
 
 namespace voxen::ui {
 // UI and XR geometry are intentionally separate: controller rays must be
@@ -64,11 +67,14 @@ struct CarouselState {
     bool mediaPlacementEnabled=false; // controller preview and trigger-to-assign
     std::int64_t mediaPreviewSurface=-1; // snapped Meta plane, -1 = free preview
     float mediaPreviewScale=1.f;
+    int mediaToolKind=0; // 0 no selection, 1 picture, 2 video, 3 shader
+    int mediaToolShaderMode=0;
+    std::string mediaToolFilename;
+    std::string selectedSurfaceUuid;
+    std::vector<std::string> detectedSurfaceUuids;
     std::vector<std::uint64_t> detectedSurfaceIds;
     std::vector<std::string> detectedSurfaceLabels;
-    struct AppliedMedia { int kind=0; std::string filename; int shaderMode=0; };
-    std::unordered_map<std::uint64_t, AppliedMedia> surfaceMedia;
-    std::unordered_map<std::string, AppliedMedia> surfaceMediaByUuid;
+    SurfaceMediaEditor mediaEditor;
     bool applyMediaRequest=false;
     std::string applyMediaStatus;
     bool videoRescanRequest = false;
@@ -162,9 +168,40 @@ struct CarouselState {
     float cpuMs = 0.0f;
     float gpuMs = 0.0f;
     bool gpuAvailable = false;
+    // Selecting a media tool never modifies rendering or persisted assignments.
+    void selectMedia(int kind,std::string filename,int shader=0) {
+        mediaToolKind=kind;
+        mediaToolFilename=std::move(filename);
+        mediaToolShaderMode=shader;
+        mediaPlacementEnabled=kind>=1 && kind<=3;
+    }
+    void clearGlobalMedia() {
+        backgroundSourceKind=0;liquidRoom=false;cycleWallShaders=false;
+        panoramaSelected=-1;videoSelected=-1;backgroundTargetSurface=-1;
+    }
+    bool applySelectedGlobally() {
+        if(mediaToolKind<1 || mediaToolKind>3)return false;
+        int picture=-1,video=-1;
+        if(mediaToolKind==1) {
+            const auto it=std::find(panoramaFiles.begin(),panoramaFiles.end(),mediaToolFilename);
+            if(it==panoramaFiles.end())return false;
+            picture=static_cast<int>(it-panoramaFiles.begin());
+        } else if(mediaToolKind==2) {
+            const auto it=std::find(videoFiles.begin(),videoFiles.end(),mediaToolFilename);
+            if(it==videoFiles.end())return false;
+            video=static_cast<int>(it-videoFiles.begin());
+        }
+        backgroundTargetSurface=-1;
+        liquidRoom=mediaToolKind==3;
+        cycleWallShaders=false;
+        backgroundSourceKind=mediaToolKind==3?0:mediaToolKind;
+        panoramaSelected=picture;videoSelected=video;
+        if(mediaToolKind==3)wallShaderMode=mediaToolShaderMode;
+        return true;
+    }
 };
 inline constexpr std::array<std::string_view, 4> pages = {
-    "OBJECTS","BACKGROUNDS","MUSIC","SCENES"
+    "CREER","SURFACES","AUDIO","SCENES"
 };
 // Caller owns ImGui frame lifecycle. Draws controls into ImDrawData; no XR
 // input/passthrough assumptions are hidden in this unit.

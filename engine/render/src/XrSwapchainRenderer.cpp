@@ -239,13 +239,7 @@ XrSwapchainRenderer::selectedSurfaceVideo() const {
     for(const auto& surface : environmentSurfaces_.surfaces()) {
         if(!surface.tracked || surface.halfExtents[0]<=0.05f ||
             surface.halfExtents[1]<=0.05f) continue;
-        const auto byId=imguiCarousel_.surfaceMedia.find(surface.id);
-        const voxen::ui::CarouselState::AppliedMedia* media=
-            byId==imguiCarousel_.surfaceMedia.end()?nullptr:&byId->second;
-        if(!surface.persistentUuid.empty()) {
-            const auto byUuid=imguiCarousel_.surfaceMediaByUuid.find(surface.persistentUuid);
-            if(byUuid!=imguiCarousel_.surfaceMediaByUuid.end())media=&byUuid->second;
-        }
+        const auto* media=imguiCarousel_.mediaEditor.find(surface.persistentUuid);
         if(!media || media->kind!=2 || media->filename.empty())continue;
         const auto path=std::filesystem::path("/sdcard/Android/data/org.voxen.xr/files/Videos") /
             std::filesystem::path(media->filename).filename();
@@ -531,8 +525,7 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
         imguiCarousel_.videoSelected=-1;
         imguiCarousel_.wallSourceKind=0;
         imguiCarousel_.wallVideoSelected=-1;
-        imguiCarousel_.surfaceMedia.clear();
-        imguiCarousel_.surfaceMediaByUuid.clear();
+        imguiCarousel_.mediaEditor.restore({});
         panoramaFadeActive_=false;
         ambientMusic_.configure(0,false,0.f);
         mp3Library_.update(-1,false,0.f);
@@ -830,8 +823,7 @@ bool XrSwapchainRenderer::leaveImmersiveScene() {
     imguiCarousel_.videoSelected=-1;
     imguiCarousel_.wallSourceKind=0;
     imguiCarousel_.wallVideoSelected=-1;
-    imguiCarousel_.surfaceMedia.clear();
-    imguiCarousel_.surfaceMediaByUuid.clear();
+    imguiCarousel_.mediaEditor.restore({});
     panoramaFadeActive_=false;
 #endif
     immersivePortalId_.reset();
@@ -888,13 +880,7 @@ bool XrSwapchainRenderer::saveCurrentScene() {
     runtime.particleMotionSpeed=imguiCarousel_.particleMotionSpeed;
     runtime.particleColorCycle=imguiCarousel_.particleColorCycle;
     // Save stable Meta UUIDs; transient numeric XrSpace IDs cannot survive reload.
-    auto persisted=imguiCarousel_.surfaceMediaByUuid;
-    for(const auto& surface:environmentSurfaces_.surfaces()) {
-        if(surface.persistentUuid.empty())continue;
-        const auto it=imguiCarousel_.surfaceMedia.find(surface.id);
-        if(it!=imguiCarousel_.surfaceMedia.end())persisted[surface.persistentUuid]=it->second;
-    }
-    for(const auto& [uuid,media]:persisted)
+    for(const auto& [uuid,media]:imguiCarousel_.mediaEditor.assignments())
         runtime.surfaceMedia.push_back({uuid,media.kind,media.filename,media.shaderMode});
 #endif
     // Invalid or newer editor settings should never make the entire scene unsavable.
@@ -1058,10 +1044,11 @@ bool XrSwapchainRenderer::loadSavedScene(const voxen::gallery::SceneId& id) {
     imguiCarousel_.particleMotionMode=snapshot->particleMotionMode;
     imguiCarousel_.particleMotionSpeed=snapshot->particleMotionSpeed;
     imguiCarousel_.particleColorCycle=snapshot->particleColorCycle;
-    imguiCarousel_.surfaceMedia.clear();
-    imguiCarousel_.surfaceMediaByUuid.clear();
+    voxen::ui::SurfaceMediaEditor::Assignments restoredMedia;
     for(const auto& media:snapshot->surfaceMedia)
-        imguiCarousel_.surfaceMediaByUuid[media.uuid]={media.kind,media.filename,media.shaderMode};
+        restoredMedia[media.uuid]={media.kind,media.filename,media.shaderMode};
+    imguiCarousel_.mediaEditor.restore(std::move(restoredMedia));
+    imguiCarousel_.mediaPlacementEnabled=false;
 #endif
     return true;
 }
@@ -2321,25 +2308,19 @@ void XrSwapchainRenderer::updateControllerInteraction(
         }
         imguiCarousel_.mediaPreviewSurface=nearest;
         if(galleryTriggerEdge && !panelAimed_ && nearest>=0) {
-            voxen::ui::CarouselState::AppliedMedia media{};
-            media.kind=imguiCarousel_.backgroundSourceKind;
-            media.shaderMode=imguiCarousel_.wallShaderMode;
-            if(media.kind==1 && imguiCarousel_.panoramaSelected>=0 &&
-               static_cast<std::size_t>(imguiCarousel_.panoramaSelected)<imguiCarousel_.panoramaFiles.size())
-                media.filename=imguiCarousel_.panoramaFiles[imguiCarousel_.panoramaSelected];
-            else if(media.kind==2 && imguiCarousel_.videoSelected>=0 &&
-                    static_cast<std::size_t>(imguiCarousel_.videoSelected)<imguiCarousel_.videoFiles.size())
-                media.filename=imguiCarousel_.videoFiles[imguiCarousel_.videoSelected];
-            else if(media.kind==3)media.filename="Shader";
-            if(media.kind==3 || !media.filename.empty()) {
-                imguiCarousel_.surfaceMedia[static_cast<std::uint64_t>(nearest)]=std::move(media);
-                for(const auto& surface:environmentSurfaces_.surfaces())
-                    if(surface.id==static_cast<std::uint64_t>(nearest) && !surface.persistentUuid.empty())
-                        imguiCarousel_.surfaceMediaByUuid[surface.persistentUuid]=
-                            imguiCarousel_.surfaceMedia[surface.id];
-                imguiCarousel_.backgroundTargetSurface=nearest;
-                imguiCarousel_.applyMediaRequest=true;
-                imguiCarousel_.applyMediaStatus="Assigned media to snapped surface";
+            for(const auto& surface:environmentSurfaces_.surfaces()) {
+                if(surface.id!=static_cast<std::uint64_t>(nearest))continue;
+                if(surface.persistentUuid.empty()) {
+                    imguiCarousel_.applyMediaStatus="Meta surface has no persistent UUID";
+                    break;
+                }
+                const bool changed=imguiCarousel_.mediaEditor.assign(surface.persistentUuid,
+                    voxen::ui::SurfaceMedia{imguiCarousel_.mediaToolKind,
+                        imguiCarousel_.mediaToolFilename,imguiCarousel_.mediaToolShaderMode});
+                imguiCarousel_.selectedSurfaceUuid=surface.persistentUuid;
+                imguiCarousel_.applyMediaStatus=changed?
+                    "Media assigned to one surface (X to undo)":"No change to selected surface";
+                break;
             }
         }
     } else imguiCarousel_.mediaPreviewSurface=-1;
@@ -2445,7 +2426,13 @@ void XrSwapchainRenderer::updateControllerInteraction(
 
 void XrSwapchainRenderer::undoLastPlacement() {
 #ifdef VOXEN_WITH_IMGUI
-    if(!editingMode() || immersiveSceneActive_ || placementHistory_.empty())return;
+    if(!editingMode() || immersiveSceneActive_)return;
+    if(imguiCarousel_.page==1) {
+        if(imguiCarousel_.mediaEditor.undo())
+            imguiCarousel_.applyMediaStatus="Surface modification undone";
+        return;
+    }
+    if(placementHistory_.empty())return;
     const auto start=placementHistory_.back();
     placementHistory_.pop_back();
     if(start>=voxens_.size())return;
@@ -2737,16 +2724,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             VK_SHADER_STAGE_VERTEX_BIT|VK_SHADER_STAGE_FRAGMENT_BIT,0,sizeof(depthConstants),&depthConstants);
         vkCmdDraw(commandBuffer_,meshDepthVertexCount_,1,0,0);
     }
-    // Scene queries can replace transient surface IDs at any time. Resolve
-    // persisted UUID media to the live surfaces before drawing either eye.
-    for(const auto& surface:environmentSurfaces_.surfaces()) {
-        if(surface.persistentUuid.empty())continue;
-        const auto stored=imguiCarousel_.surfaceMediaByUuid.find(surface.persistentUuid);
-        if(stored!=imguiCarousel_.surfaceMediaByUuid.end())
-            imguiCarousel_.surfaceMedia[surface.id]=stored->second;
-    }
     const bool hasExplicitWallShader=std::any_of(
-        imguiCarousel_.surfaceMedia.begin(),imguiCarousel_.surfaceMedia.end(),
+        imguiCarousel_.mediaEditor.assignments().begin(),
+        imguiCarousel_.mediaEditor.assignments().end(),
         [](const auto& entry){return entry.second.kind==3;});
     if ((liquidEnabled || hasExplicitWallShader) &&
         (hasExplicitWallShader || wallShaderMode!=0 || liquidOpacity>0.001f) &&
@@ -2825,8 +2805,8 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         // User-assigned shaders are not subject to the global wall budget.
         // This also keeps individually assigned floor/ceiling planes visible.
         for(const auto& surface:environmentSurfaces_.surfaces()) {
-            auto media=imguiCarousel_.surfaceMedia.find(surface.id);
-            if(media==imguiCarousel_.surfaceMedia.end() || media->second.kind!=3 ||
+            const auto* media=imguiCarousel_.mediaEditor.find(surface.persistentUuid);
+            if(!media || media->kind!=3 ||
                 !surface.tracked || surface.halfExtents[0]<=0.05f ||
                 surface.halfExtents[1]<=0.05f) continue;
             if(std::find(selected.begin(),selected.end(),&surface)==selected.end())
@@ -2864,11 +2844,11 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
                 }
             }
             // Explicit per-surface shader overrides the global/cycling mode.
-            const auto assignment=imguiCarousel_.surfaceMedia.find(surface->id);
-            if(assignment!=imguiCarousel_.surfaceMedia.end()) {
-                if(assignment->second.kind==3)
-                    activeMode=assignment->second.shaderMode;
-                else if(assignment->second.kind==1 || assignment->second.kind==2)
+            const auto* assignment=imguiCarousel_.mediaEditor.find(surface->persistentUuid);
+            if(assignment) {
+                if(assignment->kind==3)
+                    activeMode=assignment->shaderMode;
+                else if(assignment->kind==0 || assignment->kind==1 || assignment->kind==2)
                     continue; // Do not draw an incorrect shader over requested media.
             }
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,choosePipeline(activeMode));
@@ -2888,7 +2868,11 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             vkCmdDraw(commandBuffer_,6,1,0,0);
             wallRendered=true;
         }
-        if(liquidEnabled && !wallRendered && !hasExplicitWallShader) {
+        const bool hasTrackedPlane=std::any_of(environmentSurfaces_.surfaces().begin(),
+            environmentSurfaces_.surfaces().end(),[](const auto& surface){
+                return surface.tracked && surface.halfExtents[0]>.05f &&
+                    surface.halfExtents[1]>.05f;});
+        if(liquidEnabled && !wallRendered && !hasExplicitWallShader && !hasTrackedPlane) {
             const int fallbackMode=cycleWallShaders?slideshowMode:wallShaderMode;
             vkCmdBindPipeline(commandBuffer_,VK_PIPELINE_BIND_POINT_GRAPHICS,choosePipeline(fallbackMode));
             const Mat4 planeMvp=multiply(projView,
@@ -2908,10 +2892,10 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         for(const auto& surface:environmentSurfaces_.surfaces()) {
             if(!surface.tracked || surface.halfExtents[0]<=.05f || surface.halfExtents[1]<=.05f)
                 continue;
-            const auto assignment=imguiCarousel_.surfaceMedia.find(surface.id);
-            if(assignment==imguiCarousel_.surfaceMedia.end() || assignment->second.kind!=1)
+            const auto* assignment=imguiCarousel_.mediaEditor.find(surface.persistentUuid);
+            if(!assignment || assignment->kind!=1)
                 continue;
-            const auto picture=galleryPictureCache_.find(assignment->second.filename);
+            const auto picture=galleryPictureCache_.find(assignment->filename);
             if(picture==galleryPictureCache_.end() || !picture->second.texture.descriptor)
                 continue;
             const auto descriptor=picture->second.texture.descriptor;
@@ -4032,7 +4016,8 @@ void XrSwapchainRenderer::render(
                     [&](const voxen::gallery::VisiblePortal& p) {
                         return p.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
                                p.surface.pictureFilename==entry.first;
-                    }) || std::any_of(imguiCarousel_.surfaceMedia.begin(),imguiCarousel_.surfaceMedia.end(),
+                    }) || std::any_of(imguiCarousel_.mediaEditor.assignments().begin(),
+                        imguiCarousel_.mediaEditor.assignments().end(),
                     [&](const auto& item){return item.second.kind==1 && item.second.filename==entry.first;});
                 if(!used){stale=true;break;}
             }
@@ -4043,7 +4028,8 @@ void XrSwapchainRenderer::render(
                         [&](const voxen::gallery::VisiblePortal& p) {
                             return p.surface.kind==voxen::gallery::PortalSurfaceKind::Picture &&
                                    p.surface.pictureFilename==it->first;
-                        }) || std::any_of(imguiCarousel_.surfaceMedia.begin(),imguiCarousel_.surfaceMedia.end(),
+                        }) || std::any_of(imguiCarousel_.mediaEditor.assignments().begin(),
+                            imguiCarousel_.mediaEditor.assignments().end(),
                         [&](const auto& item){return item.second.kind==1 && item.second.filename==it->first;});
                     if(used){++it;continue;}
                     auto& tex=it->second.texture;
@@ -4075,7 +4061,7 @@ void XrSwapchainRenderer::render(
                 break;
             }
             if(!galleryPictureDecodeFuture_.valid()) {
-                for(const auto& [id,media]:imguiCarousel_.surfaceMedia) {
+                for(const auto& [uuid,media]:imguiCarousel_.mediaEditor.assignments()) {
                     if(media.kind!=1 || media.filename.empty() ||
                        galleryPictureCache_.count(media.filename))continue;
                     if(std::find(panoramaNames_.begin(),panoramaNames_.end(),media.filename)==panoramaNames_.end())
@@ -4169,21 +4155,12 @@ void XrSwapchainRenderer::render(
         // Expose only tracked, physically sized Meta scene planes to the UI.
         if(imguiCarousel_.applyMediaRequest) {
             imguiCarousel_.applyMediaRequest=false;
-            if(imguiCarousel_.backgroundTargetSurface>=0)
-                for(const auto& surface:environmentSurfaces_.surfaces()) {
-                    if(surface.id!=static_cast<std::uint64_t>(imguiCarousel_.backgroundTargetSurface) ||
-                       surface.persistentUuid.empty())continue;
-                    const auto selected=imguiCarousel_.surfaceMedia.find(surface.id);
-                    if(selected==imguiCarousel_.surfaceMedia.end())
-                        imguiCarousel_.surfaceMediaByUuid.erase(surface.persistentUuid);
-                    else imguiCarousel_.surfaceMediaByUuid[surface.persistentUuid]=selected->second;
-                    break;
-                }
             imguiCarousel_.applyMediaStatus=
                 "Surface mapping updated (single MP4 OpenXR plane supported).";
         }
         imguiCarousel_.detectedSurfaceIds.clear();
         imguiCarousel_.detectedSurfaceLabels.clear();
+        imguiCarousel_.detectedSurfaceUuids.clear();
         for(const auto& surface : environmentSurfaces_.surfaces()) {
             if(!surface.tracked || surface.classification==voxen::scene::SurfaceClass::Unknown ||
                surface.halfExtents[0]<=0.05f || surface.halfExtents[1]<=0.05f) continue;
@@ -4191,11 +4168,17 @@ void XrSwapchainRenderer::render(
                 ? "Wall" : surface.classification==voxen::scene::SurfaceClass::Floor
                 ? "Floor" : "Ceiling";
             imguiCarousel_.detectedSurfaceIds.push_back(surface.id);
+            imguiCarousel_.detectedSurfaceUuids.push_back(surface.persistentUuid);
             imguiCarousel_.detectedSurfaceLabels.push_back(
                 std::string(category)+" #"+std::to_string(surface.id)+" ("+
                 std::to_string(int(surface.halfExtents[0]*2.f*100.f))+" x "+
                 std::to_string(int(surface.halfExtents[1]*2.f*100.f))+" cm)");
         }
+        if(!imguiCarousel_.selectedSurfaceUuid.empty() &&
+            std::find(imguiCarousel_.detectedSurfaceUuids.begin(),
+                      imguiCarousel_.detectedSurfaceUuids.end(),
+                      imguiCarousel_.selectedSurfaceUuid)==imguiCarousel_.detectedSurfaceUuids.end())
+            imguiCarousel_.selectedSurfaceUuid.clear();
         if(imguiCarousel_.backgroundTargetSurface>=0 &&
             std::find(imguiCarousel_.detectedSurfaceIds.begin(),
                       imguiCarousel_.detectedSurfaceIds.end(),
