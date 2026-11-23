@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.h>
 #include <array>
 #include <cstddef>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -144,46 +145,73 @@ public:
                 && !(chromaticPipeline && chromaticLayout && smokeCamera && draw.brushGuid=="voxen-native-chromatic-wave")
                 && !(electricityPipeline && electricityLayout && smokeCamera && draw.brushGuid=="voxen-native-electricity"))
                 vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+        // Each draw is exactly one stroke. Its animation settings are immutable
+        // and captured when the user begins painting, never read from the UI.
+        auto pushStroke=[&](VkPipelineLayout selectedLayout,const MeshDraw& draw) {
+            SmokeCameraPush perStroke=*smokeCamera;
+            perStroke.settings[1]=static_cast<float>(draw.motionMode==4?0:draw.motionMode);
+            perStroke.settings[2]=draw.motionSpeed;
+            perStroke.settings[3]=draw.colorCycle;
+            if(draw.motionMode==4) {
+                const float angle=perStroke.settings[0]*draw.motionSpeed*.65f;
+                const float c=std::cos(angle),sn=std::sin(angle);
+                const auto& center=draw.motionCenter;
+                const std::array<float,16> transform{
+                    c,0.f,-sn,0.f, 0.f,1.f,0.f,0.f,
+                    sn,0.f,c,0.f,
+                    center[0]-c*center[0]-sn*center[2],0.f,
+                    center[2]+sn*center[0]-c*center[2],1.f};
+                std::array<float,16> result{};
+                for(int col=0;col<4;++col)
+                    for(int row=0;row<4;++row)
+                        for(int k=0;k<4;++k)
+                            result[col*4+row]+=smokeCamera->viewProjection[k*4+row]*
+                                transform[col*4+k];
+                perStroke.viewProjection=result;
+            }
+            vkCmdPushConstants(command,selectedLayout,VK_SHADER_STAGE_VERTEX_BIT,
+                0,sizeof(perStroke),&perStroke);
+        };
         if(firePipeline && fireLayout && smokeCamera) {
             vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,firePipeline);
-            vkCmdPushConstants(command,fireLayout,VK_SHADER_STAGE_VERTEX_BIT,0,
-                sizeof(*smokeCamera),smokeCamera);
             for(const auto& draw:draws_)
-                if(draw.indexCount && draw.brushGuid=="voxen-native-fire")
+                if(draw.indexCount && draw.brushGuid=="voxen-native-fire") {
+                    pushStroke(fireLayout,draw);
                     vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+                }
         }
         if(snowPipeline && snowLayout && smokeCamera) {
             vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,snowPipeline);
-            vkCmdPushConstants(command,snowLayout,VK_SHADER_STAGE_VERTEX_BIT,0,
-                sizeof(*smokeCamera),smokeCamera);
             for(const auto& draw:draws_)
-                if(draw.indexCount && draw.brushGuid=="voxen-native-snow")
+                if(draw.indexCount && draw.brushGuid=="voxen-native-snow") {
+                    pushStroke(snowLayout,draw);
                     vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+                }
         }
         if(embersPipeline && embersLayout && smokeCamera) {
             vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,embersPipeline);
-            vkCmdPushConstants(command,embersLayout,VK_SHADER_STAGE_VERTEX_BIT,0,
-                sizeof(*smokeCamera),smokeCamera);
             for(const auto& draw:draws_)
-                if(draw.indexCount && draw.brushGuid=="voxen-native-embers")
+                if(draw.indexCount && draw.brushGuid=="voxen-native-embers") {
+                    pushStroke(embersLayout,draw);
                     vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+                }
         }
         if(bubblesPipeline && bubblesLayout && smokeCamera) {
             vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,bubblesPipeline);
-            vkCmdPushConstants(command,bubblesLayout,VK_SHADER_STAGE_VERTEX_BIT,0,
-                sizeof(*smokeCamera),smokeCamera);
             for(const auto& draw:draws_)
-                if(draw.indexCount && (draw.brushGuid=="voxen-native-bubbles" || draw.brushGuid=="voxen-native-stars"))
+                if(draw.indexCount && (draw.brushGuid=="voxen-native-bubbles" || draw.brushGuid=="voxen-native-stars")) {
+                    pushStroke(bubblesLayout,draw);
                     vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+                }
         }
         auto drawNative=[&](VkPipeline selected,VkPipelineLayout selectedLayout,const char* guid) {
             if(!selected || !selectedLayout || !smokeCamera)return;
             vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,selected);
-            vkCmdPushConstants(command,selectedLayout,VK_SHADER_STAGE_VERTEX_BIT,
-                0,sizeof(*smokeCamera),smokeCamera);
             for(const auto& draw:draws_)
-                if(draw.indexCount && draw.brushGuid==guid)
+                if(draw.indexCount && draw.brushGuid==guid) {
+                    pushStroke(selectedLayout,draw);
                     vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+                }
         };
         drawNative(lightningPipeline,lightningLayout,"voxen-native-lightning");
         drawNative(neonPipeline,neonLayout,"voxen-native-neon-trails");
@@ -194,11 +222,11 @@ public:
         vkCmdBindPipeline(command,VK_PIPELINE_BIND_POINT_GRAPHICS,smokePipeline);
         vkCmdBindDescriptorSets(command,VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 smokeLayout,0,1,&smokeTexture,0,nullptr);
-        vkCmdPushConstants(command,smokeLayout,VK_SHADER_STAGE_VERTEX_BIT,
-                           0,sizeof(*smokeCamera),smokeCamera);
         for(const auto& draw:draws_)
-            if(draw.indexCount && draw.brushGuid==smokeGuid)
+            if(draw.indexCount && draw.brushGuid==smokeGuid) {
+                pushStroke(smokeLayout,draw);
                 vkCmdDrawIndexed(command,draw.indexCount,1,draw.firstIndex,0,0);
+            }
     }
     void destroy(VkDevice device) {
         if(vertex_)vkDestroyBuffer(device,vertex_,nullptr);
