@@ -125,6 +125,7 @@ struct CarouselState {
     int flatVoxenVolume = 0; // 0 cube; 1 sphere // Plasma or Spheres Intersections
     bool voxenPaintEnabled = false;
     float voxenScale = 0.18f;
+    float placementDistance = 0.25f; // right-stick Y, preview and placement
     float voxenHue = 0.52f;
     float smokeRgb[3] = {0.12f,0.8f,1.f}; // Smoke RGB stored in preset-27 hue/density/speed
     int particleMotionMode=0; // 0 off, 1 oscillate, 2 rotate, 3 drift

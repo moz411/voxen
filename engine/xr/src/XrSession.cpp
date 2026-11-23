@@ -132,6 +132,12 @@ void XrSession::initializeActions() {
     std::strncpy(deleteInfo.localizedActionName,"Delete selected gallery sphere",XR_MAX_LOCALIZED_ACTION_NAME_SIZE-1);
     checkXr(xrCreateAction(actionSet_,&deleteInfo,&rightDeleteAction_),"xrCreateAction(gallery_delete)");
 
+    XrActionCreateInfo undoInfo{XR_TYPE_ACTION_CREATE_INFO};
+    undoInfo.actionType=XR_ACTION_TYPE_BOOLEAN_INPUT;
+    std::strncpy(undoInfo.actionName,"undo_placement",XR_MAX_ACTION_NAME_SIZE-1);
+    std::strncpy(undoInfo.localizedActionName,"Undo last placement",XR_MAX_LOCALIZED_ACTION_NAME_SIZE-1);
+    checkXr(xrCreateAction(actionSet_,&undoInfo,&leftUndoAction_),"xrCreateAction(undo_placement)");
+
     XrActionCreateInfo aimInfo{XR_TYPE_ACTION_CREATE_INFO};
     aimInfo.actionType = XR_ACTION_TYPE_POSE_INPUT;
     std::strncpy(aimInfo.actionName, "aim_pose", XR_MAX_ACTION_NAME_SIZE - 1);
@@ -152,6 +158,7 @@ void XrSession::initializeActions() {
     XrPath leftTrigger = XR_NULL_PATH;
     XrPath leftMenu = XR_NULL_PATH;
     XrPath leftY = XR_NULL_PATH;
+    XrPath leftX = XR_NULL_PATH;
     XrPath rightTrigger = XR_NULL_PATH;
     XrPath rightB = XR_NULL_PATH;
     XrPath leftAim = XR_NULL_PATH;
@@ -162,6 +169,7 @@ void XrSession::initializeActions() {
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/trigger/value", &leftTrigger), "xrStringToPath(left trigger)");
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/menu/click", &leftMenu), "xrStringToPath(left menu)");
     checkXr(xrStringToPath(instance_, "/user/hand/left/input/y/click", &leftY), "xrStringToPath(left Y)");
+    checkXr(xrStringToPath(instance_, "/user/hand/left/input/x/click", &leftX), "xrStringToPath(left X)");
     checkXr(xrStringToPath(instance_, "/user/hand/right/input/trigger/value", &rightTrigger), "xrStringToPath(right trigger)");
     checkXr(xrStringToPath(instance_, "/user/hand/right/input/b/click", &rightB), "xrStringToPath(right B)");
 
@@ -176,6 +184,7 @@ void XrSession::initializeActions() {
         {selectAction_, leftTrigger},
         {leftMenuAction_, leftMenu},
         {leftYAction_, leftY},
+        {leftUndoAction_, leftX},
         {selectAction_, rightTrigger},
         {rightDeleteAction_, rightB},
         {aimAction_, leftAim},
@@ -234,6 +243,13 @@ void XrSession::syncActions() {
     const bool deleteNow=deleteState.isActive==XR_TRUE && deleteState.currentState==XR_TRUE;
     if(deleteNow && !rightDeletePressed_)rightDeletePending_=true;
     rightDeletePressed_=deleteNow;
+    XrActionStateGetInfo undoGet{XR_TYPE_ACTION_STATE_GET_INFO};
+    undoGet.action=leftUndoAction_;
+    XrActionStateBoolean undoState{XR_TYPE_ACTION_STATE_BOOLEAN};
+    checkXr(xrGetActionStateBoolean(session_,&undoGet,&undoState),"xrGetActionStateBoolean(undo_placement)");
+    const bool undoNow=undoState.isActive==XR_TRUE && undoState.currentState==XR_TRUE;
+    if(undoNow && !leftUndoPressed_)leftUndoPending_=true;
+    leftUndoPressed_=undoNow;
     for (std::size_t hand = 0; hand < handPaths_.size(); ++hand) {
         XrActionStateGetInfo get{XR_TYPE_ACTION_STATE_GET_INFO};
         get.action = selectAction_;
@@ -485,6 +501,10 @@ void XrSession::frame(voxen::render::XrSwapchainRenderer& renderer) {
     }
     // Always update controller tracking: painting and DISPOSE also work with UI hidden.
     renderer.updateControllerInteraction(aimPoses, aimTracked, selectionPressed_, thumbstickValues_);
+    if(leftUndoPending_){
+        renderer.undoLastPlacement();
+        leftUndoPending_=false;
+    }
     if(rightDeletePending_){
         renderer.requestGalleryDelete();
         rightDeletePending_=false;
@@ -732,6 +752,7 @@ void XrSession::shutdown() noexcept {
         selectAction_ = XR_NULL_HANDLE;
         aimAction_ = XR_NULL_HANDLE;
         thumbstickAction_ = XR_NULL_HANDLE;
+        leftUndoAction_ = XR_NULL_HANDLE;
     }
     selectionPressed_ = {};
     if(stageSpace_!=XR_NULL_HANDLE){xrDestroySpace(stageSpace_);stageSpace_=XR_NULL_HANDLE;}

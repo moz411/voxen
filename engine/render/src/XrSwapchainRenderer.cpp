@@ -2185,25 +2185,23 @@ void XrSwapchainRenderer::updateControllerInteraction(
         }
     } else glbStickLatched_=false;
 #endif
-    // In editing mode the right controller holds a live preview.
-    // Thumbstick Y selects among 9 presets; X changes size, both debounced.
+    // In editing mode the right stick continuously adjusts size (X)
+    // and placement distance (Y); menu selection is handled by the carousel.
     if(editingMode() && !immersiveSceneActive_) {
         const float x=thumbsticks[1].x;
         const float y=thumbsticks[1].y;
-        if(std::fabs(y)<0.30f)editorPresetStickLatched_=false;
-        if(!editorPresetStickLatched_ && std::fabs(y)>0.72f) {
-            do {
-                imguiCarousel_.voxenPreset=(imguiCarousel_.voxenPreset+(y>0.f?1:19))%20;
-            } while(imguiCarousel_.voxenPreset==14 || imguiCarousel_.voxenPreset==18);
-            editorPresetStickLatched_=true;
-        }
-        if(std::fabs(x)<0.30f)editorScaleStickLatched_=false;
-        if(!editorScaleStickLatched_ && std::fabs(x)>0.72f) {
-            imguiCarousel_.voxenScale=std::clamp(
-                imguiCarousel_.voxenScale*(x>0.f?1.12f:1.f/1.12f),0.18f,
-                imguiCarousel_.particlePaintEnabled?6.f:0.60f);
-            editorScaleStickLatched_=true;
-        }
+        // Per-frame exponential scaling is smooth and reversible; deadzone
+        // avoids drift, while a logarithmic step spans the full 10x range.
+        const float sizeAxis=std::fabs(x)>0.18f ?
+            std::copysign((std::fabs(x)-0.18f)/0.82f,x) : 0.f;
+        if(sizeAxis!=0.f)imguiCarousel_.voxenScale=std::clamp(
+            imguiCarousel_.voxenScale*std::exp(sizeAxis*0.025f),0.18f,
+            imguiCarousel_.particlePaintEnabled?6.f:0.60f);
+        const float distanceAxis=std::fabs(y)>0.18f ?
+            std::copysign((std::fabs(y)-0.18f)/0.82f,y) : 0.f;
+        editorPlacementDistance_=std::clamp(editorPlacementDistance_+
+            distanceAxis*0.035f,0.15f,8.f);
+        imguiCarousel_.placementDistance=editorPlacementDistance_;
     } else {
         editorPresetStickLatched_=false;
         editorScaleStickLatched_=false;
@@ -2251,9 +2249,9 @@ void XrSwapchainRenderer::updateControllerInteraction(
             stars ? voxen::render::openbrush::StarsStrokePreset :
                     voxen::render::openbrush::SmokeStrokePreset;
         v.flatVolume=imguiCarousel_.flatVoxenVolume;
-        v.position={pose.position.x+0.25f*dir[0],
-                    pose.position.y+0.25f*dir[1],
-                    pose.position.z+0.25f*dir[2]};
+        v.position={pose.position.x+editorPlacementDistance_*dir[0],
+                    pose.position.y+editorPlacementDistance_*dir[1],
+                    pose.position.z+editorPlacementDistance_*dir[2]};
         v.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,smoke?6.f:0.60f);
         v.hue=smoke ? imguiCarousel_.smokeRgb[0] : imguiCarousel_.voxenHue;
         v.density=smoke ? imguiCarousel_.smokeRgb[1] : imguiCarousel_.voxenDensity;
@@ -2279,6 +2277,10 @@ void XrSwapchainRenderer::updateControllerInteraction(
             }
         }
         if(accept && voxens_.size()<4096) {
+            if(!smoke || !smokeTriggerActive_) {
+                lastPlacementStart_=voxens_.size();
+                lastPlacementAvailable_=true;
+            }
             voxens_.push_back(v);
             if(smoke)smokePaintDirty_=true;
 #ifdef __ANDROID__
@@ -2290,6 +2292,19 @@ void XrSwapchainRenderer::updateControllerInteraction(
     }
     smokeTriggerActive_=tracked[1] && pressed[1] && imguiCarousel_.particlePaintEnabled &&
         editingMode() && !immersiveSceneActive_ && !panelAimed_;
+#endif
+}
+
+void XrSwapchainRenderer::undoLastPlacement() {
+#ifdef VOXEN_WITH_IMGUI
+    if(!editingMode() || immersiveSceneActive_ || !lastPlacementAvailable_ ||
+       lastPlacementStart_>=voxens_.size())return;
+    voxens_.erase(voxens_.begin()+static_cast<std::ptrdiff_t>(lastPlacementStart_),voxens_.end());
+    lastPlacementAvailable_=false;
+    smokeTriggerActive_=false;
+    smokePaintDirty_=true;
+    lastVoxenValid_=false;
+    imguiCarousel_.voxenCount=static_cast<int>(voxens_.size());
 #endif
 }
 
@@ -3019,9 +3034,9 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
             PlasmaVoxen preview;
             preview.preset=imguiCarousel_.voxenPreset;
             preview.flatVolume=imguiCarousel_.flatVoxenVolume;
-            preview.position={pose.position.x+0.25f*dx,
-                              pose.position.y+0.25f*dy,
-                              pose.position.z+0.25f*dz};
+            preview.position={pose.position.x+editorPlacementDistance_*dx,
+                              pose.position.y+editorPlacementDistance_*dy,
+                              pose.position.z+editorPlacementDistance_*dz};
             preview.scale=std::clamp(imguiCarousel_.voxenScale,0.18f,0.60f);
             preview.hue=imguiCarousel_.voxenHue;
             preview.density=imguiCarousel_.voxenDensity;
@@ -4177,6 +4192,7 @@ void XrSwapchainRenderer::render(
         if(imguiCarousel_.voxenClear){
             editingSavedSceneId_.reset();
             voxens_.clear();
+            lastPlacementAvailable_=false;
             smokePaintDirty_=true;
             lastVoxenValid_=false;
             imguiCarousel_.voxenClear=false;

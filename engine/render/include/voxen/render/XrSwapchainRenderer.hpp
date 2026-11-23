@@ -174,6 +174,9 @@ public:
                                      const std::array<bool, 2>& pressed,
                                      const std::array<XrVector2f, 2>& thumbsticks);
 
+    // X button: remove the most recent placement or complete brush stroke.
+    void undoLastPlacement();
+
     // Acquires, clears and releases both eye images, then fills projection views.
     void render(
         const std::array<XrView, 2>& views,
@@ -497,6 +500,9 @@ private:
     bool lastVoxenValid_=false;
     bool editorPresetStickLatched_=false;
     bool editorScaleStickLatched_=false;
+    float editorPlacementDistance_=0.25f;
+    std::size_t lastPlacementStart_=0;
+    bool lastPlacementAvailable_=false;
     std::array<XrPosef, 2> controllerPoses_{};
     std::array<bool, 2> controllerTracked_{};
     bool firstFrameLogged_ = false;

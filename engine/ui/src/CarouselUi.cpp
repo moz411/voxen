@@ -119,12 +119,15 @@ void drawCarousel(CarouselState& state) {
                 static constexpr const char* materials[]={"IRIDESCENT","EMBER","ABYSS","MATRIX","BUBBLE 3D","ANIME CEL","MANGA INK","FLOWING MARBLE","CELLULAR GLOW","FIRE","MAGMA LAVA","ASCII MORPH"};
                 ImGui::Combo("Surface material",&state.voxenMaterial,materials,12);
             }
-            ImGui::TextDisabled("RIGHT STICK: UP/DOWN shape | LEFT/RIGHT size");
+            ImGui::TextDisabled("RIGHT STICK: LEFT/RIGHT size (hold) | UP/DOWN distance");
+            ImGui::TextDisabled("X: undo last placement / complete brush stroke");
+            ImGui::Text("Placement distance: %.2f m",state.placementDistance);
             ImGui::TextDisabled(state.particlePaintEnabled ? "RIGHT TRIGGER: draw particles" : "RIGHT TRIGGER: place one Voxen");
             ImGui::Checkbox("Paint Voxens",&state.voxenPaintEnabled);
             if(!state.voxenPaintEnabled)ImGui::TextDisabled("No Voxen selected for painting");
             ImGui::SliderFloat("Size (m)",&state.voxenScale,0.18f,
                 state.particlePaintEnabled?6.f:0.60f,"%.2f",ImGuiSliderFlags_Logarithmic);
+            ImGui::SeparatorText("MOTION / ANIMATION");
             if(state.particlePaintEnabled) {
                 static constexpr const char* animations[]={"NONE","OSCILLATE","ROTATE","DRIFT"};
                 ImGui::Combo("Brush motion",&state.particleMotionMode,animations,4);
@@ -150,6 +153,7 @@ void drawCarousel(CarouselState& state) {
             } else ImGui::SliderFloat("Hue",&state.voxenHue,0.f,1.f);
             ImGui::SliderFloat(state.voxenPreset>=4 ? "Deformation" : "Density",&state.voxenDensity,0.3f,2.f);
             ImGui::SliderFloat("Speed",&state.voxenSpeed,0.1f,3.f);
+            if(!state.particlePaintEnabled) {
             ImGui::Separator();
             ImGui::TextUnformatted("FREE FLOAT / PHYSICS");
             ImGui::Checkbox("Animate next placed Voxen",&state.motionEnabled);
@@ -178,6 +182,7 @@ void drawCarousel(CarouselState& state) {
             if(ImGui::Button("CLEAR VOXENS"))state.voxenClear=true;
             ImGui::TextDisabled("Right trigger paints in space");
             ImGui::TextDisabled("Audio / deformation / trajectories: next steps");
+            }
             }
             if(!state.voxenPaintEnabled) {
             ImGui::SeparatorText("GLB SETTINGS");

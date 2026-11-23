@@ -89,10 +89,13 @@ private:
     XrAction leftMenuAction_ = XR_NULL_HANDLE;
     XrAction leftYAction_ = XR_NULL_HANDLE;
     XrAction rightDeleteAction_ = XR_NULL_HANDLE;
+    XrAction leftUndoAction_ = XR_NULL_HANDLE;
     bool menuPressed_ = false;
     bool yPressed_ = false;
     bool rightDeletePressed_ = false;
     bool rightDeletePending_ = false;
+    bool leftUndoPressed_ = false;
+    bool leftUndoPending_ = false;
     bool menuTogglePending_ = false;
     std::array<XrSpace, 2> aimSpaces_{XR_NULL_HANDLE, XR_NULL_HANDLE};
     std::array<XrPath, 2> handPaths_{};
