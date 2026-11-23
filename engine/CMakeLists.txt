@@ -159,7 +159,8 @@ if(VOXEN_WITH_IMGUI)
     target_include_directories(voxen_imgui PUBLIC
         ${voxen_dear_imgui_SOURCE_DIR}
         ${voxen_dear_imgui_SOURCE_DIR}/backends
-        ${CMAKE_CURRENT_SOURCE_DIR}/ui/include)
+        ${CMAKE_CURRENT_SOURCE_DIR}/ui/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/scene/include)
     if(ANDROID)
         target_link_libraries(voxen_imgui PUBLIC vulkan)
     elseif(WIN32)
