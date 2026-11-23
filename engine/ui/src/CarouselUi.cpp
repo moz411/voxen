@@ -288,14 +288,14 @@ void drawCarousel(CarouselState& state) {
             ImGui::Text("Selection : %s",state.mediaToolKind==0?"aucune":
                 state.mediaToolFilename.c_str());
             ImGui::SeparatorText("PLACEMENT SPATIAL");
-            ImGui::TextDisabled("Maintenir la gachette sur un media et deplacer l'icone vers une surface.");
-            ImGui::TextDisabled("Le plan surligne est la cible du depot.");
-            ImGui::TextDisabled("Tirer vers soi : decrocher | relacher : confirmer.");
+            ImGui::TextDisabled("Choisir un media : miniature devant le controleur droit.");
+            ImGui::TextDisabled("Stick droit X : taille | Y : profondeur (bloquee au contact).");
+            ImGui::TextDisabled("Gachette : fixer librement ou sur le plan | B vise : supprimer.");
             ImGui::Text("Distance %.2fm / taille %.2fx",state.placementDistance,state.mediaPreviewScale);
             if(state.mediaDrag.active && state.mediaDrag.snapped)
-                ImGui::TextColored(ImVec4(.25f,.85f,.8f,1.f),"SURFACE ACCROCHEE - relacher pour fixer");
-            else if(state.mediaDrag.active)ImGui::TextDisabled("Glissement libre : pousser jusqu'au plan");
-            else ImGui::TextDisabled("Maintenir la gachette pour saisir l'icone");
+                ImGui::TextColored(ImVec4(.25f,.85f,.8f,1.f),"SURFACE ACCROCHEE - gachette pour fixer");
+            else if(state.mediaDrag.active)ImGui::TextDisabled("Placement libre : gachette pour fixer dans l'espace");
+            else ImGui::TextDisabled("Selectionner un media pour afficher sa miniature");
             if(!state.applyMediaStatus.empty())ImGui::TextWrapped("%s",state.applyMediaStatus.c_str());
             ImGui::BeginDisabled(!state.mediaEditor.canUndo());
             if(ImGui::Button("ANNULER"))state.mediaEditor.undo();
