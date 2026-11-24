@@ -18,8 +18,8 @@ public final class VoxenActivity extends NativeActivity {
     @Override protected void onResume() {
         super.onResume();
         if (!getIntent().getBooleanExtra("voxenVision", false)) return;
-        if (checkSelfPermission(HEADSET_CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{HEADSET_CAMERA}, 4202);
+        if (checkSelfPermission(HEADSET_CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED || checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{HEADSET_CAMERA, android.Manifest.permission.CAMERA}, 4202);
         } else startVision();
     }
     private void startVision() {
@@ -28,7 +28,7 @@ public final class VoxenActivity extends NativeActivity {
     }
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] grants) {
         super.onRequestPermissionsResult(code, permissions, grants);
-        if (code == 4202 && grants.length > 0 && grants[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) startVision();
+        if (code == 4202 && (checkSelfPermission(HEADSET_CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED || checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED)) startVision();
     }
     @Override protected void onPause() {
         if (vision != null) vision.stop();
