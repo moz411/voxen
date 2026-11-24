@@ -2620,12 +2620,39 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
         groups.back().points.push_back(
             {v.position,v.scale,0.f,1.f,{v.hue,v.density,v.speed}});
     }
+    // Exact input keys, including runtime draw metadata, prevent stale geometry
+    // after undo, scene restore, deletion or brush property changes.
+    struct CachedStroke {
+        std::vector<float> key;
+        CompiledScene scene;
+    };
+    static thread_local std::vector<CachedStroke> cache;
+    std::vector<CachedStroke> nextCache;
+    nextCache.reserve(groups.size());
     CompiledScene combined;
     combined.formatVersion=2;
     bool hasSmoke=false;
     for(auto& group:groups) {
         const auto n=group.points.size();
         const auto& settings=group.settings;
+        hasSmoke=hasSmoke || group.kind==0;
+        std::vector<float> key;
+        key.reserve(9+n*9);
+        key.insert(key.end(),{float(group.kind),float(settings.brushColorMode),
+            float(settings.brushMotion),settings.brushMotionSpeed,settings.brushColorCycle});
+        key.insert(key.end(),settings.brushEndRgb.begin(),settings.brushEndRgb.end());
+        for(const auto& p:group.points) {
+            key.insert(key.end(),p.center.begin(),p.center.end());
+            key.insert(key.end(),{p.size,p.rotation,p.opacity});
+            key.insert(key.end(),p.rgb.begin(),p.rgb.end());
+        }
+        const auto index=nextCache.size();
+        if(index<cache.size() && cache[index].key==key) {
+            nextCache.push_back(std::move(cache[index]));
+            const auto& meshes=nextCache.back().scene.meshes;
+            combined.meshes.insert(combined.meshes.end(),meshes.begin(),meshes.end());
+            continue;
+        }
         if(settings.brushColorMode==4 && n>1) {
             // Color is interpolated along the stroke, not with wall-clock time.
             const auto startRgb=group.points.front().rgb;
@@ -2661,9 +2688,11 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
             mesh.motionSpeed=settings.brushMotionSpeed;
             mesh.colorCycle=settings.brushColorCycle;
             mesh.motionCenter=center;
-            combined.meshes.push_back(std::move(mesh));
         }
+        combined.meshes.insert(combined.meshes.end(),scene.meshes.begin(),scene.meshes.end());
+        nextCache.push_back({std::move(key),std::move(scene)});
     }
+    cache=std::move(nextCache);
     const auto packed=packMeshes(combined);
     // renderImage() waits on fence_ after every vkQueueSubmit, for each eye.
     // Thus no submission referencing nativeParticleGpu_ is outstanding here:
