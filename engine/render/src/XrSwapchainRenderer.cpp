@@ -2583,8 +2583,19 @@ void XrSwapchainRenderer::undoLastPlacement() {
 #endif
 }
 
+namespace {
+using PerfClock = std::chrono::steady_clock;
+float perfMs(PerfClock::time_point start) {
+    return std::chrono::duration<float,std::milli>(PerfClock::now()-start).count();
+}
+struct FramePerf {
+    float brushBuild=0, brushUpload=0, fence=0, record=0, xrSwap=0, save=0;
+};
+thread_local FramePerf framePerf;
+}
 void XrSwapchainRenderer::rebuildSmokePaintGpu() {
     if(device_==VK_NULL_HANDLE || !smokePaintDirty_)return;
+    const auto brushStart=PerfClock::now();
     using namespace voxen::render::openbrush;
     // Build each trigger-held stroke separately: geometry, gradient and motion
     // are immutable once placed. Legacy v8 points (strokeId=0) are grouped by
@@ -2657,8 +2668,11 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
     // Thus no submission referencing nativeParticleGpu_ is outstanding here:
     // replacing its allocation needs no device-wide stall. Keep this invariant
     // if renderImage is ever changed to allow multiple in-flight frames.
+    framePerf.brushBuild+=perfMs(brushStart);
+    const auto uploadStart=PerfClock::now();
     nativeParticleGpu_.destroy(device_);
     nativeParticleGpu_.upload(device_,physicalDevice_,packed);
+    framePerf.brushUpload+=perfMs(uploadStart);
 #ifdef VOXEN_WITH_GLB_IMPORT
     if(hasSmoke) {
 #ifdef __ANDROID__
@@ -2675,6 +2689,7 @@ void XrSwapchainRenderer::rebuildSmokePaintGpu() {
 
 void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, const XrView& xrView) {
     rebuildSmokePaintGpu();
+    const auto recordStart=PerfClock::now();
     checkVk(vkResetFences(device_, 1, &fence_), "vkResetFences");
     checkVk(vkResetCommandBuffer(commandBuffer_, 0), "vkResetCommandBuffer");
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -3645,8 +3660,11 @@ void XrSwapchainRenderer::renderImage(EyeSwapchain& eye, uint32_t imageIndex, co
         vkCmdWriteTimestamp(commandBuffer_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpuTimestampPool_, 1);
     checkVk(vkEndCommandBuffer(commandBuffer_), "vkEndCommandBuffer");
     VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO}; submit.commandBufferCount=1; submit.pCommandBuffers=&commandBuffer_;
+    framePerf.record+=perfMs(recordStart);
+    const auto fenceStart=PerfClock::now();
     checkVk(vkQueueSubmit(queue_,1,&submit,fence_), "vkQueueSubmit");
     checkVk(vkWaitForFences(device_,1,&fence_,VK_TRUE,UINT64_MAX), "vkWaitForFences");
+    framePerf.fence+=perfMs(fenceStart);
     if (gpuTimestampPool_ != VK_NULL_HANDLE) {
         uint64_t ts[2]{};
         if (vkGetQueryPoolResults(device_,gpuTimestampPool_,0,2,sizeof(ts),ts,sizeof(uint64_t),
@@ -4107,6 +4125,8 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
 void XrSwapchainRenderer::render(
     const std::array<XrView, 2>& views,
     std::array<XrCompositionLayerProjectionView, 2>& projectionViews) {
+    framePerf={};
+    const auto frameStart=PerfClock::now();
 #ifdef VOXEN_WITH_IMGUI
     if (ImGui::GetCurrentContext() != nullptr) {
         const auto now=std::chrono::steady_clock::now();
@@ -4804,6 +4824,8 @@ void XrSwapchainRenderer::render(
         std::printf("[Voxen] Rendering first stereo projection frame\n");
 #endif
     }
+    const float uiMs=perfMs(frameStart);
+    const auto physicsStart=PerfClock::now();
     // Advance physics once per stereo frame, never separately for each eye.
 #ifdef VOXEN_WITH_IMGUI
     const auto physicsNow=std::chrono::steady_clock::now();
@@ -4825,6 +4847,8 @@ void XrSwapchainRenderer::render(
         }
     }else physicsAccumulator_=0.f;
 #endif
+    const float physicsMs=perfMs(physicsStart);
+    const auto sceneStart=PerfClock::now();
     // Select one LOD per object before rendering either eye. Hysteresis
     // prevents thrashing at thresholds and guarantees identical stereo meshes.
     const XrVector3f center{
@@ -4872,7 +4896,9 @@ void XrSwapchainRenderer::render(
             else if(apparent<0.0935f)v.lodLevel=2;
         }else if(v.lodLevel==2 && apparent>0.1265f)v.lodLevel=1;
     }
+    const float sceneMs=perfMs(sceneStart);
     for (uint32_t eye = 0; eye < eyes_.size(); ++eye) {
+        const auto swapStart=PerfClock::now();
         auto& swapchain = eyes_[eye];
 
         XrSwapchainImageAcquireInfo acquireInfo{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
@@ -4883,10 +4909,13 @@ void XrSwapchainRenderer::render(
         waitInfo.timeout = XR_INFINITE_DURATION;
         checkXr(xrWaitSwapchainImage(swapchain.handle, &waitInfo), "xrWaitSwapchainImage");
 
+        framePerf.xrSwap+=perfMs(swapStart);
         renderImage(swapchain, imageIndex, views[eye]);
+        const auto releaseStart=PerfClock::now();
 
         XrSwapchainImageReleaseInfo releaseInfo{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
         checkXr(xrReleaseSwapchainImage(swapchain.handle, &releaseInfo), "xrReleaseSwapchainImage");
+        framePerf.xrSwap+=perfMs(releaseStart);
 
         auto& projection = projectionViews[eye];
         projection = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
@@ -4898,6 +4927,18 @@ void XrSwapchainRenderer::render(
         projection.subImage.imageArrayIndex = 0;
     }
 
+    const float totalMs=perfMs(frameStart);
+    static auto lastSlowLog=PerfClock::time_point{};
+    if(totalMs>20.f && PerfClock::now()-lastSlowLog>=std::chrono::milliseconds(250)) {
+        lastSlowLog=PerfClock::now();
+        const char* fmt="SLOW frame_total_ms=%.2f ui_ms=%.2f physics_ms=%.2f scene_ms=%.2f brush_build_ms=%.2f brush_upload_ms=%.2f record_ms=%.2f fence_wait_ms=%.2f xr_swap_ms=%.2f objects=%zu";
+#ifdef __ANDROID__
+        __android_log_print(ANDROID_LOG_INFO,"VoxenPerf",fmt,totalMs,uiMs,physicsMs,sceneMs,framePerf.brushBuild,framePerf.brushUpload,framePerf.record,framePerf.fence,framePerf.xrSwap,voxens_.size());
+#else
+        std::printf(fmt,totalMs,uiMs,physicsMs,sceneMs,framePerf.brushBuild,framePerf.brushUpload,framePerf.record,framePerf.fence,framePerf.xrSwap,voxens_.size());
+        std::printf("\n");
+#endif
+    }
     // Throttled diagnostic while the native Vulkan HUD is under construction.
     // GPU timestamp is measured per eye; this value is the last eye rendered.
     static auto lastStatsLog = std::chrono::steady_clock::now();
