@@ -13,6 +13,27 @@ import java.util.UUID;
 
 /** Android document picker bridge. Call openPanoramaPicker() on the UI thread. */
 public final class VoxenActivity extends NativeActivity {
+    private VisionCamera vision;
+    private static final String HEADSET_CAMERA = "horizonos.permission.HEADSET_CAMERA";
+    @Override protected void onResume() {
+        super.onResume();
+        if (!getIntent().getBooleanExtra("voxenVision", false)) return;
+        if (checkSelfPermission(HEADSET_CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{HEADSET_CAMERA}, 4202);
+        } else startVision();
+    }
+    private void startVision() {
+        if (vision == null) vision = new VisionCamera(this);
+        vision.start();
+    }
+    @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] grants) {
+        super.onRequestPermissionsResult(code, permissions, grants);
+        if (code == 4202 && grants.length > 0 && grants[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) startVision();
+    }
+    @Override protected void onPause() {
+        if (vision != null) vision.stop();
+        super.onPause();
+    }
     private android.media.MediaPlayer nativeVideoPlayer;
     public synchronized boolean startNativeVideo(String path, android.view.Surface surface) {
         stopNativeVideo();
