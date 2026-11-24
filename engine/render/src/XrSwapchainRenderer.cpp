@@ -1,3 +1,6 @@
+#if defined(__ANDROID__) && defined(VOXEN_WITH_VISION)
+#include "voxen/vision/ImageRecognizer.hpp"
+#endif
 #include <voxen/render/XrSwapchainRenderer.hpp>
 #include <voxen/render/OpenBrushStarsStroke.hpp>
 #include <voxen/render/OpenBrushFireStroke.hpp>
@@ -645,6 +648,22 @@ void XrSwapchainRenderer::setEditingMode(bool enabled) noexcept {
 
 void XrSwapchainRenderer::updateGalleryWalkIn(const XrVector3f& headPosition) {
     galleryHeadPosition_=headPosition;
+#if defined(__ANDROID__) && defined(VOXEN_WITH_VISION)
+    const bool visionGallery=!editingMode() && !immersiveSceneActive_ && !galleryDragging_ && pendingGalleryFloorAction_==0;
+    voxen::vision::galleryRecognitionEnabled.store(visionGallery);
+    if(voxen::vision::sceneTwoRequested.exchange(false) && visionGallery && sceneRepository_) {
+        bool loaded=false;
+        for(const auto& id:sceneIds_) {
+            const auto meta=sceneRepository_->loadSceneMetadata(id);
+            if(meta && meta->displayName=="Scene 2") {
+                loaded=enterImmersiveScene(id);
+                break;
+            }
+        }
+        __android_log_print(loaded?ANDROID_LOG_INFO:ANDROID_LOG_WARN,"VoxenVision","Scene 2 %s",loaded?"loaded":"not found or load failed");
+        if(loaded) { voxen::vision::galleryRecognitionEnabled.store(false); return; }
+    }
+#endif
 #ifdef VOXEN_WITH_GLB_IMPORT
     if(immersiveGlbDecoding_ &&
        immersiveGlbDecodeFuture_.wait_for(std::chrono::seconds(0))==std::future_status::ready) {
