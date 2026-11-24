@@ -22,6 +22,7 @@ final class VisionCamera {
     private CameraCaptureSession session;
     private ImageReader reader;
     private long last;
+    private int frames;
     private volatile boolean running;
     VisionCamera(Activity activity) { this.activity=activity; }
     void start() {
@@ -43,7 +44,7 @@ final class VisionCamera {
                     Size[] sizes=map.getOutputSizes(ImageFormat.YUV_420_888);
                     if(sizes==null || sizes.length==0) continue;
                     Size size=sizes[0];
-                    for(Size s:sizes) if(Math.abs(s.getWidth()-640)<Math.abs(size.getWidth()-640)) size=s;
+                    for(Size s:sizes) if(Math.abs(s.getWidth()-1280)<Math.abs(size.getWidth()-1280)) size=s;
                     reader=ImageReader.newInstance(size.getWidth(),size.getHeight(),ImageFormat.YUV_420_888,2);
                     reader.setOnImageAvailableListener(this::frame,handler);
                     Log.i("VoxenVision","Opening camera "+id+" "+size);
@@ -51,15 +52,18 @@ final class VisionCamera {
                         public void onOpened(CameraDevice d) {
                             if(!running){d.close();return;}
                             camera=d;
+                            Log.i("VoxenVision","Camera opened "+d.getId());
                             try {
                                 d.createCaptureSession(Collections.singletonList(reader.getSurface()),new CameraCaptureSession.StateCallback(){
                                     public void onConfigured(CameraCaptureSession s){
                                         if(!running){s.close();return;}
                                         session=s;
+                                        Log.i("VoxenVision","Capture session configured");
                                         try {
                                             CaptureRequest.Builder b=d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
                                             b.addTarget(reader.getSurface());
                                             s.setRepeatingRequest(b.build(),null,handler);
+                                            Log.i("VoxenVision","Repeating capture started");
                                         } catch(Exception e){Log.e("VoxenVision","Capture",e);}
                                     }
                                     public void onConfigureFailed(CameraCaptureSession s){Log.e("VoxenVision","Configure failed");}
@@ -94,6 +98,7 @@ final class VisionCamera {
                 if(pixel==1){b.position(base+y*stride);b.get(gray,y*w,w);}
                 else for(int x=0;x<w;x++)gray[y*w+x]=b.get(base+y*stride+x*pixel);
             }
+            if (++frames % 10 == 1) Log.i("VoxenVision","Frame "+frames+" "+w+"x"+h);
             nativeFrame(gray,w,h);
         } catch(Exception e){Log.e("VoxenVision","Frame",e);}
     }
