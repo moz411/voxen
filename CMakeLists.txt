@@ -97,6 +97,10 @@ if(ANDROID)
         ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
     )
 
+    if(VOXEN_WITH_VISION)
+        target_sources(voxen PRIVATE engine/vision/src/AndroidVision.cpp)
+    endif()
+
     target_include_directories(voxen PRIVATE
         platform/android/include
         ${ANDROID_NDK}/sources/android/native_app_glue
