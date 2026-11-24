@@ -12,6 +12,7 @@
 #include <voxen/render/OpenBrushChromaticWaveStroke.hpp>
 #include <voxen/render/OpenBrushElectricityStroke.hpp>
 #include <limits>
+#include <map>
 #include <fstream>
 #include <voxen/render/MandelbulbMesh.hpp>
 #include <voxen/render/OpenBrushDotsDraw.hpp>
@@ -3844,6 +3845,10 @@ void XrSwapchainRenderer::advanceHandProjectiles(float dt) {
 void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float bounce,
     int mode, float swarmRadius, float swarmStrength, float swarmSeparation, bool collideRoomMesh) {
     constexpr float kMaxSpeed=4.f;
+    std::vector<size_t> active;
+    for(size_t i=0;i<voxens_.size();++i)
+        if(voxens_[i].preset<20 && voxens_[i].motionEnabled)active.push_back(i);
+    if(active.empty())return;
 #ifdef VOXEN_WITH_IMGUI
     if(mode==2) {
         // Orbital motion follows the current headset position, no room collisions.
@@ -3854,7 +3859,7 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
             const float phase=orbitPhase_+6.2831853f*float(i)/float(std::max(size_t(1),voxens_.size()));
             const float co=std::cos(phase),si=std::sin(phase);
             auto& v=voxens_[i];
-            if(!v.motionEnabled)continue;
+            if(v.preset>=20 || !v.motionEnabled)continue;
             if(imguiCarousel_.orbitRandomAxis) {
                 // Deterministic per-object tilted plane (constant over time).
                 const float tilt=0.35f+0.95f*std::sin(float(i+1)*2.399963f);
@@ -3874,14 +3879,26 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
         return;
     }
 #endif
-    if(mode==1 && voxens_.size()>1){
+    if(mode==1 && active.size()>1){
         // Snapshot neighbor state: steering is independent of iteration order.
         std::vector<std::array<float,3>> acceleration(voxens_.size());
         const float radius2=swarmRadius*swarmRadius;
-        for(size_t i=0;i<voxens_.size();++i){
+        const float cellSize=std::max(swarmRadius,0.001f);
+        auto cell=[&](size_t i){
+            std::array<int,3> key{};
+            for(int k=0;k<3;++k)key[k]=static_cast<int>(std::floor(voxens_[i].position[k]/cellSize));
+            return key;
+        };
+        std::map<std::array<int,3>,std::vector<size_t>> grid;
+        for(size_t i:active)grid[cell(i)].push_back(i);
+        for(size_t i:active){
             std::array<float,3> cohesion{}, alignment{}, separation{};
             int count=0;
-            for(size_t j=0;j<voxens_.size();++j){
+            const auto key=cell(i);
+            for(int x=-1;x<=1;++x)for(int y=-1;y<=1;++y)for(int z=-1;z<=1;++z){
+                const auto it=grid.find({key[0]+x,key[1]+y,key[2]+z});
+                if(it==grid.end())continue;
+                for(size_t j:it->second){
                 if(i==j)continue;
                 float delta[3];
                 for(int k=0;k<3;++k)delta[k]=voxens_[j].position[k]-voxens_[i].position[k];
@@ -3894,6 +3911,7 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
                     separation[k]-=delta[k]/std::max(d2,0.015f);
                 }
             }
+            }
             if(count){
                 const float inv=1.f/static_cast<float>(count);
                 for(int k=0;k<3;++k){
@@ -3903,7 +3921,7 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
                 }
             }
         }
-        for(size_t i=0;i<voxens_.size();++i){
+        for(size_t i:active){
             for(int k=0;k<3;++k){
                 voxens_[i].velocity[k]+=std::clamp(acceleration[i][k],-5.f,5.f)*dt;
                 voxens_[i].velocity[k]*=1.f-0.12f*dt;
@@ -4034,7 +4052,8 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
             return std::array<float,3>{t.a[0]+v*ab[0]+w*ac[0],
                 t.a[1]+v*ab[1]+w*ac[1],t.a[2]+v*ab[2]+w*ac[2]};
         };
-        for(auto& v:voxens_){
+        for(size_t i:active){
+            auto& v=voxens_[i];
             const float radius=std::max(0.025f,v.scale*0.5f);
             std::vector<uint32_t> candidates;
             std::array<int,3> lo{},hi{};
@@ -4089,9 +4108,11 @@ void XrSwapchainRenderer::advanceVoxenPhysics(float dt, bool gravity, float boun
             }
         }
     }
-    // At most 256 voxens: O(n^2) narrow phase is fine for this first prototype.
-    for(size_t i=0;i<voxens_.size();++i){
-        for(size_t j=i+1;j<voxens_.size();++j){
+    // Only dynamic solid objects participate; brush samples are not rigid bodies.
+    for(size_t ai=0;ai<active.size();++ai){
+        const size_t i=active[ai];
+        for(size_t aj=ai+1;aj<active.size();++aj){
+            const size_t j=active[aj];
             auto& a=voxens_[i]; auto& b=voxens_[j];
             const float radius=0.5f*(a.scale+b.scale);
             const float dx=b.position[0]-a.position[0];
@@ -4834,10 +4855,10 @@ void XrSwapchainRenderer::render(
     lastPhysicsFrame_=physicsNow;
     advanceHandProjectiles(physicsDt);
     if(std::any_of(voxens_.begin(),voxens_.end(),
-        [](const auto& v){return v.motionEnabled;})){
-        physicsAccumulator_=std::min(physicsAccumulator_+physicsDt,0.1f);
+        [](const auto& v){return v.preset<20 && v.motionEnabled;})){
+        physicsAccumulator_=std::min(physicsAccumulator_+physicsDt,2.f/60.f);
         constexpr float step=1.f/60.f;
-        for(int steps=0;physicsAccumulator_>=step && steps<6;++steps){
+        for(int steps=0;physicsAccumulator_>=step && steps<2;++steps){
             advanceVoxenPhysics(step,imguiCarousel_.motionGravity,
                 imguiCarousel_.motionBounce,
                 imguiCarousel_.motionMode,imguiCarousel_.swarmRadius,
