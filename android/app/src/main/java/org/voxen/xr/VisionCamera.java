@@ -12,6 +12,7 @@ import java.nio.ByteBuffer;
 import java.util.Collections;
 
 final class VisionCamera {
+    static { System.loadLibrary("voxen"); }
     static native int nativeInit(String path);
     static native void nativeFrame(byte[] pixels,int width,int height);
     private final Activity activity;
