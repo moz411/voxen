@@ -47,7 +47,7 @@ final class VisionCamera {
                     reader=ImageReader.newInstance(size.getWidth(),size.getHeight(),ImageFormat.YUV_420_888,2);
                     reader.setOnImageAvailableListener(this::frame,handler);
                     Log.i("VoxenVision","Opening camera "+id+" "+size);
-                    manager.openCamera(id,new CameraDevice.StateCallback(){
+                    try { manager.openCamera(id,new CameraDevice.StateCallback(){
                         public void onOpened(CameraDevice d) {
                             if(!running){d.close();return;}
                             camera=d;
@@ -70,6 +70,10 @@ final class VisionCamera {
                         public void onError(CameraDevice d,int e){d.close();Log.e("VoxenVision","Camera error "+e);}
                     },handler);
                     return;
+                    } catch(SecurityException e) {
+                        Log.w("VoxenVision","Camera "+id+" denied; trying next",e);
+                        reader.close(); reader=null;
+                    }
                 }
                 Log.w("VoxenVision","No YUV camera");
             } catch(Exception | LinkageError e){Log.e("VoxenVision","Start",e);}
