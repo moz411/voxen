@@ -1,4 +1,9 @@
 #pragma once
+#include <atomic>
+namespace voxen::vision {
+inline std::atomic<bool> galleryRecognitionEnabled{false};
+inline std::atomic<bool> sceneTwoRequested{false};
+}
 #include <opencv2/core.hpp>
 #include <opencv2/features2d.hpp>
 #include <opencv2/calib3d.hpp>
