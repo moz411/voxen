@@ -2,6 +2,9 @@ val voxenStereoKit = providers.gradleProperty("voxenStereoKit").orNull?.toBoolea
 
 plugins { id("com.android.application") }
 
+val voxenVision = providers.gradleProperty("voxenVision").orNull?.toBoolean() ?: false
+val openCvDir = providers.gradleProperty("openCvDir").orNull
+
 android {
     namespace = "org.voxen.xr"
     compileSdk = 35
@@ -17,6 +20,8 @@ android {
             cmake {
                 cppFlags += "-std=c++20"
                 arguments += "-DANDROID_STL=c++_shared"
+                arguments += "-DVOXEN_WITH_VISION=${if (voxenVision) "ON" else "OFF"}"
+                if (openCvDir != null) arguments += "-DOpenCV_DIR=$openCvDir"
                 arguments += "-DVOXEN_USE_STEREOKIT=${if (voxenStereoKit) "ON" else "OFF"}"
             }
         }
