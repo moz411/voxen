@@ -1,5 +1,6 @@
 #version 450
 layout(location=0) in vec3 vNormal;
+layout(location=1) in vec4 vColor;
 layout(location=0) out vec4 outColor;
 layout(push_constant) uniform PushConstants { mat4 mvp; vec4 parameters; } pc;
 void main() {
@@ -9,5 +10,5 @@ void main() {
     float light=0.24+0.64*max(dot(n,key),0.0)+0.12*max(dot(n,fill),0.0);
     // The base-color factor is in linear color space in glTF.
     // This first pass does not sample baseColorTexture or perform full PBR.
-    outColor=vec4(clamp(pc.parameters.rgb*light,0.0,1.0),pc.parameters.a);
+    outColor=vec4(clamp(pc.parameters.rgb*vColor.rgb*light,0.0,1.0),pc.parameters.a*vColor.a);
 }

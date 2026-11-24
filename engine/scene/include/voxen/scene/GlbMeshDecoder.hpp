@@ -13,6 +13,7 @@ struct Vertex {
     std::array<float,3> position{};
     std::array<float,3> normal{};
     std::array<float,2> uv{};
+    std::array<float,4> color{1.f,1.f,1.f,1.f};
 };
 struct Primitive {
     std::vector<Vertex> vertices;
